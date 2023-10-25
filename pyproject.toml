@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=62"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metarace-trackmeet"
+version = "1.13.0"
+description = "Timing and result application for track cycling events"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+keywords = ["velodrome"]
+authors = [
+    {email = "ndf-zz@6-v.org", name = "Nathan Fraser"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Other/Nonlisted Topic",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "metarace>=2.1.4",
+]
+[project.urls]
+homepage = "https://github.com/ndf-zz/metarace-trackmeet"
+
+[project.scripts]
+trackmeet = "trackmeet:main"
+
