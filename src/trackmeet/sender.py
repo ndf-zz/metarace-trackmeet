@@ -35,22 +35,26 @@ _CONFIG_SCHEMA = {
     },
     'portspec': {
         'prompt': 'Default Port:',
+        'default': 'TCP:localhost:1946',
     },
     'linelen': {
         'prompt': 'Line Length:',
         'control': 'short',
         'subtext': '(Characters)',
         'type': 'int',
+        'default': 24,
     },
     'pagelen': {
         'prompt': 'Page Length:',
         'control': 'short',
         'subtext': '(Lines)',
         'type': 'int',
+        'default': 7,
     },
-    'pagelen': {
+    'encoding': {
         'prompt': 'Encoding:',
         'control': 'short',
+        'default': 'utf-8'
     },
     'baudrate': {
         'prompt': 'Serial Baud:',
@@ -170,8 +174,11 @@ def mkport(port):
 
     # import system defaults if required
     if port == 'DEFAULT':
+        defport = ''
         if sysconf.has_option('sender', 'portspec'):
-            port = sysconf.get('sender', 'portspec')
+            defport = sysconf.get('sender', 'portspec')
+        if defport:
+            port = defport
         else:
             port = 'TCP:localhost:' + str(_DEFPORT)
 
