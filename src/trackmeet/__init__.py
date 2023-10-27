@@ -30,7 +30,7 @@ from metarace import unt4
 from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _CONFIG_SCHEMA as _TIMY_SCHEMA
-from .sender import sender, _CONFIG_SCHEMA as _SENDER_SCHEMA
+from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from . import uiutil
 from . import scbwin
@@ -52,6 +52,301 @@ _CONFIG_SCHEMA = {
     'mtype': {
         'prompt': 'Meet Information',
         'control': 'section',
+    },
+    'title': {
+        'prompt': 'Title:',
+        'hint': 'Meet title',
+        'attr': 'title',
+        'default': '',
+    },
+    'subtitle': {
+        'prompt': 'Subtitle:',
+        'hint': 'Meet subtitle',
+        'attr': 'subtitle',
+        'default': '',
+    },
+    'host': {
+        'prompt': 'Host:',
+        'hint': 'Text for the meet host / sponsor line',
+        'attr': 'host',
+        'default': '',
+    },
+    'document': {
+        'prompt': 'Location:',
+        'hint': 'Text for the meet location / document line',
+        'attr': 'document',
+        'default': '',
+    },
+    'date': {
+        'prompt': 'Date:',
+        'hint': 'Date of the meet as human-readable text',
+        'attr': 'date',
+        'default': '',
+    },
+    'pcp': {
+        'prompt': 'PCP:',
+        'hint': 'Name of the president of the commissaires panel',
+        'attr': 'pcp',
+        'default': '',
+    },
+    'organiser': {
+        'prompt': 'Organiser:',
+        'hint': 'Name of the meet organiser',
+        'attr': 'organiser',
+        'default': '',
+    },
+    'sectlen': {
+        'control': 'section',
+        'prompt': 'Track Length',
+    },
+    'tracklen_n': {
+        'prompt': 'Numerator:',
+        'control': 'short',
+        'type': 'int',
+        'attr': 'tracklen_n',
+        'subtext': '(metres)',
+        'default': 250,
+    },
+    'tracklen_d': {
+        'prompt': 'Denominator:',
+        'control': 'short',
+        'type': 'int',
+        'attr': 'tracklen_d',
+        'subtext': '(laps)',
+        'default': 1,
+    },
+    'secres': {
+        'control': 'section',
+        'prompt': 'Results',
+    },
+    'provisional': {
+        'prompt': 'Program:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Provisional?',
+        'hint': 'Mark program and results provisional',
+        'attr': 'provisional',
+        'default': True,
+    },
+    'communiques': {
+        'prompt': 'Communiqu\u00e9s:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Number?',
+        'hint': 'Assign numbers to all reports',
+        'attr': 'communiques',
+        'default': False,
+    },
+    'showevno': {
+        'prompt': 'Event Nos:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Show?',
+        'hint': 'Display event numbers in results',
+        'attr': 'showevno',
+        'default': True,
+    },
+    'clubmode': {
+        'prompt': 'Club mode:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Auto add riders?',
+        'hint': 'Automatically add unknown riders to meet',
+        'attr': 'clubmode',
+        'default': False,
+    },
+    'sectele': {
+        'control': 'section',
+        'prompt': 'Telegraph',
+    },
+    'anntopic': {
+        'prompt': 'Announce:',
+        'hint': 'Base topic for announcer messages',
+        'attr': 'anntopic',
+    },
+    'sechw': {
+        'control': 'section',
+        'prompt': 'Hardware',
+    },
+    'timerport': {
+        'prompt': 'Chronometer:',
+        'hint': 'Chronometer port eg: /dev/ttyS0',
+        'defer': True,
+        'attr': 'timerport',
+    },
+    'timerprint': {
+        'prompt': '',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Enable printer?',
+        'hint': 'Enable chronoprinter',
+        'attr': 'timerprint',
+        'default': False,
+    },
+    'scbport': {
+        'prompt': 'Scoreboard:',
+        'hint': 'Caprica/DHI scoreboard eg: DEFAULT',
+        'defer': True,
+        'attr': 'scbport',
+    },
+    'gemport': {
+        'prompt': 'Gemini Board:',
+        'hint': 'Numeric display board port eg: /dev/ttyUSB1',
+        'defer': True,
+        'attr': 'gemport',
+    },
+    'secexp': {
+        'control': 'section',
+        'prompt': 'Export',
+    },
+    'mirrorcmd': {
+        'prompt': 'Command:',
+        'hint': 'Command to run if export script is enabled',
+        'attr': 'mirrorcmd',
+    },
+    'mirrorpath': {
+        'prompt': 'Path:',
+        'hint': 'Result export path',
+        'attr': 'mirrorpath',
+    },
+    'shortname': {
+        'prompt': 'Short Name:',
+        'hint': 'Short meet name on web export header',
+        'attr': 'shortname',
+    },
+    'eventcode': {
+        'prompt': 'Event Code:',
+        'hint': 'Event code saved in reports',
+        'attr': 'eventcode',
+    },
+    # deprecated config elements
+    'linkbase': {
+        'attr': 'linkbase',
+        'control': 'none',
+        'default': '.',
+    },
+}
+
+# Temporary
+_EVENT_SCHEMA = {
+    'evid': {
+        'prompt': 'Event No:',
+        'control': 'short',
+        'attr': 'evid',
+        'defer': True,
+        'default': '',
+    },
+    'pref': {
+        'prompt': 'Prefix:',
+        'attr': 'pref',
+        'defer': True,
+        'default': '',
+    },
+    'info': {
+        'prompt': 'Information:',
+        'attr': 'info',
+        'defer': True,
+        'default': '',
+    },
+    'type': {
+        'prompt': 'Type Handler:',
+        'control': 'short',
+        'attr': 'type',
+        'defer': True,
+        'default': '',
+    },
+    'depe': {
+        'prompt': 'Depends on:',
+        'attr': 'depe',
+        'defer': True,
+        'default': '',
+    },
+    'resu': {
+        'prompt': 'Include in:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Results?',
+        'attr': 'resu',
+        'defer': True,
+        'default': True,
+    },
+    'inde': {
+        'prompt': '',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Event Index?',
+        'attr': 'inde',
+        'defer': True,
+        'default': False,
+    },
+    'prin': {
+        'prompt': '',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Printed Program?',
+        'attr': 'prin',
+        'defer': True,
+        'default': False,
+    },
+    'plac': {
+        'prompt': 'Placeholders:',
+        'control': 'short',
+        'type': 'int',
+        'attr': 'seri',
+        'defer': True,
+    },
+    'sess': {
+        'prompt': 'Session ID:',
+        'control': 'short',
+        'attr': 'sess',
+        'defer': True,
+        'default': '',
+    },
+    'laps': {
+        'prompt': 'Lap Count:',
+        'control': 'short',
+        'type': 'int',
+        'attr': 'laps',
+        'defer': True,
+    },
+    'dist': {
+        'prompt': 'Distance text:',
+        'attr': 'dist',
+        'defer': True,
+        'default': '',
+    },
+    'prog': {
+        'prompt': 'Progression text:',
+        'attr': 'prog',
+        'defer': True,
+        'default': '',
+    },
+    'reco': {
+        'prompt': 'Record text:',
+        'attr': 'reco',
+        'defer': True,
+        'default': '',
+    },
+    'seri': {
+        'prompt': 'Series',
+        'control': 'short',
+        'attr': 'seri',
+        'defer': True,
+        'default': '',
+    },
+    'refe': {
+        'prompt': 'Reference No:',
+        'control': 'short',
+        'attr': 'refe',
+        'defer': True,
+        'default': '',
+    },
+    'evov': {
+        'prompt': 'Event no override:',
+        'control': 'short',
+        'attr': 'evov',
+        'defer': True,
+        'default': '',
     },
 }
 
@@ -102,113 +397,114 @@ class trackmeet:
     def menu_meet_info_cb(self, menuitem, data=None):
         """Display meet information on scoreboard."""
         self.gemini.clear()
-        self.clock.clicked()
+        self.menu_clock.clicked()
 
     def menu_meet_properties_cb(self, menuitem, data=None):
         """Edit meet properties."""
-        _log.debug('TODO: Meet properties')
-        return
-        b = gtk.Builder()
-        b.add_from_file(os.path.join(metarace.UI_PATH, 'trackmeet_props.ui'))
-        dlg = b.get_object('properties')
-        dlg.set_transient_for(self.window)
+        metarace.sysconf.add_section('export', _EXPORT_SCHEMA)
+        metarace.sysconf.add_section('telegraph', _TG_SCHEMA)
+        metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
+        metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
+        cfgres = uiutil.options_dlg(window=self.window,
+                                    title='Meet Properties',
+                                    sections={
+                                        'meet': {
+                                            'title': 'Meet',
+                                            'schema': _CONFIG_SCHEMA,
+                                            'object': self,
+                                        },
+                                        'export': {
+                                            'title': 'Export',
+                                            'schema': _EXPORT_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
+                                        'telegraph': {
+                                            'title': 'Telegraph',
+                                            'schema': _TG_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
+                                        'sender': {
+                                            'title': 'Scoreboard',
+                                            'schema': _SENDER_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
+                                        'timy': {
+                                            'title': 'Timy',
+                                            'schema': _TIMY_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
+                                    })
 
-        # load meet meta
-        tent = b.get_object('meet_title_entry')
-        tent.set_text(self.titlestr)
-        stent = b.get_object('meet_subtitle_entry')
-        stent.set_text(self.subtitlestr)
-        dent = b.get_object('meet_date_entry')
-        dent.set_text(self.datestr)
-        lent = b.get_object('meet_loc_entry')
-        lent.set_text(self.locstr)
-        cent = b.get_object('meet_comm_entry')
-        cent.set_text(self.commstr)
-        oent = b.get_object('meet_org_entry')
-        oent.set_text(self.orgstr)
+        # check for sysconf changes
+        syschange = False
+        tgchange = False
+        timerchange = False
+        scbchange = False
+        for sec in ('export', 'timy', 'telegraph', 'sender'):
+            for key in cfgres[sec]:
+                if cfgres[sec][key][0]:
+                    syschange = True
+                    if sec == 'telegraph':
+                        tgchange = True
+                    elif sec == 'timy':
+                        timerchange = True
+                    elif sec == 'sender':
+                        scbchange = True
 
-        # load data/result opts
-        re = b.get_object('data_showevno')
-        re.set_active(self.showevno)
-        cm = b.get_object('data_clubmode')
-        cm.set_active(self.clubmode)
-        prov = b.get_object('data_provisional')
-        prov.set_active(self.provisional)
-        tln = b.get_object('tracklen_total')
-        tln.set_value(self.tracklen_n)
-        tld = b.get_object('tracklen_laps')
-        tldl = b.get_object('tracklen_lap_label')
-        tld.connect('value-changed', self.tracklen_laps_value_changed_cb, tldl)
-        tld.set_value(self.tracklen_d)
+        if syschange:
+            _log.info('Saving config updates to meet folder')
+            with metarace.savefile(metarace.SYSCONF, perm=0o600) as f:
+                metarace.sysconf.write(f)
 
-        # scb/timing ports
-        spe = b.get_object('scb_port_entry')
-        if self.scbport is not None:
-            spe.set_text(self.scbport)
-        upe = b.get_object('uscb_port_entry')
-        if self.anntopic is not None:
-            upe.set_text(self.anntopic)
-        spb = b.get_object('scb_port_dfl')
-        spb.connect('clicked', self.set_default, spe, 'DEFAULT')
-        mte = b.get_object('timing_main_entry')
-        if self.main_port is not None:
-            mte.set_text(self.main_port)
-        mtb = b.get_object('timing_main_dfl')
-        mtb.connect('clicked', self.set_default, mte, 'DEFAULT')
+        # reset telegraph connection if required
+        if tgchange:
+            _log.info('Re-start telegraph')
+            newannounce = telegraph()
+            newannounce.setcb(self._controlcb)
+            newannounce.start()
+            oldannounce = self.announce
+            self.announce = newannounce
+            oldannounce.exit()
 
-        # run dialog
-        response = dlg.run()
-        if response == 1:  # id 1 set in glade for "Apply"
-            _log.debug('Updating meet properties')
+        # reset timer connection if required
+        if timerchange:
+            _log.info('Re-start timer')
+            newtimy = timy()
+            newtimy.setcb(self._timercb)
+            newtimy.start()
+            oldtimy = self.main_timer
+            self.main_timer = newtimy
+            oldtimy.exit()
 
-            # update meet meta
-            self.titlestr = tent.get_text().decode('utf-8', 'replace')
-            self.subtitlestr = stent.get_text().decode('utf-8', 'replace')
-            self.datestr = dent.get_text().decode('utf-8', 'replace')
-            self.locstr = lent.get_text().decode('utf-8', 'replace')
-            self.commstr = cent.get_text().decode('utf-8', 'replace')
-            self.orgstr = oent.get_text().decode('utf-8', 'replace')
-            self.set_title()
+        # reset scb connection if required
+        if scbchange:
+            _log.info('Re-start scb')
+            self.scbwin = None
+            oldscb = self.scb
+            self.scb = sender()
+            self.scb.start()
+            oldscb.exit()
 
-            self.clubmode = cm.get_active()
-            self.showevno = re.get_active()
-            self.provisional = prov.get_active()
-            self.tracklen_n = tln.get_value_as_int()
-            self.tracklen_d = tld.get_value_as_int()
-            nport = spe.get_text().decode('utf-8', 'replace')
-            if nport != self.scbport:
-                # TODO: swap type handler if necessary
-                self.scbport = nport
-                self.scb.setport(nport)
-            nport = upe.get_text().decode('utf-8', 'replace')
-            if nport != self.anntopic:
-                if self.anntopic is not None:
-                    self.announce.unsubscribe('/'.join(
-                        (self.anntopic, 'control', '#')))
-                self.anntopic = None
-                if nport:
-                    self.anntopic = nport
-                    self.announce.subscribe('/'.join(
-                        (self.anntopic, 'control', '#')))
-            nport = mte.get_text().decode('utf-8', 'replace')
-            if nport != self.main_port:
-                self.main_port = nport
-                self.main_timer.setport(nport)
-            _log.debug('Properties updated')
-        else:
-            _log.debug('Edit properties cancelled')
-        dlg.destroy()
+        res = cfgres['meet']
+        # handle a change in announce topic
+        if res['anntopic'][0] or tgchange:
+            otopic = res['anntopic'][1]
+            if otopic:
+                self.announce.unsubscribe('/'.join((otopic, 'control', '#')))
+            if self.anntopic:
+                self.announce.subscribe('/'.join(
+                    (self.anntopic, 'control', '#')))
 
-    def tracklen_laps_value_changed_cb(self, spin, lbl):
-        """Laps changed in properties callback."""
-        if int(spin.get_value()) > 1:
-            lbl.set_text(' laps = ')
-        else:
-            lbl.set_text(' lap = ')
+        # reset timer port
+        if res['timerport'][0] or timerchange:
+            self.menu_timing_reconnect_activate_cb(None)
 
-    def set_default(self, button, dest, val):
-        """Update dest to default value val."""
-        dest.set_text(val)
+        # reset scb and or gemini if required
+        if res['scbport'][0] or res['gemport'][0] or scbchange:
+            self.menu_scb_connect_activate_cb(None)
+
+        # always re-set title
+        self.set_title()
 
     def menu_meet_quit_cb(self, menuitem, data=None):
         """Quit the track meet application."""
@@ -217,12 +513,12 @@ class trackmeet:
 
     def report_strings(self, rep):
         """Copy meet information into the supplied report."""
-        rep.strings['title'] = self.titlestr
+        rep.strings['title'] = self.title
         rep.strings['host'] = self.host
-        rep.strings['datestr'] = strops.promptstr('Date:', self.datestr)
+        rep.strings['datestr'] = strops.promptstr('Date:', self.date)
         rep.strings['commstr'] = strops.promptstr('PCP:', self.pcp)
-        rep.strings['orgstr'] = strops.promptstr('Organiser: ', self.orgstr)
-        rep.strings['diststr'] = self.locstr
+        rep.strings['orgstr'] = strops.promptstr('Organiser: ', self.organiser)
+        rep.strings['diststr'] = self.document
 
     ## Report print support
     def print_report(self,
@@ -238,20 +534,20 @@ class trackmeet:
         rep = report.report()
         rep.provisional = prov
         self.report_strings(rep)
-        rep.strings['subtitle'] = (self.subtitlestr + ' ' + subtitle).strip()
+        rep.strings['subtitle'] = (self.subtitle + ' ' + subtitle).strip()
         rep.strings['docstr'] = docstr
         for sec in sections:
             rep.add_section(sec)
 
         # write out to files if exportfile set
         if exportfile:
-            ofile = os.path.join(self.exportpath, exportfile + '.pdf')
+            ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
             with metarace.savefile(ofile, mode='b') as f:
                 rep.output_pdf(f)
-            ofile = os.path.join(self.exportpath, exportfile + '.xls')
+            ofile = os.path.join(EXPORTPATH, exportfile + '.xls')
             with metarace.savefile(ofile, mode='b') as f:
                 rep.output_xls(f)
-            ofile = os.path.join(self.exportpath, exportfile + '.json')
+            ofile = os.path.join(EXPORTPATH, exportfile + '.json')
             with metarace.savefile(ofile) as f:
                 rep.output_json(f)
             lb = ''
@@ -259,7 +555,7 @@ class trackmeet:
             if self.mirrorpath:
                 lb = os.path.join(self.linkbase, exportfile)
                 lt = ['pdf', 'xls']
-            ofile = os.path.join(self.exportpath, exportfile + '.html')
+            ofile = os.path.join(EXPORTPATH, exportfile + '.html')
             with metarace.savefile(ofile) as f:
                 rep.output_html(f, linkbase=lb, linktypes=lt)
 
@@ -354,26 +650,16 @@ class trackmeet:
             secs.append(report.pagebreak())
         if len(secs) > 0:
             reporthash = reptype + ', '.join(evlist)
-            if False and self.communiques:  # prompt for communique no
-                #commno = uiutil.communique_dialog(self.meet.window)
-
-                #if commno is not None and len(commno) > 1:
-                ##gtk.gdk.threads_enter()
-                rvec = uiutil.edit_times_dlg(self.window, stxt='', ftxt='')
-                ##gtk.gdk.threads_leave()
-                if len(rvec) > 1 and rvec[0] == 1:
-                    commno = self.find_communique(reporthash)
-                    if rvec[1]:  # it's a revision
-                        commno += rvec[1]
-                    if commno is not None:
-                        reptypestr = ('Communiqu\u00e9 ' + commno + ': ' +
-                                      reptypestr)
-                    if rvec[2]:
-                        msgsec = report.bullet_text()
-                        msgsec.subheading = 'Revision ' + repr(rvec[1])
-                        msgsec.lines.append(['', rvec[2]])
-                        ## signature
-                        secs.append(msgsec)
+            if self.communiques:
+                commno = self.find_communique(reporthash)
+                if rvec[1]:  # it's a revision
+                    commno += rvec[1]
+                if commno is not None:
+                    reptypestr = ('Communiqu\u00e9 ' + commno + ': ' +
+                                  reptypestr)
+                ## TODO: revision and signature
+                ## signature
+                ##secs.append(msgsec)
             self.print_report(secs,
                               docstr=reptypestr,
                               exportfile='trackmeet_' + reptype)
@@ -430,7 +716,7 @@ class trackmeet:
 
     def menu_race_run_activate_cb(self, menuitem=None, data=None):
         """Open currently selected event."""
-        eh = self.edb.getselected()
+        eh = self.event_getselected()
         if eh is not None:
             self.open_event(eh)
 
@@ -447,7 +733,7 @@ class trackmeet:
             else:
                 _log.warning('No next event to open')
         else:
-            eh = self.edb.getselected()
+            eh = self.event_getselected()
             if eh is not None:
                 self.open_event(eh)
             else:
@@ -462,7 +748,7 @@ class trackmeet:
             else:
                 _log.warning('No previous event to open')
         else:
-            eh = self.edb.getselected()
+            eh = self.event_getselected()
             if eh is not None:
                 self.open_event(eh)
             else:
@@ -669,12 +955,12 @@ class trackmeet:
         self.edb.clear()
         self.edb.load('events.csv')
         self.rdb.load('riders.csv')
-        self.reload_riders()
 
-        if cureventno and cureventno in self.edb:
-            self.open_event(self.edb[cureventno])
-        else:
-            _log.warning('Running event was removed from the event list')
+        if cureventno:
+            if cureventno in self.edb:
+                self.open_event(self.edb[cureventno])
+            else:
+                _log.warning('Running event was removed from the event list')
 
     def menu_data_result_activate_cb(self, menuitem, data=None):
         """Export final result."""
@@ -726,16 +1012,11 @@ class trackmeet:
     def printprogram(self):
         r = report.report()
         subtitlestr = 'Program of Events'
-        if self.subtitlestr:
-            subtitlestr = self.subtitlestr + ' - ' + subtitlestr
-        r.strings['title'] = self.titlestr
-        r.strings['subtitle'] = subtitlestr
-        r.strings['datestr'] = strops.promptstr('Date:', self.datestr)
-        r.strings['commstr'] = strops.promptstr('Chief Commissaire:',
-                                                self.commstr)
-        r.strings['orgstr'] = strops.promptstr('Organiser: ', self.orgstr)
+        if self.subtitle:
+            subtitlestr = self.subtitle + ' - ' + subtitlestr
+        self.report_strings(r)
         r.strings['docstr'] = ''  # What should go here?
-        r.strings['diststr'] = self.locstr
+        r.strings['subtitle'] = subtitlestr
 
         r.set_provisional(self.provisional)
 
@@ -815,7 +1096,6 @@ class trackmeet:
             prevno = evno
 
     def updateindex(self):
-        self.reload_riders()  # re-read rider list
         self.updatenexprev()  # re-compute next/prev link struct
         # check for printed program link
         # check for final result link
@@ -823,16 +1103,11 @@ class trackmeet:
         # build index of events report
         if self.mirrorpath:
             orep = report.report()
-            orep.strings['title'] = self.titlestr
-            orep.strings['subtitle'] = self.subtitlestr
-            orep.strings['datestr'] = strops.promptstr('Date:', self.datestr)
-            orep.strings['commstr'] = strops.promptstr('Chief Commissaire:',
-                                                       self.commstr)
-            orep.strings['orgstr'] = strops.promptstr('Organiser: ',
-                                                      self.orgstr)
-            orep.strings['diststr'] = self.locstr
+            self.report_strings(orep)
+            orep.strings['docstr'] = ''
+            orep.strings['subtitle'] = self.subtitle
             orep.set_provisional(self.provisional)  # ! TODO
-            orep.shortname = self.titlestr
+            orep.shortname = self.title
             orep.indexlink = '/'
             if self.provisional:
                 orep.reportstatus = 'provisional'
@@ -875,11 +1150,11 @@ class trackmeet:
                     sec.lines.append([evno, None, descr, extra, linkfile])
             orep.add_section(sec)
             basename = 'index'
-            ofile = os.path.join(self.exportpath, basename + '.html')
+            ofile = os.path.join(EXPORTPATH, basename + '.html')
             with metarace.savefile(ofile) as f:
                 orep.output_html(f, linkbase=lb, linktypes=lt)
             jbase = basename + '.json'
-            ofile = os.path.join(self.exportpath, jbase)
+            ofile = os.path.join(EXPORTPATH, jbase)
             with metarace.savefile(ofile) as f:
                 orep.output_json(f)
             GLib.idle_add(self.mirror_start)
@@ -897,12 +1172,9 @@ class trackmeet:
     def mirror_start(self, dirty=None):
         """Create a new mirror thread unless in progress."""
         if self.mirrorpath and self.mirror is None:
-            self.mirror = export.mirror(callback=self.mirror_completion,
-                                        callbackdata=dirty,
-                                        localpath=os.path.join(
-                                            self.exportpath, ''),
-                                        remotepath=self.mirrorpath,
-                                        mirrorcmd=self.mirrorcmd)
+            self.mirror = mirror(localpath=os.path.join(EXPORTPATH, ''),
+                                 remotepath=self.mirrorpath,
+                                 mirrorcmd=self.mirrorcmd)
             self.mirror.start()
         return False  # for idle_add
 
@@ -970,11 +1242,8 @@ class trackmeet:
 
                 if self.mirrorpath and doexport:
                     orep = report.report()
-                    orep.strings['title'] = self.titlestr
+                    self.report_strings(orep)
                     orep.strings['subtitle'] = evstr
-                    #orep.strings[u'datestr'] = strops.promptstr(u'Date:',
-                    #self.datestr)
-                    # orep.strings[u'diststr'] = self.locstr
                     orep.strings['docstr'] = evstr
                     if etype in ['classification']:
                         orep.strings['docstr'] += ' Classification'
@@ -1003,11 +1272,11 @@ class trackmeet:
                             orep.add_section(sec)
                     basename = 'event_' + str(evno).translate(
                         strops.WEBFILE_UTRANS)
-                    ofile = os.path.join(self.exportpath, basename + '.html')
+                    ofile = os.path.join(EXPORTPATH, basename + '.html')
                     with metarace.savefile(ofile) as f:
                         orep.output_html(f)
                     jbase = basename + '.json'
-                    ofile = os.path.join(self.exportpath, jbase)
+                    ofile = os.path.join(EXPORTPATH, jbase)
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
                 r.destroy()
@@ -1032,7 +1301,7 @@ class trackmeet:
         self.gemini.clear()
         self.scbwin = None  # stop sending any new updates
         self.scb.clrall()  # force clear of current text page
-        self.scb.sendmsg(unt4.OVERLAY_CLOCK)
+        self.scb.sendmsg(OVERLAY_CLOCK)
         _log.debug('Show facility clock')
 
     def menu_scb_blank_cb(self, menuitem, data=None):
@@ -1058,25 +1327,6 @@ class trackmeet:
         if self.gemport != '':
             self.gemini.setport(self.gemport)
 
-    def entry_set_now(self, button, entry=None):
-        """Enter the current time in the provided entry."""
-        entry.set_text(tod.now().timestr())
-        entry.activate()
-
-    def menu_timing_recalc(self, entry, ste, fte, nte):
-        """Update the net time entry for the supplied start and finish."""
-        st = tod.mktod(ste.get_text().decode('utf-8', 'replace'))
-        ft = tod.mktod(fte.get_text().decode('utf-8', 'replace'))
-        if st is not None and ft is not None:
-            ste.set_text(st.timestr())
-            fte.set_text(ft.timestr())
-            nte.set_text((ft - st).timestr())
-
-    def menu_timing_clear_activate_cb(self, menuitem, data=None):
-        """Clear memory in attached timing devices."""
-        self.main_timer.clrmem()
-        _log.info('Clear timer memory')
-
     def menu_timing_dump_activate_cb(self, menuitem, data=None):
         """Request memory dump from attached timy."""
         self.main_timer.dumpall()
@@ -1084,8 +1334,8 @@ class trackmeet:
 
     def menu_timing_reconnect_activate_cb(self, menuitem, data=None):
         """Reconnect timer and initialise."""
-        self.main_timer.setport(self.main_port)
-        if self.main_port:
+        self.main_timer.setport(self.timerport)
+        if self.timerport:
             self.main_timer.sane()
         _log.info('Re-connect and initialise timer')
 
@@ -1098,13 +1348,13 @@ class trackmeet:
     def menu_clock_clicked_cb(self, button, data=None):
         """Handle click on menubar clock."""
         (line1, line2,
-         line3) = strops.titlesplit(self.titlestr + ' ' + self.subtitlestr,
+         line3) = strops.titlesplit(self.title + ' ' + self.subtitle,
                                     self.scb.linelen)
         self.scbwin = scbwin.scbclock(self.scb,
                                       line1,
                                       line2,
                                       line3,
-                                      locstr=self.locstr)
+                                      locstr=self.document)
         self.scbwin.reset()
 
     ## Directory utilities
@@ -1129,9 +1379,10 @@ class trackmeet:
             if self.mirror is not None:
                 if not self.mirror.is_alive():  # replaces join() non-blocking
                     self.mirror = None
+                    _log.debug('Removing completed export thread.')
+
             if self.exporter is not None:
-                if not self.exporter.is_alive(
-                ):  # replaces join() non-blocking
+                if not self.exporter.is_alive():
                     _log.debug('Deleting complete export: %r', self.exporter)
                     self.exporter = None
                 else:
@@ -1157,8 +1408,8 @@ class trackmeet:
         self.main_timer.printimp(False)  # suppress intermeds
         self.main_timer.printline('')
         self.main_timer.printline('')
-        self.main_timer.printline(self.titlestr)
-        self.main_timer.printline(self.subtitlestr)
+        self.main_timer.printline(self.title)
+        self.main_timer.printline(self.subtitle)
         self.main_timer.printline('')
         if event:
             self.main_timer.printline(event)
@@ -1193,7 +1444,7 @@ class trackmeet:
         if self.showevno:
             ret = 'Event ' + str(evno)
         else:
-            ret = ' '.join([self.titlestr, self.subtitlestr]).strip()
+            ret = ' '.join([self.title, self.subtitle]).strip()
         return ret
 
     def infoline(self, event):
@@ -1253,9 +1504,9 @@ class trackmeet:
                       yy=0,
                       erl=True,
                       text=strops.truncpad(
-                          ' '.join([
-                              self.titlestr, self.subtitlestr, self.datestr
-                          ]).strip(), ANNOUNCE_LINELEN - 2, 'c')))
+                          ' '.join([self.title, self.subtitle,
+                                    self.date]).strip(), ANNOUNCE_LINELEN - 2,
+                          'c')))
 
     def txt_title(self, titlestr=''):
         self.txt_announce(
@@ -1278,9 +1529,8 @@ class trackmeet:
     ## Window methods
     def set_title(self, extra=''):
         """Update window title from meet properties."""
-        self.window.set_title(
-            'trackmeet: ' +
-            ' '.join([self.titlestr, self.subtitlestr]).strip())
+        self.window.set_title('trackmeet: ' +
+                              ' '.join([self.title, self.subtitle]).strip())
         self.txt_default()
 
     def meet_destroy_cb(self, window, msg=''):
@@ -1312,8 +1562,9 @@ class trackmeet:
             key = Gdk.keyval_name(event.keyval) or 'None'
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
+                    _log.debug('Got key = %r', key)
                     t = tod.now(chan='MAN', refid=str(key))
-                    self.__timercb(t)
+                    self._timercb(t)
                     return True
             if self.curevent is not None:
                 return self.curevent.key_event(widget, event)
@@ -1344,7 +1595,8 @@ class trackmeet:
         _log.debug('Main timer')
         self.main_timer.join()
 
-    def __timercb(self, evt, data=None):
+    def _timercb(self, evt, data=None):
+        _log.debug('Timer: %r %r', evt, data)
         if self.curevent is not None:
             GLib.idle_add(self.curevent.timercb,
                           evt,
@@ -1359,7 +1611,7 @@ class trackmeet:
             _log.debug('Meet startup')
             self.announce.start()
             self.scb.start()
-            self.main_timer.setcb(self.__timercb)
+            self.main_timer.setcb(self._timercb)
             self.main_timer.start()
             self.gemini.start()
             self.started = True
@@ -1398,85 +1650,29 @@ class trackmeet:
     def saveconfig(self, lastevent=None):
         """Save current meet data to disk."""
         cw = jsonconfig.config()
-        cw.add_section('trackmeet')
-        cw.set('trackmeet', 'id', TRACKMEET_ID)
+        cw.add_section('trackmeet', _CONFIG_SCHEMA)
         if self.curevent is not None and self.curevent.winopen:
             self.save_curevent()
             cw.set('trackmeet', 'curevent', self.curevent.evno)
         elif lastevent is not None:
             cw.set('trackmeet', 'curevent', lastevent)
-        cw.set('trackmeet', 'timerprint', self.timerprint)
-        cw.set('trackmeet', 'maintimer', self.main_port)
-        cw.set('trackmeet', 'gemini', self.gemport)
-        cw.set('trackmeet', 'racetimer', 'main')
-        cw.set('trackmeet', 'scbport', self.scbport)
-        cw.set('trackmeet', 'anntopic', self.anntopic)
-        cw.set('trackmeet', 'title', self.titlestr)
-        cw.set('trackmeet', 'subtitle', self.subtitlestr)
-        cw.set('trackmeet', 'date', self.datestr)
-        cw.set('trackmeet', 'location', self.locstr)
-        cw.set('trackmeet', 'organiser', self.orgstr)
-        cw.set('trackmeet', 'commissaire', self.commstr)
-        cw.set('trackmeet', 'mirrorpath', self.mirrorpath)
-        cw.set('trackmeet', 'mirrorcmd', self.mirrorcmd)
-        cw.set('trackmeet', 'linkbase', self.linkbase)
-        cw.set('trackmeet', 'clubmode', self.clubmode)
-        cw.set('trackmeet', 'showevno', self.showevno)
-        cw.set('trackmeet', 'provisional', self.provisional)
-        cw.set('trackmeet', 'communiques', self.communiques)
-        cw.set('trackmeet', 'commalloc', self.commalloc)  # map
-        cw.set('trackmeet', 'tracklen_n', str(self.tracklen_n))  # poss val?
-        cw.set('trackmeet', 'tracklen_d', str(self.tracklen_d))
-        cw.set('trackmeet', 'docindex', str(self.docindex))
+        cw.set('trackmeet', 'commalloc', self.commalloc)
+        cw.import_section('trackmeet', self)
+        cw.set('trackmeet', 'id', TRACKMEET_ID)
         with metarace.savefile(CONFIGFILE) as f:
             cw.write(f)
         self.rdb.save('riders.csv')
         self.edb.save('events.csv')
         _log.info('Meet configuration saved')
 
-    def reload_riders(self):
-        # make a prelim mapped rider struct
-        _log.debug('TODO: load mapped riders?')
-        #self.ridermap = {}
-        #for s in self.rdb.listseries():
-            #self.ridermap[s] = self.rdb.mkridermap(s)
-
     def loadconfig(self):
         """Load meet config from disk."""
-        cr = jsonconfig.config({
-            'trackmeet': {
-                'maintimer': '',
-                'timerprint': False,
-                'racetimer': 'main',
-                'scbport': '',
-                'anntopic': None,
-                'showevno': True,
-                'resultnos': True,
-                'clubmode': True,
-                'tracklen_n': 250,
-                'tracklen_d': 1,
-                'docindex': '0',
-                'gemini': '',
-                'dbhost': '',
-                'title': '',
-                'subtitle': '',
-                'date': '',
-                'location': '',
-                'organiser': '',
-                'commissaire': '',
-                'curevent': '',
-                'mirrorcmd': '',
-                'mirrorpath': '',
-                'linkbase': '.',
-                'provisional': False,
-                'communiques': False,
+        cr = jsonconfig.config(
+            {'trackmeet': {
                 'commalloc': {},
-                'id': ''
-            }
-        })
-        cr.add_section('trackmeet')
-        cr.merge(metarace.sysconf, 'trackmeet')
-        _log.debug('Load system meet defaults')
+                'curevent': None,
+            }})
+        cr.add_section('trackmeet', _CONFIG_SCHEMA)
 
         # re-set main log file
         _log.debug('Adding meet logfile handler %r', LOGFILE)
@@ -1490,104 +1686,243 @@ class trackmeet:
         self.loghandler.setFormatter(logging.Formatter(metarace.LOGFILEFORMAT))
         rootlogger.addHandler(self.loghandler)
 
-        # check for config file
-        try:
-            with open(CONFIGFILE, 'rb') as f:
-                cr.read(f)
-            _log.debug('Read meet config from %r', CONFIGFILE)
-        except Exception as e:
-            _log.error('Unable to read meet config: %s', e)
+        cr.merge(metarace.sysconf, 'trackmeet')
+        cr.load(CONFIGFILE)
+        cr.export_section('trackmeet', self)
 
-        # set main timer port (only main timer now)
-        nport = cr.get('trackmeet', 'maintimer')
-        if nport != self.main_port:
-            self.main_port = nport
-            self.main_timer.setport(nport)
-            self.main_timer.sane()
-
-        # add gemini board if defined
-        self.gemport = cr.get('trackmeet', 'gemini')
-        if self.gemport != '':
+        if self.timerport:
+            self.main_timer.setport(self.timerport)
+        if self.gemport:
             self.gemini.setport(self.gemport)
 
-        # flag timer print in time-trial mode
-        self.timerprint = strops.confopt_bool(cr.get('trackmeet',
-                                                     'timerprint'))
-
         # reset announcer topic
-        self.anntopic = cr.get('trackmeet', 'anntopic')
         if self.anntopic:
             self.announce.subscribe('/'.join((self.anntopic, 'control', '#')))
 
         # connect DHI scoreboard
-        nport = cr.get('trackmeet', 'scbport')
-        if self.scbport != nport:
-            self.scbport = nport
-            self.scb.setport(nport)
+        if self.scbport:
+            self.scb.setport(self.scbport)
 
-        # set meet meta infos, and then copy into text entries
-        self.titlestr = cr.get('trackmeet', 'title')
-        self.subtitlestr = cr.get('trackmeet', 'subtitle')
-        self.datestr = cr.get('trackmeet', 'date')
-        self.locstr = cr.get('trackmeet', 'location')
-        self.orgstr = cr.get('trackmeet', 'organiser')
-        self.commstr = cr.get('trackmeet', 'commissaire')
-        self.mirrorpath = cr.get('trackmeet', 'mirrorpath')
-        self.mirrorcmd = cr.get('trackmeet', 'mirrorcmd')
-        self.linkbase = cr.get('trackmeet', 'linkbase')
         self.set_title()
 
-        # result options (bool)
-        self.clubmode = strops.confopt_bool(cr.get('trackmeet', 'clubmode'))
-        self.showevno = strops.confopt_bool(cr.get('trackmeet', 'showevno'))
-        self.provisional = strops.confopt_bool(
-            cr.get('trackmeet', 'provisional'))
-        self.communiques = strops.confopt_bool(
-            cr.get('trackmeet', 'communiques'))
         # communique allocations -> fixed once only
         self.commalloc = cr.get('trackmeet', 'commalloc')
 
-        # track length
-        n = strops.confopt_posint(cr.get('trackmeet', 'tracklen_n'), 0)
-        d = strops.confopt_posint(cr.get('trackmeet', 'tracklen_d'), 0)
-        setlen = False
-        if n > 0 and n < 5500 and d > 0 and d < 10:  # sanity check
-            self.tracklen_n = n
-            self.tracklen_d = d
-            setlen = True
-            _log.debug('Track length updated to %r/%r', n, d)
-        if not setlen:
-            _log.warning('Ignoring invalid track length %r/%r default used', n,
-                         d)
+        # check track length
+        if self.tracklen_n > 0 and self.tracklen_n < 5500 and self.tracklen_d > 0 and self.tracklen_d < 10:
+            _log.debug('Track length %r/%r', self.tracklen_n, self.tracklen_d)
+        else:
+            _log.warning('Ignoring invalid track length')
+            self.tracklen_n = 250
+            self.tracklen_d = 1
 
-        # document id
-        self.docindex = strops.confopt_posint(cr.get('trackmeet', 'docindex'),
-                                              0)
-        self.rdb.clear()
+        self.rdb.clear(notify=False)
         self.edb.clear()
         self.edb.load('events.csv')
         self.rdb.load('riders.csv')
-        self.reload_riders()
 
+        # make sure export path exists
+        if not os.path.exists(EXPORTPATH):
+            os.mkdir(EXPORTPATH)
+            _log.info('Created export path: %r', EXPORTPATH)
+
+        # re-open current event
         cureventno = cr.get('trackmeet', 'curevent')
         if cureventno and cureventno in self.edb:
             self.open_event(self.edb[cureventno])
 
-        # make sure export path exists
-        if not os.path.exists(self.exportpath):
-            os.mkdir(self.exportpath)
-            _log.info('Created export path: %r', self.exportpath)
-
         # check and warn of config mismatch
-        cid = cr.get('trackmeet', 'id')
-        if cid != TRACKMEET_ID:
+        cid = cr.get_value('trackmeet', 'id')
+        if cid is not None and cid != TRACKMEET_ID:
             _log.warning('Meet config mismatch: %r != %r', cid, TRACKMEET_ID)
 
-    def newgetrider(self, bib, series=''):
-        ret = None
-        if series in self.ridermap and bib in self.ridermap[series]:
-            ret = self.ridermap[series][bib]
-        return ret
+    def menu_import_riders_activate_cb(self, menuitem, data=None):
+        """Add riders to database."""
+        sfile = uiutil.chooseCsvFile(title='Select rider file to import',
+                                     parent=self.window,
+                                     path='.')
+        if sfile is not None:
+            try:
+                count = self.rdb.load(sfile, overwrite=True)
+                _log.info('Imported %d rider entries from %r', count, sfile)
+            except Exception as e:
+                _log.error('%s importing riders: %s', e.__class__.__name__, e)
+        else:
+            _log.debug('Import riders cancelled')
+
+    def rider_edit_cb(self, menuitem, data=None):
+        """Edit properties of currently selected entry in riderdb"""
+        if self._cur_rider_sel is not None and self._cur_rider_sel in self.rdb:
+            doreopen = False
+            rider = self._cur_rider_sel
+            dbr = self.rdb[rider]
+            schema = dbr.get_schema()
+            rtype = schema['rtype']['prompt']
+            short = 'Edit %s %s' % (rtype, dbr.get_bibstr())
+            res = uiutil.options_dlg(window=self.window,
+                                     title=short,
+                                     sections={
+                                         'rdb': {
+                                             'title': 'Rider',
+                                             'schema': schema,
+                                             'object': dbr,
+                                         },
+                                     })
+            if rtype == 'Team':
+                # Patch the org value which is not visible, without notify
+                dbr.set_value('org', dbr['no'].upper())
+            if res['rdb']['no'][0] or res['rdb']['series'][0]:
+                # change of number or series requires some care
+                self._cur_rider_sel = None
+                newrider = self.rdb.add_rider(dbr,
+                                              notify=False,
+                                              overwrite=False)
+                if rtype == 'Category':
+                    if uiutil.questiondlg(
+                            window=self.window,
+                            question='Update rider categories?',
+                            subtext=
+                            'Riders in the old category will be updated to the new one',
+                            title='Update Cats?'):
+                        self.rdb.update_cats(res['rdb']['no'][1],
+                                             res['rdb']['no'][2],
+                                             notify=False)
+                        # and current event
+                        if self.curevent is not None:
+                            if res['rdb']['no'][1].upper(
+                            ) in self.curevent.cats:
+                                nc = []
+                                for c in self.curevent.cats:
+                                    if c == res['rdb']['no'][1].upper():
+                                        nc.append(res['rdb']['no'][2].upper())
+                                    else:
+                                        nc.append(c)
+                                self.curevent.loadcats(nc)
+                                doreopen = True
+                else:
+                    # update curevent
+                    if self.curevent is not None:
+                        if self.curevent.getrider(res['rdb']['no'][1],
+                                                  res['rdb']['series'][1]):
+                            # rider was in event, add new one
+                            self.curevent.addrider(dbr['no'], dbr['series'])
+                            if self.curevent.timerstat == 'idle':
+                                self.curevent.delrider(res['rdb']['no'][1],
+                                                       res['rdb']['series'][1])
+                            else:
+                                _log.warning(
+                                    'Changed rider number %r => %r, check data',
+                                    res['rdb']['no'][1], res['rdb']['no'][2])
+
+                # del triggers a global notify
+                del (self.rdb[rider])
+
+                # then try to select the modified row
+                GLib.idle_add(self.select_row, newrider)
+
+                # then reopen curevent if flagged after notify
+                if doreopen:
+                    GLib.idle_add(self.event_reload)
+            else:
+                # notify meet and event of any changes, once
+                for k in res['rdb']:
+                    if res['rdb'][k][0]:
+                        dbr.notify()
+                        break
+
+    def rider_lookup_cb(self, menuitem, data=None):
+        _log.info('Rider lookup not yet enabled')
+
+    def rider_delete_cb(self, menuitem, data=None):
+        """Delete currently selected entry from riderdb"""
+        if self._cur_rider_sel is not None and self._cur_rider_sel in self.rdb:
+            dbr = self.rdb[self._cur_rider_sel]
+            tv = []
+            series = dbr['series']
+            if series == 'cat':
+                tv.append('Category')
+                tv.append(dbr['no'].upper())
+                tv.append(':')
+                tv.append(dbr['first'])
+            elif series == 'team':
+                tv.append('Team')
+                tv.append(dbr['no'].upper())
+                tv.append(':')
+                tv.append(dbr['first'])
+            elif series == 'ds':
+                tv.append('DS')
+                tv.append(dbr.listname())
+            elif series == 'spare':
+                tv.append('Spare Bike')
+                tv.append(dbr['no'])
+                tv.append(dbr['org'])
+            else:
+                tv.append('Rider')
+                tv.append(dbr.get_bibstr())
+                tv.append(dbr.listname())
+                if dbr['cat']:
+                    tv.append(dbr['cat'].upper())
+            short = ' '.join(tv[0:2])
+            text = 'Delete %s?' % (short)
+            info = 'This action will permanently delete %s' % (' '.join(tv))
+            if uiutil.questiondlg(window=self.window,
+                                  question=text,
+                                  subtext=info,
+                                  title='Delete?'):
+                if self.curevent is not None:
+                    if series == 'cat':
+                        cat = dbr['no'].upper()
+                        if cat in self.curevent.cats:
+                            _log.warning('Deleted cat %s in open event', cat)
+                    elif series not in ('ds', 'spare', 'team'):
+                        self.curevent.delrider(dbr['no'], series)
+                        _log.info('Remove rider %s from event', short)
+                del (self.rdb[self._cur_rider_sel])
+                _log.info('Deleted %s', short)
+                self._cur_rider_sel = None
+            else:
+                _log.debug('Rider delete aborted')
+
+    def rider_add_cb(self, menuitem, data=None):
+        """Create a new rider entry and edit the content"""
+        nser = ''
+        dbr = riderdb.rider(series=nser)
+        schema = dbr.get_schema()
+        rtype = schema['rtype']['prompt']
+        short = 'Create New %s' % (rtype)
+        res = uiutil.options_dlg(window=self.window,
+                                 title=short,
+                                 sections={
+                                     'rdb': {
+                                         'title': 'Rider',
+                                         'schema': schema,
+                                         'object': dbr,
+                                     },
+                                 })
+        chg = False
+        for k in res['rdb']:
+            if res['rdb'][k][0]:
+                chg = True
+                break
+        if chg:
+            rider = self.rdb.add_rider(dbr, overwrite=False)
+            GLib.idle_add(self.select_row, rider)
+
+    def select_row(self, rider):
+        """Select rider view model if possible"""
+        if rider in self.rdb:
+            rdb = self.rdb[rider]
+            model = self._rlm
+            view = self._rlv
+            found = False
+            for r in model:
+                if r[6] == rider:
+                    view.set_cursor(r.path, None, False)
+                    found = True
+                    break
+            if not found:
+                _log.debug('Entry %r not found, unable to select', rider)
+        return False
 
     def rider_edit(self, bib, series='', col=-1, value=''):
         dbr = self.rdb.getrider(bib, series)
@@ -1622,17 +1957,291 @@ class trackmeet:
                 _log.warning('Error computing race distance: %s', v)
         return ret
 
+    def eventcb(self, event):
+        """Handle a change in the event model"""
+        if event is not None:
+            e = self.edb[event]
+            for lr in self._elm:
+                if lr[0] == event:
+                    lr[0] = e['evid']
+                    lr[1] = e.event_info()
+                    lr[2] = e.event_type()
+                    lr[3] = e['evid']
+                    found = True
+                    break
+            _log.debug('Edit event %r', e)
+        else:
+            self._elm.clear()
+            for e in self.edb:
+                elr = [e['evid'], e.event_info(), e.event_type(), e['evid']]
+                self._elm.append(elr)
+            _log.debug('Re-load event view')
+        if self.curevent is not None:
+            self.curevent.eventcb(event)
+
+    def ridercb(self, rider):
+        """Handle a change in the rider model"""
+        if rider is not None:
+            r = self.rdb[rider]
+            # note: duplicate ids mangle series, so use series from rider
+            series = r['series'].lower()
+            if series != 'cat':
+                found = False
+                for lr in self._rlm:
+                    if lr[6] == rider:
+                        lr[2] = r.fitname(64)
+                        lr[3] = r['org']
+                        lr[4] = r['note']
+                        lr[5] = htlib.escape(r.summary())
+                        found = True
+                        break
+                if not found:
+                    lr = [
+                        rider[0], series,
+                        r.fitname(64), r['org'], r['note'],
+                        htlib.escape(r.summary()), rider
+                    ]
+                    self._rlm.append(lr)
+        else:
+            # assume entire map has to be rebuilt
+            self._rlm.clear()
+            for r in self.rdb:
+                dbr = self.rdb[r]
+                # note: duplicate ids mangle series, so use series from rider
+                series = dbr['series'].lower()
+                if series != 'cat':
+                    rlr = [
+                        r[0], series,
+                        dbr.fitname(64), dbr['org'], dbr['note'],
+                        htlib.escape(dbr.summary()), r
+                    ]
+                    self._rlm.append(rlr)
+        if self.curevent is not None:
+            self.curevent.ridercb(rider)
+
+    def _rcb(self, rider):
+        GLib.idle_add(self.ridercb, rider)
+
+    def _ecb(self, event):
+        GLib.idle_add(self.eventcb, event)
+
+    def _editcol_cb(self, cell, path, new_text, col):
+        """Callback for editing a rider note"""
+        new_text = new_text.strip()
+        bib = self._rlm[path][0]
+        series = self._rlm[path][1]
+        self._rlm[path][col] = new_text
+        r = self.rdb.get_rider(bib, series)
+        if r is not None:
+            if col == 3:
+                if new_text != r['org']:
+                    r['org'] = new_text
+            elif col == 4:
+                if new_text != r['note']:
+                    r['note'] = new_text
+
+    def event_getselected(self):
+        """Return event for the currently selected row, or None."""
+        ref = None
+        model, plist = self._elv.get_selection().get_selected_rows()
+        if len(plist) > 0:
+            evno = self._elm[plist[0]][0]
+            if evno in self.edb:
+                ref = self.edb[evno]
+            else:
+                _log.error(u'Event %r in view not found in model', evno)
+        return ref
+
+    def event_popup_edit_cb(self, menuitem, data=None):
+        """Edit event extended attributes."""
+        evno = None
+        ref = None
+        model, plist = self._elv.get_selection().get_selected_rows()
+        if len(plist) > 0:
+            evno = self._elm[plist[0]][0]
+            if evno in self.edb:
+                ref = self.edb[evno]
+            else:
+                _log.error('Event %r in view not found in model', evno)
+        if ref is None:
+            _log.error('No event selected for edit')
+            return False
+        schema = _EVENT_SCHEMA
+        short = 'Edit event %s' % (evno)
+        res = uiutil.options_dlg(window=self.window,
+                                 title=short,
+                                 sections={
+                                     'edb': {
+                                         'title': 'Event',
+                                         'schema': schema,
+                                         'object': ref,
+                                     },
+                                 })
+        _log.warning('TODO: Handle change in event number')
+        for k in res['edb']:
+            if res['edb'][k][0]:
+                self._ecb(evno)
+                break
+
+    def event_popup_result_cb(self, menuitem, data=None):
+        """Print event results."""
+        sel = self._elv.get_selection()
+        cnt = sel.count_selected_rows()
+        # check for one selected
+        if cnt == 0:
+            _log.debug(u'No rows selected for result')
+            return False
+
+        # convert model iters into a list of event numbers
+        (model, iters) = sel.get_selected_rows()
+        elist = [model[i][0] for i in iters]
+
+        # queue callback in main loop
+        GLib.idle_add(self.eventdb_cb, elist, 'result')
+
+    def event_popup_startlist_cb(self, menuitem, data=None):
+        """Print event startlists."""
+        sel = self._elv.get_selection()
+        cnt = sel.count_selected_rows()
+        # check for one selected
+        if cnt == 0:
+            _log.debug(u'No rows selected for result')
+            return False
+
+        # convert model iters into a list of event numbers
+        (model, iters) = sel.get_selected_rows()
+        elist = [model[i][0] for i in iters]
+
+        # queue callback in main loop
+        GLib.idle_add(self.eventdb_cb, elist, 'startlist')
+
+    def event_popup_program_cb(self, menuitem, data=None):
+        """Print event program."""
+        sel = self._elv.get_selection()
+        cnt = sel.count_selected_rows()
+        # check for one selected
+        if cnt == 0:
+            _log.debug(u'No rows selected for result')
+            return False
+
+        # convert model iters into a list of event numbers
+        (model, iters) = sel.get_selected_rows()
+        elist = [model[i][0] for i in iters]
+
+        # queue callback in main loop
+        GLib.idle_add(self.eventdb_cb, elist, 'program')
+
+    def event_popup_insert_cb(self, menuitem, data=None):
+        """Add new empty row."""
+        self.edb.add_empty()
+
+    def event_popup_delete_cb(self, menuitem, data=None):
+        """Delete selected events"""
+        sel = self._elv.get_selection()
+        cnt = sel.count_selected_rows()
+        # check for one selected
+        if cnt == 0:
+            _log.debug(u'No rows selected for delete')
+            return False
+
+        # convert model iters into a list of event numbers
+        (model, iters) = sel.get_selected_rows()
+        elist = [model[i][0] for i in iters]
+
+        msg = 'Delete selected events?'
+        if sel.count_selected_rows() == 1:
+            evt = self.edb[elist[0]]
+            sep = ''
+            ifstr = evt.event_info()
+            if ifstr:
+                sep = ': '
+            evno = evt['evid']
+            msg = ('Delete event ' + evno + sep + ifstr + '?')
+
+        if uiutil.questiondlg(self.window, 'Delete events?', msg):
+            for evt in elist:
+                _log.debug(u'Deleting event %r', evt)
+                del (self.edb[evt])
+            self._ecb(None)
+
+    def _event_button_press(self, view, event):
+        """Handle mouse button event on event tree view"""
+        if event.type == Gdk.EventType.BUTTON_PRESS:
+            if event.button == Gdk.BUTTON_SECONDARY:
+                self._cur_model = view.get_model()
+                pathinfo = view.get_path_at_pos(int(event.x), int(event.y))
+                if pathinfo is not None:
+                    path, col, cellx, celly = pathinfo
+                    sel = view.get_selection()
+                    if sel is not None:
+                        if sel.path_is_selected(path):
+                            # pressed path is already in current selection
+                            pass
+                        else:
+                            view.grab_focus()
+                            view.set_cursor(path, col, False)
+                        if sel.count_selected_rows() > 1:
+                            # prepare context for multiple select
+                            self._event_menu_edit.set_sensitive(False)
+                        else:
+                            # prepare context for single select
+                            self._event_menu_edit.set_sensitive(True)
+
+                        self._event_menu_del.set_sensitive(True)
+                    else:
+                        _log.error('Invalid selection ignored')
+                        self._cur_rider_sel = None
+                        self._event_menu_edit.set_sensitive(False)
+                        self._event_menu_del.set_sensitive(False)
+                else:
+                    self._cur_rider_sel = None
+                    self._event_menu_edit.set_sensitive(False)
+                    self._event_menu_del.set_sensitive(False)
+                self._event_menu.popup_at_pointer(None)
+                return True
+        return False
+
+    def _view_button_press(self, view, event):
+        """Handle mouse button event on tree view"""
+        if event.type == Gdk.EventType.BUTTON_PRESS:
+            if event.button == Gdk.BUTTON_SECONDARY:
+                self._cur_model = view.get_model()
+                pathinfo = view.get_path_at_pos(int(event.x), int(event.y))
+                if pathinfo is not None:
+                    path, col, cellx, celly = pathinfo
+                    view.grab_focus()
+                    view.set_cursor(path, col, False)
+                    sel = view.get_selection().get_selected()
+                    if sel is not None:
+                        i = sel[1]
+                        r = Gtk.TreeModelRow(self._cur_model, i)
+                        self._cur_rider_sel = r[6]
+                        self._rider_menu_edit.set_sensitive(True)
+                        self._rider_menu_del.set_sensitive(True)
+                    else:
+                        _log.error('Invalid selection ignored')
+                        self._cur_rider_sel = None
+                        self._rider_menu_edit.set_sensitive(False)
+                        self._rider_menu_del.set_sensitive(False)
+                else:
+                    self._cur_rider_sel = None
+                    self._rider_menu_edit.set_sensitive(False)
+                    self._rider_menu_del.set_sensitive(False)
+                self._rider_menu.popup_at_pointer(None)
+                return True
+        return False
+
     def __init__(self, lockfile=None):
         """Meet constructor."""
         self.loghandler = None  # set in loadconfig to meet dir
-        self.exportpath = EXPORTPATH
         self.meetlock = lockfile
-        self.titlestr = ''
-        self.subtitlestr = ''
-        self.datestr = ''
-        self.locstr = ''
-        self.orgstr = ''
-        self.commstr = ''
+        self.title = ''
+        self.host = ''
+        self.subtitle = ''
+        self.document = ''
+        self.date = ''
+        self.organiser = ''
+        self.pcp = ''
         self.clubmode = True
         self.showevno = True
         self.provisional = False
@@ -1643,10 +2252,11 @@ class trackmeet:
         self.timerport = None
         self.tracklen_n = 250  # numerator
         self.tracklen_d = 1  # denominator
-        self.docindex = 0  # used for session number
         self.exportpending = False
         self.mirrorpath = ''  # default mirror path
-        self.mirrorcmd = ''  # default mirror command
+        self.mirrorcmd = None
+        self.shortname = ''
+        self.eventcode = ''
         self.linkbase = '.'
 
         # printer preferences
@@ -1670,7 +2280,7 @@ class trackmeet:
         self.anntopic = None
         self.timerprint = False  # enable timer printer?
         self.main_timer = timy()
-        self.main_port = ''
+        self.timerport = ''
         self.gemini = gemini()
         self.gemport = ''
         self.mirror = None  # file mirror thread
@@ -1682,8 +2292,9 @@ class trackmeet:
         self.window.connect('key-press-event', self.key_event)
         self.rfustat = uiutil.statButton()
         self.rfustat.set_sensitive(True)
-        b.get_object('menu_clock').add(self.rfustat)
-        self.rfustat.update('idle', '--') 
+        self.menu_clock = b.get_object('menu_clock')
+        self.menu_clock.add(self.rfustat)
+        self.rfustat.update('idle', '--')
 
         self.status = b.get_object('status')
         self.log_buffer = b.get_object('log_buffer')
@@ -1699,6 +2310,18 @@ class trackmeet:
         self.menu_race_result = b.get_object('menu_race_result')
         self.race_box = b.get_object('race_box')
         self.new_race_pop = b.get_object('menu_race_new_types')
+
+        # setup context menu handles
+        self._rider_menu = b.get_object('rider_context')
+        self._rider_menu_edit = b.get_object('rider_edit')
+        self._rider_menu_lookup = b.get_object('rider_lookup')
+        self._rider_menu_del = b.get_object('rider_del')
+        self._cur_rider_sel = None
+        self._event_menu = b.get_object('event_context')
+        self._event_menu_edit = b.get_object('event_edit')
+        self._event_menu_del = b.get_object('event_delete')
+        self._cur_model = None
+
         b.connect_signals(self)
 
         # run state
@@ -1717,20 +2340,64 @@ class trackmeet:
         self.sh.setLevel(logging.INFO)  # show info+ on status bar
         rootlogger.addHandler(self.sh)
         self.lh = uiutil.textViewHandler(self.log_buffer, self.log_view,
-                                             self.log_scroll)
+                                         self.log_scroll)
         self.lh.setFormatter(f)
         self.lh.setLevel(logging.INFO)  # show info+ in text view
         rootlogger.addHandler(self.lh)
 
-        # get rider db and pack into scrolled pane
-        _log.debug('TODO: Add riderdb')
+        # Build a rider list store and view
+        self._rlm = Gtk.ListStore(
+            str,  # no 0
+            str,  # series 1
+            str,  # name 2
+            str,  # org 3
+            str,  # note 4
+            str,  # tooltip 5
+            object,  # rider ref 6
+        )
+        t = Gtk.TreeView(self._rlm)
+        t.set_reorderable(True)
+        t.set_rules_hint(True)
+        t.set_tooltip_column(5)
+        uiutil.mkviewcoltxt(t, 'No.', 0, calign=1.0)
+        uiutil.mkviewcoltxt(t, 'Ser', 1, calign=0.0)
+        uiutil.mkviewcoltxt(t, 'Rider', 2, expand=True)
+        uiutil.mkviewcoltxt(t, 'Org', 3, cb=self._editcol_cb)
+        uiutil.mkviewcoltxt(t, 'Note', 4, width=80, cb=self._editcol_cb)
+        t.show()
+        t.connect('button_press_event', self._view_button_press)
+        self._rlv = t
+        b.get_object('riders_box').add(t)
+
+        # create an event view
+        self._elm = Gtk.ListStore(
+            str,  # event id
+            str,  # info
+            str,  # type
+            object,  # data ref
+        )
+        t = Gtk.TreeView(self._elm)
+        #t.set_reorderable(True)
+        t.set_rules_hint(True)
+        t.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
+        uiutil.mkviewcoltxt(t, 'No.', 0)
+        uiutil.mkviewcoltxt(t, 'Info', 1, expand=True)
+        uiutil.mkviewcoltxt(t, 'Type', 2, expand=True)
+        t.show()
+        t.connect('button_press_event', self._event_button_press)
+        self._elv = t
+        b.get_object('events_box').add(t)
+
+        # get rider db
+        _log.debug('Add riderdb')
         self.rdb = riderdb.riderdb()
-        #self.ridermap = {}
-        #b.get_object('rider_box').add(self.rdb.mkview(ucicode=True, note=True))
+        self.rdb.set_notify(self._rcb)
 
         # get event db and pack into scrolled pane
-        _log.debug('TODO: Add eventdb')
+        _log.debug('Add eventdb')
         self.edb = eventdb.eventdb()
+        self.edb.set_notify(self._ecb)
+
         #self.edb.set_startlist_cb(self.eventdb_cb, 'startlist')
         #self.edb.set_result_cb(self.eventdb_cb, 'result')
         #self.edb.set_program_cb(self.eventdb_cb, 'program')
@@ -1738,10 +2405,10 @@ class trackmeet:
         #self.edb.set_evno_change_cb(self.race_evno_change)
         # connect each of the race menu types if present in builder
         #for etype in self.edb.racetypes:
-            #lookup = 'mkrace_' + etype.replace(' ', '_')
-            #mi = b.get_object(lookup)
-            #if mi is not None:
-                #mi.connect('activate', self.menu_race_make_activate_cb, etype)
+        #lookup = 'mkrace_' + etype.replace(' ', '_')
+        #mi = b.get_object(lookup)
+        #if mi is not None:
+        #mi.connect('activate', self.menu_race_make_activate_cb, etype)
 
         # start timers
         _log.debug('Starting meet timers')
@@ -1758,7 +2425,7 @@ def edit_defaults():
     metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
     cfgres = uiutil.options_dlg(title='Edit Default Configuration',
                                 sections={
-                                    'roadmeet': {
+                                    'trackmeet': {
                                         'title': 'Meet',
                                         'schema': _CONFIG_SCHEMA,
                                         'object': metarace.sysconf,
@@ -1874,7 +2541,7 @@ def main():
         if not os.isatty(sys.stdout.fileno()):
             uiutil.messagedlg(
                 message='Error opening meet.',
-                title='roadmeet: Error',
+                title='trackmeet: Error',
                 subtext='Trackmeet was unable to open a meet folder.')
         sys.exit(-1)
 
@@ -1884,7 +2551,7 @@ def main():
         if not os.isatty(sys.stdout.fileno()):
             uiutil.messagedlg(
                 message='Meet folder is locked.',
-                title='roadmeet: Locked',
+                title='trackmeet: Locked',
                 subtext=
                 'Another application has locked the meet folder for use.')
         sys.exit(-1)

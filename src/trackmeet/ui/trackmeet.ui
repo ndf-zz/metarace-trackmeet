@@ -532,7 +532,7 @@
                     <property name="can_focus">True</property>
                     <property name="border_width">2</property>
                     <child>
-                      <object class="GtkScrolledWindow" id="event_box">
+                      <object class="GtkScrolledWindow" id="events_box">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hscrollbar_policy">automatic</property>
@@ -553,7 +553,7 @@
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkScrolledWindow" id="rider_box">
+                      <object class="GtkScrolledWindow" id="riders_box">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="hscrollbar_policy">automatic</property>
@@ -663,4 +663,109 @@
     </child>
   </object>
   <object class="GtkTextBuffer" id="log_buffer"/>
+
+  <!-- rider context menu -->
+  <object class="GtkMenu" id="rider_context">
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkMenuItem" id="rider_edit">
+        <property name="label">Edit</property>
+        <property name="visible">True</property>
+        <property name="sensitive">False</property>
+        <signal name="activate" handler="rider_edit_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_lookup">
+        <property name="label">Lookup</property>
+        <property name="visible">True</property>
+        <property name="sensitive">False</property>
+        <signal name="activate" handler="rider_lookup_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_del">
+        <property name="label">Delete</property>
+        <property name="visible">True</property>
+        <property name="sensitive">False</property>
+        <signal name="activate" handler="rider_delete_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="rider_sep1">
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_add">
+        <property name="label">Add</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="rider_add_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_import">
+        <property name="label">Import CSV</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="menu_import_riders_activate_cb"/>
+      </object>
+    </child>
+  </object>
+
+  <!-- event context menu -->
+  <object class="GtkMenu" id="event_context">
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkMenuItem" id="event_edit">
+        <property name="label">Edit</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_edit_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_insert">
+        <property name="label">Add new</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_insert_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="event_sapa">
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_program">
+        <property name="label">Program</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_program_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_startlist">
+        <property name="label">Startlist</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_startlist_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_result">
+        <property name="label">Result</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_result_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="event_sep">
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_delete">
+        <property name="label">Delete</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_delete_cb"/>
+      </object>
+    </child>
+  </object>
 </interface>

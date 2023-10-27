@@ -173,7 +173,7 @@ def mkport(port):
     nport = _DEFPORT
 
     # import system defaults if required
-    if port == 'DEFAULT':
+    if port.upper() == 'DEFAULT':
         defport = ''
         if sysconf.has_option('sender', 'portspec'):
             defport = sysconf.get('sender', 'portspec')
@@ -182,7 +182,7 @@ def mkport(port):
         else:
             port = 'TCP:localhost:' + str(_DEFPORT)
 
-    if port == 'DEBUG':  # force use of the hardcoded UDP endpoint
+    if port.upper() == 'DEBUG':  # force use of the hardcoded UDP endpoint
         nprot = socket.SOCK_DGRAM
         _log.debug('Using debug port: UDP:%s:%d', naddr, nport)
     else:
@@ -331,9 +331,9 @@ class sender(threading.Thread):
 
         # import site defaults from sysconf
         if sysconf.has_option('sender', 'linelen'):
-            self._linelen = sysconf.get('sender', 'linelen')
+            self.linelen = sysconf.get('sender', 'linelen')
         if sysconf.has_option('sender', 'pagelen'):
-            self._pagelen = sysconf.get('sender', 'pagelen')
+            self.pagelen = sysconf.get('sender', 'pagelen')
         if sysconf.has_option('sender', 'encoding'):
             self._encoding = sysconf.get('sender', 'encoding')
 

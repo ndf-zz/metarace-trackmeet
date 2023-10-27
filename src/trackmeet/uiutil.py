@@ -20,6 +20,7 @@ from metarace import tod
 from metarace import strops
 from metarace.jsonconfig import config
 from metarace.riderdb import rider
+from metarace.eventdb import event
 
 _log = logging.getLogger('uiutil')
 _log.setLevel(logging.DEBUG)
@@ -773,7 +774,7 @@ class option:
             if isinstance(self._obj, config):
                 self._attr = key
             elif 'attr' in schema:
-                if isinstance(self._obj, (rider, dict)):
+                if isinstance(self._obj, (rider, dict, event)):
                     self._attr = schema['attr']
                 else:
                     if schema['attr'] is not None and hasattr(
@@ -784,7 +785,7 @@ class option:
         if 'value' in schema:
             self._value = schema['value']
         if self._attr is not None and self._value is None:
-            if isinstance(self._obj, rider):
+            if isinstance(self._obj, (rider, event)):
                 self._value = self._obj[self._attr]
             elif isinstance(self._obj, config):
                 self._value = self._obj.get_value(self._section, self._attr)
@@ -911,7 +912,7 @@ class option:
         """Store new value in object and update obj if provided"""
         self._value = newval
         if self._obj is not None and self._attr is not None:
-            if isinstance(self._obj, rider):
+            if isinstance(self._obj, (rider, event)):
                 # Don't trigger notify in this path - leave that to the caller
                 self._obj.set_value(self._attr, self._value)
             elif isinstance(self._obj, config):
@@ -965,7 +966,7 @@ class option:
 
 class optionShort(option):
 
-    def _now_press(self, widget, event):
+    def _now_press(self, widget, evt):
         """Transfer now into value and re-validate"""
         self._value = tod.now().truncate(self._places)
         self._control.set_text(self.format_value())
@@ -1144,7 +1145,7 @@ def options_dlg(window=None, title='Options', sections={}):
 
       sections={
         "section": {
-          "object": OBJECT, rider or section
+          "object": OBJECT, rider, event or section
           "title": section label
           "schema": {
             "key": {
