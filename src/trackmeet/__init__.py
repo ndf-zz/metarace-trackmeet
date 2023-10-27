@@ -35,6 +35,9 @@ from .gemini import gemini
 from . import uiutil
 from . import scbwin
 from . import eventdb
+from . import race
+from . import ps
+from . import classification
 
 VERSION = '1.13.0'
 LOGFILE = 'event.log'
@@ -652,8 +655,6 @@ class trackmeet:
             reporthash = reptype + ', '.join(evlist)
             if self.communiques:
                 commno = self.find_communique(reporthash)
-                if rvec[1]:  # it's a revision
-                    commno += rvec[1]
                 if commno is not None:
                     reptypestr = ('Communiqu\u00e9 ' + commno + ': ' +
                                   reptypestr)
@@ -730,14 +731,23 @@ class trackmeet:
             nh = self.edb.getnextrow(self.curevent.event)
             if nh is not None:
                 self.open_event(nh)
+                self.select_event(nh)
             else:
                 _log.warning('No next event to open')
         else:
             eh = self.event_getselected()
             if eh is not None:
                 self.open_event(eh)
+                self.select_event(eh)
             else:
                 _log.warning('No next event to open')
+
+    def select_event(self, event):
+        """Find matching event in view and set selection"""
+        for e in self._elm:
+            if e[0] == event['evid']:
+                self._elv.set_cursor(e.path, None, False)
+                break
 
     def menu_race_prev_activate_cb(self, menuitem, data=None):
         """Open the previous event on the program."""
@@ -745,12 +755,14 @@ class trackmeet:
             ph = self.edb.getprevrow(self.curevent.event)
             if ph is not None:
                 self.open_event(ph)
+                self.select_event(ph)
             else:
                 _log.warning('No previous event to open')
         else:
             eh = self.event_getselected()
             if eh is not None:
                 self.open_event(eh)
+                self.select_event(eh)
             else:
                 _log.warning('No previous event to open')
 
@@ -1036,7 +1048,7 @@ class trackmeet:
 
         filebase = 'program'
         ofile = os.path.join('export', filebase + '.pdf')
-        with metarace.savefile(ofile) as f:
+        with metarace.savefile(ofile, mode='b') as f:
             r.output_pdf(f, docover=True)
             _log.info('Exported pdf program to %r', ofile)
         ofile = os.path.join('export', filebase + '.html')
@@ -1044,7 +1056,7 @@ class trackmeet:
             r.output_html(f)
             _log.info('Exported html program to %r', ofile)
         ofile = os.path.join('export', filebase + '.xls')
-        with metarace.savefile(ofile) as f:
+        with metarace.savefile(ofile, mode='b') as f:
             r.output_xls(f)
             _log.info('Exported xls program to %r', ofile)
         ofile = os.path.join('export', filebase + '.json')
@@ -1327,6 +1339,11 @@ class trackmeet:
         if self.gemport != '':
             self.gemini.setport(self.gemport)
 
+    def menu_timing_clear_activate_cb(self, menuitem, data=None):
+        """Clear memory in attached timing devices."""
+        self.main_timer.clrmem()
+        _log.info('Clear timer memory')
+
     def menu_timing_dump_activate_cb(self, menuitem, data=None):
         """Request memory dump from attached timy."""
         self.main_timer.dumpall()
@@ -1563,7 +1580,7 @@ class trackmeet:
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
                     _log.debug('Got key = %r', key)
-                    t = tod.now(chan='MAN', refid=str(key))
+                    t = tod.now(chan=str(key), source='MAN')
                     self._timercb(t)
                     return True
             if self.curevent is not None:
@@ -1923,20 +1940,6 @@ class trackmeet:
             if not found:
                 _log.debug('Entry %r not found, unable to select', rider)
         return False
-
-    def rider_edit(self, bib, series='', col=-1, value=''):
-        dbr = self.rdb.getrider(bib, series)
-        if dbr is None:
-            dbr = self.rdb.addempty(bib, series)
-        if col == riderdb.COL_FIRST:
-            self.rdb.editrider(ref=dbr, first=value)
-        elif col == riderdb.COL_LAST:
-            self.rdb.editrider(ref=dbr, last=value)
-        elif col == riderdb.COL_ORG:
-            self.rdb.editrider(ref=dbr, org=value)
-        else:
-            _log.debug('Attempt to edit unsupported rider column: %r', col)
-        self.reload_riders()
 
     def get_clubmode(self):
         return self.clubmode
