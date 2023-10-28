@@ -347,16 +347,18 @@ class classification(object):
                              lookup[evno])
                 return
             r.loadconfig()  # now have queryable event handle
-            for res in r.result_gen():
-                if isinstance(res[1], int):
-                    if res[1] in lookup[evno]:
-                        crank = lookup[evno][res[1]] + 1
-                        maxcrank = max(maxcrank, crank)
-                        _log.debug('Assigned place %r to rider %r at rank %r',
-                                   crank, res[0], res[1])
-                        if crank not in placemap:
-                            placemap[crank] = []
-                        placemap[crank].append(res[0])
+            if r.finished:
+                for res in r.result_gen():
+                    if isinstance(res[1], int):
+                        if res[1] in lookup[evno]:
+                            crank = lookup[evno][res[1]] + 1
+                            maxcrank = max(maxcrank, crank)
+                            _log.debug(
+                                'Assigned place %r to rider %r at rank %r',
+                                crank, res[0], res[1])
+                            if crank not in placemap:
+                                placemap[crank] = []
+                            placemap[crank].append(res[0])
 
         # Pass 3: add riders to model in rank order
         i = 1

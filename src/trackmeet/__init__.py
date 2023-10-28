@@ -386,7 +386,6 @@ class trackmeet:
     ## Meet Menu Callbacks
     def get_event(self, evno, ui=False):
         """Return an event object for the given event number."""
-        # NOTE: returned event will need to be destroyed
         ret = None
         eh = self.edb[evno]
         if eh is not None:
@@ -649,7 +648,8 @@ class trackmeet:
             else:
                 _log.error('Unknown report type in eventdb calback: ' +
                            repr(reptype))
-            h.destroy()
+            #h.destroy()
+            h = None
             secs.append(report.pagebreak())
         if len(secs) > 0:
             reporthash = reptype + ', '.join(evlist)
@@ -844,7 +844,8 @@ class trackmeet:
                                     if rank not in places:
                                         places[rank] = []
                                     places[rank].append(ri[0])
-                        h.destroy()
+                        h = None
+                        #h.destroy()
                     else:
                         _log.warning('Autospec event number not found: ' +
                                      repr(evno))
@@ -896,7 +897,8 @@ class trackmeet:
                                 evplacemap[rank].append([ri[0], seed])
                                 #_log.debug('Event %r add place=%r, rider=%r, info=%r',
                                 #evno, rank, ri[0], seed)
-                        h.destroy()
+                        #h.destroy()
+                        h = None
                         # maintain ordering of autospec
                         for p in placeset:
                             if p in evplacemap:
@@ -930,7 +932,8 @@ class trackmeet:
             delevent.hide()
             self.race_box.remove(delevent.frame)
             delevent.event['dirt'] = True  # mark event exportable
-            delevent.destroy()
+            delevent.saveconfig()
+            #delevent.destroy()
 
     def race_evno_change(self, old_no, new_no):
         """Handle a change in a race number."""
@@ -1012,7 +1015,8 @@ class trackmeet:
                         rep = r.startlist_report()
                     if len(rep) > 0:
                         sections.extend(rep)
-            r.destroy()
+            r = None
+            #r.destroy()
 
         filebase = 'result'
         self.print_report(sections,
@@ -1044,7 +1048,8 @@ class trackmeet:
                 s = h.startlist_report(True)
                 for sec in s:
                     r.add_section(sec)
-                h.destroy()
+                h = None
+                #h.destroy()
 
         filebase = 'program'
         ofile = os.path.join('export', filebase + '.pdf')
@@ -1291,7 +1296,8 @@ class trackmeet:
                     ofile = os.path.join(EXPORTPATH, jbase)
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
-                r.destroy()
+                r = None
+                #r.destroy()
             GLib.idle_add(self.mirror_start)
             _log.debug('Race info export')
         except Exception as e:
@@ -2026,7 +2032,8 @@ class trackmeet:
         GLib.idle_add(self.ridercb, rider)
 
     def _ecb(self, event):
-        GLib.idle_add(self.eventcb, event)
+        if event is None:
+            GLib.idle_add(self.eventcb, event)
 
     def _editcol_cb(self, cell, path, new_text, col):
         """Callback for editing a rider note"""

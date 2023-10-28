@@ -123,7 +123,7 @@ class race(object):
                 nr[3] = dbr['org']
                 if self.evtype == 'handicap':  # reqd?
                     if info:
-                        nr[COL_INFO] = info
+                        nr[COL_INFO] = str(info)
             if self.evtype in ['handicap', 'keirin'] and not self.onestart:
                 self.reorderflag += 1
                 GLib.timeout_add_seconds(1, self.delayed_reorder)
@@ -134,7 +134,7 @@ class race(object):
                 # event type is handicap or event is part of omnium
                 if self.evtype == 'handicap' or self.inomnium:
                     if not er[COL_INFO] and info:  # don't overwrite if set
-                        er[COL_INFO] = info
+                        er[COL_INFO] = str(info)
 
     def dnfriders(self, biblist=''):
         """Remove listed bibs from the race."""
@@ -535,8 +535,9 @@ class race(object):
         cnt = 0
         col2 = []
         if self.inomnium and len(self.riders) > 0:
-            sec.lines.append([' ', ' ', 'The Fence', None, None, None])
-            col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
+            pass
+            #sec.lines.append([' ', ' ', 'The Fence', None, None, None])
+            #col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
         for r in self.riders:
             cnt += 1
             rno = r[COL_BIB]

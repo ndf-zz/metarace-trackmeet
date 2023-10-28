@@ -513,13 +513,13 @@ class ps(object):
                 nr[3] = dbr['org']
                 if self.inomnium:
                     if info:
-                        nr[RES_COL_INFO] = info
+                        nr[RES_COL_INFO] = str(info)
             return self.riders.append(nr)
         else:
             if er is not None:
                 #_log.debug('onestart is: %r', self.onestart)
                 if self.inomnium and not self.onestart:
-                    er[RES_COL_INFO] = info
+                    er[RES_COL_INFO] = str(info)
             return None
 
     def delrider(self, bib):
@@ -634,8 +634,9 @@ class ps(object):
         col2 = []
         cnt = 0
         if self.inomnium and len(self.riders) > 0:
-            sec.lines.append([' ', ' ', 'The Fence', None, None, None])
-            col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
+            pass
+            #sec.lines.append([' ', ' ', 'The Fence', None, None, None])
+            #col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
         for r in self.riders:
             rno = r[RES_COL_BIB]
             rh = self.meet.rdb.get_rider(rno, self.series)
