@@ -393,7 +393,7 @@ class ps(object):
         """Return a list of report sections containing the race result."""
         self.recalculate()
         ret = []
-        sec = report.section()
+        sec = report.section('result')
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         lapstring = strops.lapstring(self.event['laps'])
@@ -473,7 +473,7 @@ class ps(object):
         ret.append(sec)
 
         if len(self.comments) > 0:
-            sec = report.bullet_text()
+            sec = report.bullet_text('decisions')
             sec.subheading = 'Decisions of the commisaires panel'
             for c in self.comments:
                 sec.lines.append([None, c])
@@ -614,10 +614,10 @@ class ps(object):
     def startlist_report(self, program=False):
         """Return a startlist report."""
         ret = []
-        sec = report.twocol_startlist()
+        sec = report.twocol_startlist('startlist')
         if self.evtype == 'madison':
             # use the team singlecol method
-            sec = report.section()
+            sec = report.section('startlist')
         headvec = [
             'Event', self.evno, ':', self.event['pref'], self.event['info']
         ]
@@ -688,7 +688,6 @@ class ps(object):
 
         for i in col2:
             sec.lines.append(i)
-        ret.append(sec)
 
         # placeholders - why was this suppressed?
         if self.event['plac']:
@@ -696,13 +695,19 @@ class ps(object):
                 sec.lines.append([None, None, None, None, None, None])
                 cnt += 1
 
-        if cnt > 0 and not program:
-            sec = report.bullet_text()
-            if self.evtype == 'madison':
-                sec.lines.append([None, 'Total teams: ' + str(cnt)])
-            else:
-                sec.lines.append([None, 'Total riders: ' + str(cnt)])
-            ret.append(sec)
+        fvec = []
+        ptype = 'Riders'
+        if self.evtype == 'madison':
+            ptype = 'Teams'
+        if cnt > 2:
+            fvec.append('Total %s: %d' % (ptype, cnt))
+        if self.event['reco']:
+            fvec.append(self.event['reco'])
+
+        if fvec:
+            sec.footer = '\u2003'.join(fvec)
+
+        ret.append(sec)
         return ret
 
     def do_startlist(self):

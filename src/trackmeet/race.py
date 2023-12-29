@@ -513,9 +513,9 @@ class race(object):
         etype = self.event['type']
         twocol = True
         if not self.inomnium and not program and etype in ['axe', 'run']:
-            sec = report.section()  # one column overrides
+            sec = report.section('startlist')  # one column overrides
         else:
-            sec = report.twocol_startlist()
+            sec = report.twocol_startlist('startlist')
         headvec = []
         if etype != 'break':
             headvec.extend(['Event', self.evno, ':'])
@@ -564,17 +564,22 @@ class race(object):
             while cnt < self.event['plac']:
                 sec.lines.append([None, None, None, None, None, None])
                 cnt += 1
-        ret.append(sec)
 
+        fvec = []
         ptype = 'Riders'
         if etype == 'run':
             ptype = 'Runners'
         elif self.evtype == 'axe':
             ptype = 'Axemen'
-        if cnt > 0 and not program:
-            sec = report.bullet_text()
-            sec.lines.append([None, 'Total ' + ptype + ': ' + str(cnt)])
-            ret.append(sec)
+        if cnt > 2:
+            fvec.append('Total %s: %d' % (ptype, cnt))
+        if self.event['reco']:
+            fvec.append(self.event['reco'])
+
+        if fvec:
+            sec.footer = '\u2003'.join(fvec)
+
+        ret.append(sec)
         return ret
 
     def get_startlist(self):
@@ -1245,7 +1250,7 @@ class race(object):
         """Return a list of report sections containing the race result."""
         self.placexfer(self.ctrl_places.get_text())
         ret = []
-        sec = report.section()
+        sec = report.section('result')
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         sec.lines = []
@@ -1304,7 +1309,7 @@ class race(object):
         ret.append(sec)
 
         if len(self.comments) > 0:
-            sec = report.bullet_text()
+            sec = report.bullet_text('decisions')
             sec.subheading = 'Decisions of the commisaires panel'
             for c in self.comments:
                 sec.lines.append([None, c])

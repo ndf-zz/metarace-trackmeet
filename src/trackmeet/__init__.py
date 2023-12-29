@@ -8,6 +8,7 @@ import metarace
 from metarace import htlib
 import csv
 import os
+import json
 import threading
 from time import sleep
 
@@ -295,7 +296,7 @@ _EVENT_SCHEMA = {
         'prompt': 'Placeholders:',
         'control': 'short',
         'type': 'int',
-        'attr': 'seri',
+        'attr': 'plac',
         'defer': True,
     },
     'sess': {
@@ -1145,6 +1146,16 @@ class trackmeet:
                 lt = ['pdf', 'xls']
                 lb = os.path.join(self.linkbase, pfilebase)
 
+            pdata = {
+                'title': self.title,
+                'subtitle': self.subtitle,
+                'host': self.host,
+                'date': self.date,
+                'location': self.document,
+                'pcp': self.pcp,
+                'organiser': self.organiser,
+                'events': {}
+            }
             sec = report.event_index('eventindex')
             sec.heading = 'Index of Events'
             #sec.subheading = Date?
@@ -1165,6 +1176,20 @@ class trackmeet:
                     if eh['evov'] is not None and eh['evov'] != '':
                         evno = eh['evov'].strip()
                     sec.lines.append([evno, None, descr, extra, linkfile])
+                    erec = {
+                        'no': referno,
+                        'prefix': eh['prefix'],
+                        'info': eh['info'],
+                        'laps': eh['laps'],
+                        'distance': eh['dist'],
+                        'progression': eh['prog'],
+                        'handler': eh['type'],
+                        'series': eh['seri'],
+                    }
+                    if eh['type'] and eh['type'] not in ['break']:
+                        erec['startlist'] = linkfile + '_startlist.json'
+                        erec['result'] = linkfile + '_result.json'
+                    pdata['events'][eh['evid']] = erec
             orep.add_section(sec)
             basename = 'index'
             ofile = os.path.join(EXPORTPATH, basename + '.html')
@@ -1174,6 +1199,33 @@ class trackmeet:
             ofile = os.path.join(EXPORTPATH, jbase)
             with metarace.savefile(ofile) as f:
                 orep.output_json(f)
+
+            # dump out the json program
+            basename = 'program'
+            ofile = os.path.join(EXPORTPATH, basename + '.json')
+            with metarace.savefile(ofile) as f:
+                json.dump(pdata, f)
+
+            # also dump out json riders list
+            rdata = {}
+            for r in self.rdb:
+                rh = self.rdb[r]
+                key = rh.get_bibstr()
+                rdata[key] = {
+                    'no': rh['no'],
+                    'series': rh['series'],
+                    'first': rh['first'],
+                    'last': rh['last'],
+                    'org': rh['org'],
+                    'cat': rh['cat'],
+                    'name': rh.resname(),
+                    'uciid': rh['uciid'],
+                }
+            basename = 'riders'
+            ofile = os.path.join(EXPORTPATH, basename + '.json')
+            with metarace.savefile(ofile) as f:
+                json.dump(rdata, f)
+
             GLib.idle_add(self.mirror_start)
 
     def mirror_completion(self, status, updates):
@@ -1252,10 +1304,8 @@ class trackmeet:
                 r = mkrace(self, e, False)
                 r.loadconfig()
 
-                # starters
-                stcount = 0
-                # this may not be required anymore - check
-                startrep = r.startlist_report()  # trigger rider model reorder
+                startrep = r.startlist_report('startlist')
+                startsec = None
 
                 if self.mirrorpath and doexport:
                     orep = report.report()
@@ -1279,14 +1329,22 @@ class trackmeet:
                         orep.nextlink = self.nextlinks[evno]
 
                     # update files and trigger mirror
+                    resrep = r.result_report()
+                    ressec = None
+
+                    # build combined html style report
+                    for sec in resrep:
+                        if sec.sectionid == 'result':
+                            ressec = sec
+                    for sec in startrep:
+                        if sec.sectionid == 'startlist':
+                            startsec = sec
                     if r.onestart:  # output result
-                        outsec = r.result_report()
-                        for sec in outsec:
-                            orep.add_section(sec)
-                    else:  # startlist
-                        outsec = r.startlist_report('startlist')
-                        for sec in outsec:
-                            orep.add_section(sec)
+                        outsec = resrep
+                    else:
+                        outsec = startrep
+                    for sec in outsec:
+                        orep.add_section(sec)
                     basename = 'event_' + str(evno).translate(
                         strops.WEBFILE_UTRANS)
                     ofile = os.path.join(EXPORTPATH, basename + '.html')
@@ -1296,6 +1354,64 @@ class trackmeet:
                     ofile = os.path.join(EXPORTPATH, jbase)
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
+
+                    # startlist data file !!!
+                    sdata = {
+                        'id': e['evid'],
+                        'reference': e['refe'],
+                        'event': e['evov'],
+                        'prefix': e['pref'],
+                        'info': e['info'],
+                        'laps': e['laps'],
+                        'diststr': e['dist'],
+                        'progression': e['prog'],
+                        'footer': e['reco'],
+                        'startlist': []
+                    }
+                    if startsec is not None and startsec.lines:
+                        for l in startsec.lines:
+                            if l[1]:
+                                startdat = {
+                                    'no': l[1],
+                                    'rider': l[2],
+                                    'info': l[3]
+                                }
+                                sdata['startlist'].append(startdat)
+                    ofile = os.path.join(EXPORTPATH,
+                                         basename + '_startlist.json')
+                    with metarace.savefile(ofile) as f:
+                        json.dump(sdata, f)
+
+                    # result data file
+                    rdata = {
+                        'id': e['evid'],
+                        'reference': e['refe'],
+                        'event': e['evov'],
+                        'prefix': e['pref'],
+                        'info': e['info'],
+                        'laps': e['laps'],
+                        'diststr': e['dist'],
+                        'progression': e['prog'],
+                        'footer': e['reco'],
+                        'status': r.standingstr(),
+                        'result': []
+                    }
+                    if ressec is not None and ressec.lines:
+                        for l in ressec.lines:
+                            if l[0]:
+                                resdat = {
+                                    'rank': l[0],
+                                    'no': l[1],
+                                    'rider': l[2],
+                                    'info': l[3],
+                                    'time': l[4],
+                                    'points': l[5]
+                                }
+                                rdata['result'].append(resdat)
+                    ofile = os.path.join(EXPORTPATH, basename + '_result.json')
+                    with metarace.savefile(ofile) as f:
+                        json.dump(rdata, f)
+
                 r = None
                 #r.destroy()
             GLib.idle_add(self.mirror_start)
