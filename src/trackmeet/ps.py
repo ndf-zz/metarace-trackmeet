@@ -84,7 +84,7 @@ def cmp(x, y):
         return 0
 
 
-class ps(object):
+class ps:
     """Data handling for point score omnium and Madison races."""
 
     def ridercb(self, rider):

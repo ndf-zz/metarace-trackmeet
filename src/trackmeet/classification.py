@@ -47,7 +47,7 @@ key_startlist = 'F3'
 key_results = 'F4'
 
 
-class classification(object):
+class classification:
 
     def ridercb(self, rider):
         """Rider change notification function"""

@@ -66,7 +66,7 @@ def cmp(x, y):
         return 0
 
 
-class race(object):
+class race:
     """Data handling for scratch, handicap, keirin, derby, etc races."""
 
     def ridercb(self, rider):
