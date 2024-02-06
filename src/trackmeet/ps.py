@@ -1475,7 +1475,7 @@ class ps:
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
-        ret = 'Standings'
+        ret = ''
         totsprints = 0
         lastsprint = None
         sprintid = None
@@ -1700,7 +1700,6 @@ class ps:
                         self.auxmap[bib][index] = str(points[place])
                     if final:
                         r[RES_COL_FINAL] = place
-                        self.finished = True
                     plstr = str(place + 1) + '.'
                     fname = r[RES_COL_FIRST]
                     lname = r[RES_COL_LAST]
@@ -1839,6 +1838,8 @@ class ps:
                 idx += 1
             else:
                 r[RES_COL_PLACE] = 'dnf'
+        if self.standingstr() == 'Result':
+            self.finished = True
 
     def sprint_model_init(self):
         """Initialise the sprint places model"""

@@ -155,6 +155,7 @@ class race:
 
     def placexfer(self, placestr):
         """Transfer places in placestr to model."""
+        self.finished = False
         self.clearplaces()
         self.results = []
         placeset = set()
@@ -239,6 +240,7 @@ class race:
             self.onestart = True
         if count == incnt:
             self.resulttype = 'RESULT'
+            self.finished = True
         elif count < incnt and len(outriders) > 0:
             self.resulttype = 'STANDING'
         else:
@@ -1397,6 +1399,7 @@ class race:
         self.reorderflag = 0
         self.startchan = 0
         self.finchan = 1
+        self.finished = False
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

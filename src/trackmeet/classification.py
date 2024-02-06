@@ -57,6 +57,10 @@ class classification:
         """Event change notification function"""
         pass
 
+    def standingstr(self, width=None):
+        """Return an event status string for reports and scb."""
+        return self._standingstat
+
     def loadconfig(self):
         """Load race config from disk."""
         cr = jsonconfig.config({
@@ -181,10 +185,17 @@ class classification:
                     [self.event['pref'], self.event['info']]).strip()
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
+        subvec = []
         substr = ' '.join([lapstring, self.event['dist'],
                            self.event['prog']]).strip()
         if substr:
-            sec.subheading = substr
+            subvec.append(substr)
+        stat = self.standingstr()
+        if stat:
+            subvec.append(stat)
+        if subvec:
+            sec.subheading = ' - '.join(subvec)
+
         prevmedal = ''
         sec.lines = []
         for r in self.riders:
@@ -370,18 +381,31 @@ class classification:
 
         if len(self.riders) > 0:  # got at least one result to report
             self.onestart = True
-        # Pass 4: Mark medals if required
+        # Pass 4: Mark medals if required and determine status
+        self._standingstat = ''
         medalmap = {}
-        mcount = 1
+        placecount = 0
+        medalcount = 0
+        mplace = 1
         for m in self.medals.split():
-            medalmap[mcount] = m
-            mcount += 1
+            medalmap[mplace] = m
+            mplace += 1
+        mtotal = len(medalmap)
         for r in self.riders:
             rks = r[COL_PLACE]
             if rks.isdigit():
                 rank = int(rks)
+                placecount += 1
                 if rank in medalmap:
                     r[COL_MEDAL] = medalmap[rank]
+                    medalcount += 1
+        if placecount > 0:
+            if medalcount == mtotal:
+                self._standingstat = 'Result'
+            elif medalcount > 0:
+                self._standingstat = 'Provisional Result'
+            else:
+                self._standingstat = 'Virtual Standing'
         return
 
     def key_event(self, widget, event):
@@ -599,6 +623,8 @@ class classification:
         self.placesrc = ''
         self.medals = ''
         self.comments = []
+        self.finished = False
+        self._standingstat = ''
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
