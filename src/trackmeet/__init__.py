@@ -39,6 +39,7 @@ from . import eventdb
 from . import race
 from . import ps
 from . import f200
+from . import ittt
 from . import classification
 
 VERSION = '1.13.0'
@@ -360,12 +361,12 @@ def mkrace(meet, event, ui=True):
     """Return a race object of the correct type."""
     ret = None
     etype = event[u'type']
-    ##if etype in [
-    ##u'indiv tt', u'indiv pursuit', u'pursuit race', u'team pursuit',
-    ##u'team pursuit race'
-    ##]:
-    ##ret = ittt.ittt(meet, event, ui)
-    if etype in [u'points', u'madison', u'omnium']:
+    if etype in [
+            'indiv tt', 'indiv pursuit', 'pursuit race', 'team pursuit',
+            'team pursuit race'
+    ]:
+        ret = ittt.ittt(meet, event, ui)
+    elif etype in [u'points', u'madison', u'omnium']:
         ret = ps.ps(meet, event, ui)
     elif etype == u'classification':
         ret = classification.classification(meet, event, ui)

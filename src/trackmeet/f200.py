@@ -74,7 +74,7 @@ def cmp(x, y):
         return 0
 
 
-class f200(object):
+class f200:
     """Flying 200 time trial."""
 
     def ridercb(self, rider):
@@ -756,7 +756,8 @@ class f200(object):
                     else:
                         rtime = time.rawtime(2) + '\u2007'
 
-            sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
+            if rank:
+                sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
         sv = []
         if substr:
             sv.append(substr)
@@ -940,7 +941,6 @@ class f200(object):
         new_text = new_text.strip()
         self.riders[path][col] = new_text
         rno = self.riders[path][COL_BIB]
-        GLib.idle_add(self.meet.rider_edit, rno, self.series, col, new_text)
 
     def placexfer(self):
         """Transfer places into model."""
@@ -1188,8 +1188,10 @@ class f200(object):
                 return None
         rtxt = '[New Rider]'
         if r is not None:
-            rtxt = strops.listname(r[COL_FIRSTNAME], r[COL_LASTNAME],
-                                   r[COL_CLUB])
+            club = ''
+            if len(r[COL_CLUB]) == 3:
+                club = r[COL_CLUB]
+            rtxt = strops.listname(r[COL_FIRSTNAME], r[COL_LASTNAME], club)
         return rtxt
 
     def bibent_cb(self, entry, tp):
