@@ -38,6 +38,7 @@ from . import scbwin
 from . import eventdb
 from . import race
 from . import ps
+from . import f200
 from . import classification
 
 VERSION = '1.13.0'
@@ -368,8 +369,8 @@ def mkrace(meet, event, ui=True):
         ret = ps.ps(meet, event, ui)
     elif etype == u'classification':
         ret = classification.classification(meet, event, ui)
-    ##elif etype in [u'flying 200', u'flying lap']:
-    ##ret = f200.f200(meet, event, ui)
+    elif etype in [u'flying 200', u'flying lap']:
+        ret = f200.f200(meet, event, ui)
     ##elif etype in [u'hour']:
     ##ret = hour.hourrec(meet, event, ui)
     ##elif etype in [u'sprint round', u'sprint final']:

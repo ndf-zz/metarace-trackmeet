@@ -98,6 +98,28 @@ class statButton(Gtk.Box):
             self.__label.set_text(label)
 
 
+class traceFilter(logging.Filter):
+    """Filter events to type TIMER only."""
+
+    def filter(self, record):
+        return record.levelno == 15  # timy._TIMER_LOG_LEVEL
+
+
+class traceHandler(logging.Handler):
+    """Class for capturing timer log traces."""
+
+    def __init__(self, trace=None):
+        self.__trace = trace
+        logging.Handler.__init__(self)
+        self.addFilter(traceFilter())
+
+    def emit(self, record):
+        """Append log record to trace."""
+        if self.__trace is not None:
+            msg = self.format(record)
+            self.__trace.append(msg)
+
+
 class textViewHandler(logging.Handler):
     """A class for displaying log messages in a GTK text view."""
 
