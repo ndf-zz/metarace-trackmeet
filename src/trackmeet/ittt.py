@@ -287,7 +287,7 @@ class ittt:
                 'bsstat': 'idle',
                 'showinfo': True,
                 'showcats': False,
-                'comments': [],
+                'decisions': [],
                 'distance': defdistance,
                 'distunits': defdistunits,
                 'precision': defprecision,
@@ -304,19 +304,13 @@ class ittt:
         cr.add_section('riders')
         cr.add_section('splits')
         cr.add_section('traces')
-        if os.path.exists(self.configfile):
-            try:
-                with open(self.configfile, 'rb') as f:
-                    cr.read(f)
-            except Exception as e:
-                _log.error('Unable to read config: %s', e)
-        else:
-            _log.info('%r not found, loading defaults', self.configfile)
+        if not cr.load(self.configfile):
+            _log.info('%r not read, loading defaults', self.configfile)
 
         self.chan_S = strops.confopt_chan(cr.get('event', 'chan_S'), defchans)
         self.chan_A = strops.confopt_chan(cr.get('event', 'chan_A'), defchana)
         self.chan_B = strops.confopt_chan(cr.get('event', 'chan_B'), defchanb)
-        self.comments = cr.get('event', 'comments')
+        self.decisions = cr.get('event', 'decisions')
         self.autospec = cr.get('event', 'autospec')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
@@ -444,7 +438,7 @@ class ittt:
         cw.set('event', 'showinfo', self.info_expand.get_expanded())
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'precision', self.precision)
-        cw.set('event', 'comments', self.comments)
+        cw.set('event', 'decisions', self.decisions)
 
         # extract and save timerpane config for interrupted run
         if self.curstart is not None:
@@ -1030,14 +1024,8 @@ class ittt:
 
         ret.append(sec)
 
-        # comment
-        if self.comments:
-            sec = report.bullet_text()
-            sec.heading = 'Decisions of the commissaires panel'
-            for c in self.comments:
-                sec.lines.append([None, c])
-            ret.append(sec)
-
+        if len(self.decisions) > 0:
+            ret.append(self.meet.decision_section(self.decisions))
         return ret
 
     def editent_cb(self, entry, col):
@@ -1359,9 +1347,9 @@ class ittt:
         if ft is not None:
             lastlap = None
             if lt is not None:
-                lastlap = ft - lt
-            self.results.insert((ft - st).truncate(self.precision),
-                                lastlap.truncate(self.precision), bib)
+                lastlap = (ft - lt).truncate(self.precision)
+            self.results.insert((ft - st).truncate(self.precision), lastlap,
+                                bib)
         else:  # DNF/Catch/etc
             self.results.insert(comment, None, bib)
         if splits is not None:
@@ -1775,32 +1763,101 @@ class ittt:
     def tod_context_edit_activate_cb(self, menuitem, data=None):
         """Run edit time dialog."""
         sel = self.view.get_selection().get_selected()
-        if sel is not None:
-            i = sel[1]  # grab off row iter
-            stod = self.riders.get_value(i, COL_START)
-            st = ''
-            if stod is not None:
-                st = stod.timestr()
-            else:
-                st = '0.0'
-            ftod = self.riders.get_value(i, COL_FINISH)
-            ft = ''
-            if ftod is not None:
-                ft = ftod.timestr()
-            tvec = uiutil.edit_times_dlg(self.meet.window, st, ft)
-            if tvec[0] == 1:
-                stod = tod.mktod(tvec[1])
-                ftod = tod.mktod(tvec[2])
-                bib = self.riders.get_value(i, COL_BIB)
-                if stod is not None and ftod is not None:
-                    self.settimes(i, stod, ftod)  # set times
-                    self.log_elapsed(bib, stod, ftod, manual=True)
+        if sel is None:
+            return False
+
+        i = sel[1]
+        lr = Gtk.TreeModelRow(self.riders, i)
+        namestr = lr[COL_BIB]
+        dbr = self.meet.rdb.get_rider(lr[COL_BIB], self.series)
+        if dbr is not None:
+            namestr = dbr.resname_bib()
+        placestr = ''
+        placeopts = {
+            '': ' Not yet classified',
+            'ntr': 'No time recorded',
+            'dns': 'Did not start',
+            'otl': 'Outside time limit',
+            'dnf': 'Did not finish',
+            'dsq': 'Disqualified',
+        }
+        if lr[COL_PLACE] and lr[COL_PLACE] not in placeopts:
+            placestr = 'Ranked ' + strops.rank2ord(lr[COL_PLACE])
+            if lr[COL_COMMENT]:
+                placestr += ' (' + lr[COL_COMMENT] + ')'
+        elif lr[COL_PLACE] in placeopts:
+            placestr = placeopts[lr[COL_PLACE]]
+        else:
+            placestr = placeopts['']
+
+        sections = {
+            'result': {
+                'object': None,
+                'title': 'result',
+                'schema': {
+                    'title': {
+                        'prompt': namestr,
+                        'control': 'section',
+                    },
+                    'class': {
+                        'prompt': 'Classification:',
+                        'hint': 'Rider classification for event',
+                        'control': 'label',
+                        'value': placestr,
+                    },
+                    'start': {
+                        'prompt': 'Start:',
+                        'hint': 'Recorded start time',
+                        'type': 'tod',
+                        'places': 4,
+                        'value': lr[COL_START],
+                        'nowbut': True,
+                        'control': 'short',
+                        'subtext': 'Set start time to now',
+                        'index': COL_START,
+                    },
+                    'finish': {
+                        'prompt': 'Finish:',
+                        'hint': 'Recorded finish time',
+                        'type': 'tod',
+                        'places': 4,
+                        'value': lr[COL_FINISH],
+                        'nowbut': True,
+                        'control': 'short',
+                        'subtext': 'Set finish time to now',
+                        'index': COL_FINISH,
+                    },
+                },
+            },
+        }
+        res = uiutil.options_dlg(window=self.meet.window,
+                                 title='Edit times',
+                                 sections=sections)
+        changed = False
+        dotimes = False
+        for option in res['result']:
+            if res['result'][option][0]:
+                changed = True
+                if 'index' in sections['result']['schema'][option]:
+                    index = sections['result']['schema'][option]['index']
+                    lr[index] = res['result'][option][2]
+                    _log.debug('Updated %s to: %r', option,
+                               res['result'][option][2])
+                    if option in ('start', 'finish'):
+                        dotimes = True
                 else:
-                    self.settimes(i)  # clear times
-                    self.log_clear(bib)
-                _log.info('Race times manually adjusted for rider %r', bib)
+                    _log.debug('Unknown option %r changed', option)
+        if dotimes:
+            bib = lr[COL_BIB]
+            stod = lr[COL_START]
+            ftod = lr[COL_FINISH]
+            if stod is not None and ftod is not None:
+                self.settimes(i, stod, ftod)
+                self.log_elapsed(bib, stod, ftod, manual=True)
             else:
-                _log.debug('Edit race times cancelled')
+                self.settimes(i)
+                self.log_clear(bib)
+            _log.info('Race times manually adjusted for rider %r', bib)
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_del_activate_cb(self, menuitem, data=None):
@@ -1888,7 +1945,7 @@ class ittt:
         self.distance = None
         self.units = 'laps'
         self.autotime = False
-        self.comments = []
+        self.decisions = []
         self.difftime = False
         self.precision = 3
         self.teampursuit = False

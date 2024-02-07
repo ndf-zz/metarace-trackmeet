@@ -131,7 +131,7 @@ class ps:
                 'start': None,
                 'lstart': None,
                 'finish': None,
-                'comments': [],
+                'decisions': [],
                 'sprintlaps': defsprintlaps,
                 'distance': '',
                 'runlap': '',
@@ -149,14 +149,9 @@ class ps:
         cr.add_section('sprintsource')
         cr.add_section('laplabels')
         cr.add_section('points')
-        if os.path.exists(self.configfile):
-            try:
-                with open(self.configfile, 'rb') as f:
-                    cr.read(f)
-            except Exception as e:
-                _log.error('Unable to read config: %s', e)
-        else:
-            _log.info('%r not found, loading defaults', self.configfile)
+        if not cr.load(self.configfile):
+            _log.info('%r not read, loading defaults', self.configfile)
+
         self.inomnium = cr.get_bool('event', 'inomnium')
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
@@ -192,7 +187,7 @@ class ps:
         self.type_lbl.set_text(self.scoring.capitalize())
 
         # race infos
-        self.comments = cr.get('event', 'comments')
+        self.decisions = cr.get('event', 'decisions')
 
         self.autospec = cr.get('event', 'autospec')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
@@ -307,7 +302,7 @@ class ps:
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'sprintlaps', self.sprintlaps)
-        cw.set('event', 'comments', self.comments)
+        cw.set('event', 'decisions', self.decisions)
 
         cw.add_section('sprintplaces')
         cw.add_section('sprintpoints')
@@ -472,12 +467,8 @@ class ps:
 
         ret.append(sec)
 
-        if len(self.comments) > 0:
-            sec = report.bullet_text('decisions')
-            sec.subheading = 'Decisions of the commisaires panel'
-            for c in self.comments:
-                sec.lines.append([None, c])
-            ret.append(sec)
+        if len(self.decisions) > 0:
+            ret.append(self.meet.decision_section(self.decisions))
 
         # output intermediate sprints?
 
@@ -1957,7 +1948,7 @@ class ps:
         _log.debug('Init %sevent %s', rstr, self.evno)
 
         # race property attributes
-        self.comments = []
+        self.decisions = []
         self.masterslaps = True
         self.lappoints = 20
         self.scoring = 'points'

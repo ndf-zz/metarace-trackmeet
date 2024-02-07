@@ -181,14 +181,9 @@ class race:
             r = self.getrider(bib)
             rank = incnt + self.startplace
             r[COL_PLACE] = str(rank)
-            club = r[COL_CLUB]
-            if len(club) > 3:
-                # look it up?
-                #if self.series in self.meet.ridermap:
-                #rh = self.meet.ridermap[self.series][bib]
-                #if rh is not None:
-                #club = rh[u'note']
-                club = club[0:3]
+            club = ''
+            if len(r[COL_CLUB]) == 3:
+                club = r[COL_CLUB]
             outriders.insert(0, [
                 str(rank) + '.', bib,
                 strops.fitname(r[COL_FIRSTNAME], r[COL_LASTNAME], resname_w),
@@ -216,14 +211,9 @@ class race:
                         r = self.getrider(bib)
                     rank = place + self.startplace
                     r[COL_PLACE] = str(rank)
-                    club = r[COL_CLUB]
-                    if len(club) > 3:
-                        # look it up?
-                        #if self.series in self.meet.ridermap:
-                        #rh = self.meet.ridermap[self.series][bib]
-                        #if rh is not None:
-                        #club = rh[u'note']
-                        club = club[0:3]
+                    club = ''
+                    if len(r[COL_CLUB]) == 3:
+                        club = r[COL_CLUB]
                     self.results.append([
                         str(rank) + '.', bib,
                         strops.fitname(r[COL_FIRSTNAME], r[COL_LASTNAME],
@@ -273,7 +263,7 @@ class race:
                 'eliminated': [],
                 'start': None,
                 'lstart': None,
-                'comments': [],
+                'decisions': [],
                 'finish': None,
                 'runlap': None,
                 'distance': defdistance,
@@ -288,14 +278,9 @@ class race:
         })
         cr.add_section('event')
         cr.add_section('riders')
-        if os.path.exists(self.configfile):
-            try:
-                with open(self.configfile, 'rb') as f:
-                    cr.read(f)
-            except Exception as e:
-                _log.error('Unable to read config: %s', e)
-        else:
-            _log.info('%r not found, loading defaults', self.configfile)
+        if not cr.load(self.configfile):
+            _log.info('%r not read, loading defaults', self.configfile)
+
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
@@ -317,7 +302,7 @@ class race:
             self.riders.append(nr)
 
         # race infos
-        self.comments = cr.get('event', 'comments')
+        self.decisions = cr.get('event', 'decisions')
         self.startplace = strops.confopt_posint(cr.get('event', 'startplace'))
         self.set_timetype(cr.get('event', 'timetype'))
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
@@ -474,7 +459,7 @@ class race:
                     xtra = strops.truncpad(inf, 4, 'r')
                 clubstr = ''
                 tcs = r[COL_CLUB]
-                if tcs and len(tcs) <= 3:
+                if tcs and len(tcs) == 3:
                     clubstr = ' (' + tcs + ')'
                 namestr = strops.truncpad(strops.fitname(r[COL_FIRSTNAME],
                                                          r[COL_LASTNAME],
@@ -615,7 +600,7 @@ class race:
             cw.set('event', 'runlap', self.runlap)
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
-        cw.set('event', 'comments', self.comments)
+        cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'startplace', self.startplace)
 
         cw.add_section('riders')
@@ -875,30 +860,18 @@ class race:
         for r in self.riders:
             if not r[COL_DNF]:
                 nfo = r[COL_INFO]
+                club = ''
+                if len(r[COL_CLUB]) == 3:
+                    club = r[COL_CLUB]
                 if self.evtype in ['sprint']:  # add asterisk
-                    nfo = nfo + r[COL_CLUB].rjust(3)
+                    nfo = nfo + club
                 if not nfo:
-                    nfo = r[COL_CLUB]
-                    if len(nfo) > 3:
-                        # look it up?
-                        #if self.series in self.meet.ridermap:
-                        #rh = self.meet.ridermap[self.series][r[0]]
-                        #if rh is not None:
-                        #nfo = rh[u'note']
-                        nfo = nfo[0:3]
+                    nfo = club
                 startlist.append([
                     r[COL_BIB],
                     strops.fitname(r[COL_FIRSTNAME], r[COL_LASTNAME], name_w),
                     nfo
                 ])
-                #inf = r[COL_INFO].strip()
-                #if self.evtype in [u'keirin', u'sprint']:  # encirc draw no
-                #inf = strops.drawno_encirc(inf)
-                ##self.meet.announce.gfx_add_row([r[COL_BIB],
-                ##strops.resname(r[COL_FIRSTNAME],
-                ##r[COL_LASTNAME],
-                ##r[COL_CLUB]),
-                ##inf])
         FMT = [(3, 'r'), ' ', (name_w, 'l'), (4, 'r')]
         self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
                                            head=self.meet.racenamecat(
@@ -1026,7 +999,9 @@ class race:
                     ret = True
                     fname = r[COL_FIRSTNAME]
                     lname = r[COL_LASTNAME]
-                    club = r[COL_CLUB]
+                    club = ''
+                    if len(r[COL_CLUB]) == 3:
+                        club = r[COL_CLUB]
                     rno = r[COL_BIB]
                     rstr = (rno + ' ' + strops.fitname(
                         fname, lname, self.meet.scb.linelen - 3 - len(rno)))
@@ -1044,7 +1019,7 @@ class race:
                     # announce it:
                     nrstr = strops.truncpad(
                         strops.resname_bib(r[COL_BIB], r[COL_FIRSTNAME],
-                                           r[COL_LASTNAME], r[COL_CLUB]), 60)
+                                           r[COL_LASTNAME], club), 60)
                     self.meet.txt_postxt(21, 0, 'Out: ' + nrstr)
                     GLib.timeout_add_seconds(10, self.delayed_result)
                 else:
@@ -1310,12 +1285,8 @@ class race:
 
         ret.append(sec)
 
-        if len(self.comments) > 0:
-            sec = report.bullet_text('decisions')
-            sec.subheading = 'Decisions of the commisaires panel'
-            for c in self.comments:
-                sec.lines.append([None, c])
-            ret.append(sec)
+        if len(self.decisions) > 0:
+            ret.append(self.meet.decision_section(self.decisions))
         return ret
 
     def standingstr(self, width=None):
@@ -1377,7 +1348,7 @@ class race:
         if self.readonly:
             rstr = 'readonly '
         _log.debug('Init %sevent %s', rstr, self.evno)
-        self.comments = []
+        self.decisions = []
         self.eliminated = []
         self.onestart = False
         self.runlap = None

@@ -40,6 +40,7 @@ from . import race
 from . import ps
 from . import f200
 from . import ittt
+from . import sprnd
 from . import classification
 
 VERSION = '1.13.0'
@@ -374,8 +375,8 @@ def mkrace(meet, event, ui=True):
         ret = f200.f200(meet, event, ui)
     ##elif etype in [u'hour']:
     ##ret = hour.hourrec(meet, event, ui)
-    ##elif etype in [u'sprint round', u'sprint final']:
-    ##ret = sprnd.sprnd(meet, event, ui)
+    elif etype in [u'sprint round', u'sprint final']:
+        ret = sprnd.sprnd(meet, event, ui)
     ##elif etype in [u'aggregate']:
     ##ret = aggregate.aggregate(meet, event, ui)
     else:
@@ -671,6 +672,65 @@ class trackmeet:
             _log.info(reptype + ' callback: Nothing to report')
         return False
 
+    def decision_format(self, decision):
+        """Crudely macro format a commissaire decision string"""
+        ret = []
+        for line in decision.split('\n'):
+            if line:
+                ol = []
+                for word in line.split():
+                    if word.startswith('r:'):
+                        punc = ''
+                        if not word[-1].isalnum():
+                            punc = word[-1]
+                            word = word[0:-1]
+                        rep = word
+                        look = word.split(':', 1)[-1]
+                        _log.debug('Look up rider: %r', look)
+                        rid = self.rdb.get_id(look)
+                        if rid is not None:
+                            rep = self.rdb[rid].name_bib()
+                        ol.append(rep + punc)
+                    elif word.startswith('t:'):
+                        punc = ''
+                        if not word[-1].isalnum():
+                            punc = word[-1]
+                            word = word[0:-1]
+                        rep = word
+                        look = word.split(':', 1)[-1]
+                        _log.debug('Look up team: %r', look)
+                        rid = self.rdb.get_id(look, 'team')
+                        if rid is not None:
+                            rep = self.rdb[rid][
+                                'first'] + ' (' + look.upper() + ')'
+                        ol.append(rep + punc)
+                    elif word.startswith('d:'):
+                        punc = ''
+                        if not word[-1].isalnum():
+                            punc = word[-1]
+                            word = word[0:-1]
+                        rep = word
+                        look = word.split(':', 1)[-1]
+                        _log.debug('Look up ds: %r', look)
+                        rid = self.rdb.get_id(look, 'ds')
+                        if rid is not None:
+                            rep = self.rdb[rid].fitname(48)
+                        ol.append(rep + punc)
+                    else:
+                        ol.append(word)
+                ret.append(' '.join(ol))
+        return '\n'.join(ret)
+
+    def decision_section(self, decisions=[]):
+        """Return an officials decision section"""
+        ret = report.bullet_text('decisions')
+        if decisions:
+            ret.heading = 'Decisions of the commissaires panel'
+            for decision in decisions:
+                if decision:
+                    ret.lines.append((None, self.decision_format(decision)))
+        return ret
+
     ## Race menu callbacks.
     def menu_race_startlist_activate_cb(self, menuitem, data=None):
         """Generate a startlist."""
@@ -717,6 +777,12 @@ class trackmeet:
         """Edit properties of open race if possible."""
         if self.curevent is not None:
             self.curevent.do_properties()
+
+    def menu_race_decisions_activate_cb(self, menuitem, data=None):
+        """Edit decisions on open race if possible."""
+        if self.curevent is not None:
+            self.curevent.decisions = uiutil.decisions_dlg(
+                self.window, self.curevent.decisions)
 
     def menu_race_run_activate_cb(self, menuitem=None, data=None):
         """Open currently selected event."""
@@ -806,6 +872,7 @@ class trackmeet:
                         strops.reformat_biblist(starters))
                 eventhdl['star'] = ''
             self.menu_race_properties.set_sensitive(True)
+            self.menu_race_decisions.set_sensitive(True)
             self.curevent.show()
 
     def addstarters(self, race, event, startlist):
@@ -889,24 +956,29 @@ class trackmeet:
                         ## load the place set map rank -> [[rider,seed],..]
                         h = mkrace(self, e, False)
                         h.loadconfig()
-                        for ri in h.result_gen():
-                            if isinstance(ri[1], int) and ri[1] in placeset:
-                                rank = ri[1]
-                                if rank not in evplacemap:
-                                    evplacemap[rank] = []
-                                seed = None
-                                if infocol is not None and infocol < len(ri):
-                                    seed = ri[infocol]
-                                evplacemap[rank].append([ri[0], seed])
-                                #_log.debug('Event %r add place=%r, rider=%r, info=%r',
-                                #evno, rank, ri[0], seed)
+                        if h.finished:
+                            for ri in h.result_gen():
+                                if isinstance(ri[1],
+                                              int) and ri[1] in placeset:
+                                    rank = ri[1]
+                                    if rank not in evplacemap:
+                                        evplacemap[rank] = []
+                                    seed = None
+                                    if infocol is not None and infocol < len(
+                                            ri):
+                                        seed = ri[infocol]
+                                    evplacemap[rank].append([ri[0], seed])
+                        else:
+                            _log.debug(
+                                'Event %r not yet final - no starters',
+                                evno)
                         #h.destroy()
                         h = None
                         # maintain ordering of autospec
                         for p in placeset:
                             if p in evplacemap:
                                 for ri in evplacemap[p]:
-                                    #_log.debug(u'Adding rider: %r/%r', ri[0], ri[1])
+                                    _log.debug('Adding rider %r(%r) place=%r, evno=%r', ri[0], ri[1], p, evno)
                                     race.addrider(ri[0], ri[1])
                     else:
                         _log.warning('Autospec event number not found: ' +
@@ -923,6 +995,7 @@ class trackmeet:
         """Close the currently opened race."""
         if self.curevent is not None:
             self.menu_race_properties.set_sensitive(False)
+            self.menu_race_decisions.set_sensitive(False)
             self.menu_race_info.set_sensitive(False)
             self.menu_race_close.set_sensitive(False)
             self.menu_race_abort.set_sensitive(False)
@@ -2432,6 +2505,7 @@ class trackmeet:
         self.context = self.status.get_context_id('metarace meet')
         self.menu_race_info = b.get_object('menu_race_info')
         self.menu_race_properties = b.get_object('menu_race_properties')
+        self.menu_race_decisions = b.get_object('menu_race_decisions')
         self.menu_race_close = b.get_object('menu_race_close')
         self.menu_race_abort = b.get_object('menu_race_abort')
         self.menu_race_startlist = b.get_object('menu_race_startlist')

@@ -68,7 +68,7 @@ class classification:
                 'id': EVENT_ID,
                 'showinfo': True,
                 'showevents': '',
-                'comments': [],
+                'decisions': [],
                 'placesrc': '',
                 'medals': ''
             }
@@ -90,7 +90,7 @@ class classification:
         self.showevents = cr.get('event', 'showevents')
         self.placesrc = cr.get('event', 'placesrc')
         self.medals = cr.get('event', 'medals')
-        self.comments = cr.get('event', 'comments')
+        self.decisions = cr.get('event', 'decisions')
         self.recalculate()  # model is cleared and loaded in recalc
         eid = cr.get('event', 'id')
         if eid and eid != EVENT_ID:
@@ -141,7 +141,7 @@ class classification:
         cw.set('event', 'showevents', self.showevents)
         cw.set('event', 'placesrc', self.placesrc)
         cw.set('event', 'medals', self.medals)
-        cw.set('event', 'comments', self.comments)
+        cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'showinfo', self.info_expand.get_expanded())
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
@@ -253,6 +253,9 @@ class classification:
                             [None, trno, trname, trinf, None, None, None])
         ret.append(sec)
 
+        if len(self.decisions) > 0:
+            ret.append(self.meet.decision_section(self.decisions))
+
         if recurse:
             # then append each of the specified events
             for evno in self.showevents.split():
@@ -360,6 +363,7 @@ class classification:
             r.loadconfig()  # now have queryable event handle
             if r.finished:
                 for res in r.result_gen():
+                    _log.debug('Result gen %r: %r', evno, res)
                     if isinstance(res[1], int):
                         if res[1] in lookup[evno]:
                             crank = lookup[evno][res[1]] + 1
@@ -622,7 +626,7 @@ class classification:
         self.winopen = ui
         self.placesrc = ''
         self.medals = ''
-        self.comments = []
+        self.decisions = []
         self.finished = False
         self._standingstat = ''
 
