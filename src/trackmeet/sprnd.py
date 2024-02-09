@@ -39,7 +39,10 @@ COL_B_STR = 5  # Namestr of B rider
 COL_B_PLACE = 6  # Place string of B rider
 COL_200M = 7  # time for last 200m
 COL_WINNER = 8  # no of 'winner'
-COL_COMMENT = 9  # decisions of commissaire's panel
+COL_COMMENT = 9  # reserved - unused
+COL_A_QUAL = 10  # Qualifying time of A rider
+COL_B_QUAL = 11  # Qualifying time of B rider
+COL_BYE = 12  # BYE Flag
 
 # scb function key mappings
 key_startlist = 'F3'  # show starters in table
@@ -58,6 +61,24 @@ key_walk_a = 'F9'  # + ctrl for walk over
 key_walk_b = 'F10'
 key_rel_a = 'F11'  # + ctrl for relegation
 key_rel_b = 'F12'
+
+# Pre-defined "standard" contests
+_STD_CONTESTS = {
+    3: ['bye', '2v3'],
+    4: ['1v4', '2v3'],
+    5: ['bye', 'bye', 'bye', '4v5'],
+    6: ['bye', 'bye', '3v6', '4v5'],
+    7: ['bye', '2v7', '3v6', '4v5'],
+    8: ['1v8', '2v7', '3v6', '4v5'],
+    9: ['bye', 'bye', 'bye', 'bye', 'bye', 'bye', 'bye', '8v9'],
+    10: ['bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'],
+    11: ['bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'],
+    12: ['bye', 'bye', 'bye', 'bye', '5v12', '6v11', '7v10', '8v9'],
+    13: ['bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'],
+    14: ['bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
+    15: ['bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
+    16: ['1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
+}
 
 
 class sprnd:
@@ -84,13 +105,22 @@ class sprnd:
                 cid = self.contestroot(cr[COL_CONTEST])
                 heat = self.contestheat(cr[COL_CONTEST])
                 if cid not in self._rescache:
+                    aqual = None
+                    if cr[COL_A_QUAL] is not None:
+                        aqual = cr[COL_A_QUAL].rawtime(2)
+                    bqual = None
+                    if cr[COL_B_QUAL] is not None:
+                        bqual = cr[COL_B_QUAL].rawtime(2)
                     self._rescache[cid] = {
                         'a': 0,
                         'b': 0,
+                        'bye': cr[COL_BYE],
                         'ano': cr[COL_A_NO],
                         'bno': cr[COL_B_NO],
                         'aname': cr[COL_A_STR],
                         'bname': cr[COL_B_STR],
+                        'aqual': aqual,
+                        'bqual': bqual,
                         'ares': {
                             '1': None,
                             '2': None,
@@ -122,7 +152,7 @@ class sprnd:
             ccount = len(self._rescache)
             for cid in self._rescache:
                 cm = self._rescache[cid]
-                if cid == 'bye' or max(cm['a'], cm['b']) > 1:
+                if cm['bye'] or max(cm['a'], cm['b']) > 1:
                     # contest is decided
                     dcount += 1
         else:
@@ -147,6 +177,7 @@ class sprnd:
 
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
+        qual = tod.mktod(info)
         if self.event['type'] == 'sprint final':
             slot = None
             afound = False
@@ -162,8 +193,9 @@ class sprnd:
                     cr[COL_A_NO] = bib
                     cr[COL_A_STR] = self.rider_name(bib)
                     cr[COL_A_PLACE] = ''  # LOAD?
+                    cr[COL_A_QUAL] = qual
                     ## special case the bye here
-                    if cid == 'bye':
+                    if cr[COL_BYE]:
                         cr[COL_A_PLACE] = ' '
                         cr[COL_B_STR] = ' '
                         cr[COL_B_PLACE] = ' '
@@ -188,6 +220,7 @@ class sprnd:
                         cr[COL_B_NO] = bib
                         cr[COL_B_STR] = self.rider_name(bib)
                         cr[COL_B_PLACE] = ''  # LOAD?
+                        cr[COL_B_QUAL] = qual
                     elif bfound:
                         # slot was found, heats exhausted
                         return
@@ -201,8 +234,9 @@ class sprnd:
                     cr[COL_A_NO] = bib
                     cr[COL_A_STR] = self.rider_name(bib)
                     cr[COL_A_PLACE] = ''  # LOAD?
+                    cr[COL_A_QUAL] = qual
                     ## special case the bye here
-                    if cr[COL_CONTEST] == 'bye':
+                    if cr[COL_BYE]:
                         cr[COL_A_PLACE] = ' '
                         cr[COL_B_STR] = ' '
                         cr[COL_B_PLACE] = ' '
@@ -216,6 +250,7 @@ class sprnd:
                     cr[COL_B_NO] = bib
                     cr[COL_B_STR] = self.rider_name(bib)
                     cr[COL_B_PLACE] = ''  # LOAD?
+                    cr[COL_B_QUAL] = qual
                     return
         _log.warning('Not enough heats for the specified starters: %r', bib)
 
@@ -237,6 +272,10 @@ class sprnd:
     def loadconfig(self):
         """Load race config from disk."""
         self.contests.clear()
+        def_otherstime = True
+        if self.event['info'] == 'Final':
+            # for the medal round, order others by ranking
+            def_otherstime = False
 
         cr = jsonconfig.config({
             'event': {
@@ -244,6 +283,7 @@ class sprnd:
                 'contests': [],
                 'timerstat': None,
                 'showinfo': True,
+                'otherstime': def_otherstime,
                 'decisions': [],
                 'autospec': ''
             },
@@ -259,12 +299,27 @@ class sprnd:
             strops.confopt_bool(cr.get('event', 'showinfo')))
         self.autospec = cr.get('event', 'autospec')
         self.decisions = cr.get('event', 'decisions')
+        self.otherstime = cr.get_bool('event', 'otherstime', def_otherstime)
         self.onestart = False
 
-        # restore contests
+        # read in contests and pre-populate standard cases
+        contestlist = cr.get('event', 'contests')
+        if not contestlist and self.event['plac']:
+            # placeholders is set and contests are not
+            if self.event['info'] == 'Final' and self.event['plac'] == 4:
+                contestlist = ['Bronze', 'Gold']
+            else:
+                if self.event['plac'] in _STD_CONTESTS:
+                    contestlist = _STD_CONTESTS[self.event['plac']]
+
+        # restore contest details
         oft = 0
         curactive = -1
-        for cid in cr.get('event', 'contests'):
+        for cid in contestlist:
+            bye = False
+            if cid == 'bye':
+                cid = str(oft + 1) + ' bye'
+                bye = True
             heats = (cid, )
             if self.event['type'] == 'sprint final':
                 heats = (cid + ' Heat 1', cid + ' Heat 2', cid + ' Heat 3')
@@ -277,6 +332,8 @@ class sprnd:
                     else:
                         if curactive == -1:
                             curactive = oft
+                    aqual = tod.mktod(res[7])
+                    bqual = tod.mktod(res[8])
                     astr = ''
                     if res[0]:
                         astr = self.rider_name(res[0])
@@ -285,16 +342,16 @@ class sprnd:
                         bstr = self.rider_name(res[2])
                     nr = [
                         c, res[0], astr, res[1], res[2], bstr, res[3], ft,
-                        res[5], res[6]
+                        res[5], res[6], aqual, bqual, bye
                     ]
-                    self.add_contest(c, nr)
+                    self.add_contest(c, nr, bye=bye)
                 else:
-                    self.add_contest(c)
+                    self.add_contest(c, bye=bye)
                 oft += 1
 
         if not self.onestart and self.autospec:
             self.del_riders()
-            self.meet.autostart_riders(self, self.autospec)
+            self.meet.autostart_riders(self, self.autospec, infocol=2)
 
         self.current_contest_combo.set_active(curactive)
 
@@ -324,13 +381,17 @@ class sprnd:
                     COL_B_PLACE, COL_WINNER
             ]:
                 c[col] = ''
-                c[COL_200M] = None
+            c[COL_200M] = None
+            c[COL_A_QUAL] = None
+            c[COL_B_QUAL] = None
 
-    def add_contest(self, c, cv=[]):
-        if len(cv) == 10:
+    def add_contest(self, c, cv=[], bye=False):
+        _log.debug('Adding contest %r: %r, bye=%r', c, cv, bye)
+        if len(cv) == 13:
             self.contests.append(cv)
         else:
-            self.contests.append([c, '', '', '', '', '', '', None, '', ''])
+            self.contests.append(
+                [c, '', '', '', '', '', '', None, '', '', None, None, bye])
 
     def race_ctrl_action_activate_cb(self, entry, data=None):
         """Perform current action on bibs listed."""
@@ -338,15 +399,13 @@ class sprnd:
         acode = self.action_model.get_value(
             self.ctrl_action_combo.get_active_iter(), 1)
         if acode == 'add':
-            rlist = strops.reformat_riderlist(rlist, self.meet.rdb,
-                                              self.series)
-            for bib in rlist.split():
+            rlist = strops.riderlist_split(rlist, self.meet.rdb, self.series)
+            for bib in rlist:
                 self.addrider(bib)
             entry.set_text('')
         elif acode == 'del':
-            rlist = strops.reformat_riderlist(rlist, self.meet.rdb,
-                                              self.series)
-            for bib in rlist.split():
+            rlist = strops.riderlist_split(rlist, self.meet.rdb, self.series)
+            for bib in rlist:
                 self.delrider(bib)
             entry.set_text('')
         else:
@@ -383,27 +442,34 @@ class sprnd:
                 byeflag = None
                 bno = cr[COL_B_NO]
                 bname = cr[COL_B_STR]
+                aqual = None
+                if cr[COL_A_QUAL] is not None:
+                    aqual = cr[COL_A_QUAL].rawtime(2)
+                bqual = None
+                if cr[COL_B_QUAL] is not None:
+                    bqual = cr[COL_B_QUAL].rawtime(2)
                 timestr = None
                 byemark = None
-                if cid == 'bye':
+                if cr[COL_BYE]:
                     timestr = ' '
                     bno = ' '
                     bname = ' '
+                    bqual = None
                     byeflag = ' '
                     byemark = ' '
                 if self.event['type'] == 'sprint final':
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cr[COL_A_NO], cr[COL_A_STR], None, None,
+                            None, cr[COL_A_NO], cr[COL_A_STR], aqual, None,
                             None, None, None
-                        ], [None, bno, bname, None, None, None, None, None]
+                        ], [None, bno, bname, bqual, None, None, None, None]
                     ])
                 else:
                     sec.lines.append([
                         cr[COL_CONTEST] + ':',
-                        [None, cr[COL_A_NO], cr[COL_A_STR], None],
-                        [byeflag, bno, bname, None], timestr
+                        [None, cr[COL_A_NO], cr[COL_A_STR], aqual],
+                        [byeflag, bno, bname, bqual], timestr
                     ])
         ret.append(sec)
         return ret
@@ -429,6 +495,7 @@ class sprnd:
         cw.set('event', 'timerstat', self.timerstat)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'autospec', self.autospec)
+        cw.set('event', 'otherstime', self.otherstime)
         contestset = set()
         contestlist = []
         for c in self.contests:
@@ -439,15 +506,15 @@ class sprnd:
                 croot = self.contestroot(cid)
             if croot not in contestset:
                 contestset.add(croot)
-                contestlist.append(croot)
+                if c[COL_BYE]:
+                    contestlist.append('bye')
+                else:
+                    contestlist.append(croot)
 
-            # save out the heat data
-            ft = None
-            if c[COL_200M]:
-                ft = c[COL_200M].rawtime()
             cw.set('contests', cid, [
-                c[COL_A_NO], c[COL_A_PLACE], c[COL_B_NO], c[COL_B_PLACE], ft,
-                c[COL_WINNER], c[COL_COMMENT]
+                c[COL_A_NO], c[COL_A_PLACE], c[COL_B_NO], c[COL_B_PLACE],
+                c[COL_200M], c[COL_WINNER], c[COL_COMMENT], c[COL_A_QUAL],
+                c[COL_B_QUAL]
             ])
         cw.set('event', 'contests', contestlist)
         cw.set('event', 'id', EVENT_ID)
@@ -964,7 +1031,7 @@ class sprnd:
                 rr = ''
                 sep = ' v '
                 if win:
-                    if c[COL_CONTEST] == 'bye':
+                    if c[COL_BYE]:
                         sep = '   '
                     else:
                         sep = 'def'
@@ -985,36 +1052,47 @@ class sprnd:
 
     def result_gen(self):
         """Generator function to export a final result."""
-        cstack = []
+        # Note: "Others" are placed according to qualifying time,
+        #       (ref UCI 3.2.050) with a fall back to incoming rank
+        others = []
         placeoft = 1
         if self.event['type'] == 'sprint final':
             for cid in self._rescache:
                 win = None
                 lose = None
                 rank = None
-                time = None
+                wtime = None
+                ltime = None
+                cm = self._rescache[cid]
                 info = None
                 lr = False
-                cm = self._rescache[cid]
                 if cm['a'] > 1:
                     win = cm['ano']
+                    wtime = cm['aqual']
                     lose = cm['bno']
+                    ltime = cm['bqual']
                 elif cm['b'] > 1:
                     win = cm['bno']
+                    wtime = cm['bqual']
                     lose = cm['ano']
+                    ltime = cm['aqual']
                 if win is not None:
                     rank = placeoft
                     lr = True  # include rank on loser rider
-                if cid != 'bye':
-                    cstack.insert(0, (lose, lr))
+                if not cm['bye']:
+                    if ltime is None or not self.otherstime:
+                        ltime = tod.MAX
+                    others.append((ltime, -placeoft, lose, lr))
+                    #cstack.insert(0, (lose, lr, ltime))
                 time = None
-                yield [win, rank, time, info]
+                yield [win, rank, wtime, info]
                 placeoft += 1
         else:
             for c in self.contests:
                 rank = None
-                time = None
-                info = None  # rel/dsq/etc?
+                wtime = None
+                ltime = None
+                info = None
                 win = c[COL_A_NO]
                 lose = c[COL_B_NO]
                 lr = False
@@ -1023,18 +1101,24 @@ class sprnd:
                     win = c[COL_WINNER]
                     if lose == win:  # win went to 'B' rider
                         lose = c[COL_A_NO]
-                    if c[COL_200M] is not None:
-                        time = c[COL_200M].truncate(2)  # valid?
+                        wtime = c[COL_B_QUAL]
+                        ltime = c[COL_A_QUAL]
+                    else:
+                        wtime = c[COL_A_QUAL]
+                        ltime = c[COL_B_QUAL]
                     lr = True  # include rank on loser rider
-                cstack.insert(0, (lose, lr))
+                ltime = tod.MAX if ltime is None else ltime
+                others.append((ltime, -placeoft, lose, lr))
                 time = None
-                yield [win, rank, time, info]
+                yield [win, rank, wtime, info]
                 placeoft += 1
 
-        for (bib, lr) in cstack:
+        others.sort()
+        for (time, junk, bib, lr) in others:
             rank = None
-            time = None
             info = None  # rel/dsq/etc?
+            if time == tod.MAX:
+                time = None
             if lr:
                 rank = placeoft
             yield [bib, rank, time, info]
@@ -1065,12 +1149,12 @@ class sprnd:
         if self.event['type'] == 'sprint final':
             for cid in self._rescache:
                 cm = self._rescache[cid]
-                if cid == 'bye':
+                if cm['bye']:
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cm['ano'], cm['aname'], None, None, None,
-                            None, None
+                            None, cm['ano'], cm['aname'], cm['aqual'], None,
+                            None, None, None
                         ],
                         [None, ' ', ' ', None, None, None, None, None],
                     ])
@@ -1078,12 +1162,12 @@ class sprnd:
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cm['ano'], cm['aname'], None,
+                            None, cm['ano'], cm['aname'], cm['aqual'],
                             cm['ares']['1'], cm['ares']['2'], cm['ares']['3'],
                             None
                         ],
                         [
-                            None, cm['bno'], cm['bname'], None,
+                            None, cm['bno'], cm['bname'], cm['bqual'],
                             cm['bres']['1'], cm['bres']['2'], cm['bres']['3'],
                             None
                         ],
@@ -1091,10 +1175,20 @@ class sprnd:
         else:
             for cr in self.contests:
                 # if winner set, report a result, otherwise, use startlist style:
+                aqual = None
+                if cr[COL_A_QUAL] is not None:
+                    aqual = cr[COL_A_QUAL].rawtime(2)
+                bqual = None
+                if cr[COL_B_QUAL] is not None:
+                    bqual = cr[COL_B_QUAL].rawtime(2)
                 cprompt = cr[COL_CONTEST] + ':'
                 if cr[COL_WINNER]:
-                    avec = [cr[COL_A_PLACE], cr[COL_A_NO], cr[COL_A_STR], None]
-                    bvec = [cr[COL_B_PLACE], cr[COL_B_NO], cr[COL_B_STR], None]
+                    avec = [
+                        cr[COL_A_PLACE], cr[COL_A_NO], cr[COL_A_STR], aqual
+                    ]
+                    bvec = [
+                        cr[COL_B_PLACE], cr[COL_B_NO], cr[COL_B_STR], bqual
+                    ]
                     ft = None
                     if cr[COL_200M] is not None:
                         ft = cr[COL_200M].rawtime(2)
@@ -1106,8 +1200,8 @@ class sprnd:
                         sec.lines.append([cprompt, bvec, avec, ft])
                 else:
                     sec.lines.append([
-                        cprompt, [None, cr[COL_A_NO], cr[COL_A_STR], None],
-                        [None, cr[COL_B_NO], cr[COL_B_STR], None], None
+                        cprompt, [None, cr[COL_A_NO], cr[COL_A_STR], aqual],
+                        [None, cr[COL_B_NO], cr[COL_B_STR], bqual], None
                     ])
 
         ret.append(sec)
@@ -1172,6 +1266,7 @@ class sprnd:
         self.inomnium = False
         self.startchan = 4
         self.finchan = 1
+        self.otherstime = True  # Order places of "others" by qualifying time
         self.contests = []
         self.decisions = []
         self._standingstat = ''
@@ -1188,7 +1283,10 @@ class sprnd:
             str,  # COL_B_PLACE = 6
             object,  # COL_200M = 7
             str,  # COL_WINNER = 8
-            str  # COL_COMMENT = 9
+            str,  # COL_COMMENT = 9
+            object,  # COL_A_QUAL = 10
+            object,  # COL_B_QUAL = 11
+            bool,  # COL_BYE = 12
         )
 
         b = uiutil.builder('sprnd.ui')
