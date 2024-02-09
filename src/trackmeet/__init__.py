@@ -605,7 +605,7 @@ class trackmeet:
         for c in self.commalloc:
             if c == lookup:  # previous allocation
                 ret = self.commalloc[c]
-                _log.debug('Found allocation: ' + ret + ' -> ' + lookup)
+                _log.debug('Found allocation: %r -> %r', ret, lookup)
                 break
             else:
                 noset.add(self.commalloc[c])
@@ -614,7 +614,7 @@ class trackmeet:
                 ret = str(cnt)
                 if ret not in noset:
                     self.commalloc[lookup] = ret  # write back
-                    _log.debug('Add allocation: ' + ret + ' -> ' + lookup)
+                    _log.debug('Add allocation: %r -> %r', ret, lookup)
                     break
                 else:
                     cnt += 1
@@ -650,9 +650,7 @@ class trackmeet:
                 reptypestr = 'Program of Events'
                 secs.extend(h.startlist_report(True))  # startlist in program
             else:
-                _log.error('Unknown report type in eventdb calback: ' +
-                           repr(reptype))
-            #h.destroy()
+                _log.error('Unknown type in eventdb calback: %r', reptype)
             h = None
             secs.append(report.pagebreak())
         if len(secs) > 0:
@@ -669,7 +667,7 @@ class trackmeet:
                               docstr=reptypestr,
                               exportfile='trackmeet_' + reptype)
         else:
-            _log.info(reptype + ' callback: Nothing to report')
+            _log.info('%r callback: Nothing to report', reptype)
         return False
 
     def decision_format(self, decision):
@@ -701,8 +699,8 @@ class trackmeet:
                         _log.debug('Look up team: %r', look)
                         rid = self.rdb.get_id(look, 'team')
                         if rid is not None:
-                            rep = self.rdb[rid][
-                                'first'] + ' (' + look.upper() + ')'
+                            rep = self.rdb[rid]['first'] + ' (' + look.upper(
+                            ) + ')'
                         ol.append(rep + punc)
                     elif word.startswith('d:'):
                         punc = ''
@@ -863,8 +861,8 @@ class trackmeet:
                 if 'auto' in starters:
                     spec = starters.lower().replace('auto', '').strip()
                     self.curevent.autospec += spec
-                    _log.info('Transferred autospec ' + repr(spec) +
-                              ' to event ' + self.curevent.evno)
+                    _log.info('Transferred autospec %r to event %r', spec,
+                              self.curevent.evno)
                 else:
                     self.addstarters(
                         self.curevent,
@@ -892,7 +890,7 @@ class trackmeet:
         # TODO: Consider an alternative since this is only used by ps
         places = {}
         for egroup in autospec.split(';'):
-            _log.debug('Autospec group: ' + repr(egroup))
+            _log.debug('Autospec group: %r', egroup)
             specvec = egroup.split(':')
             if len(specvec) == 2:
                 evno = specvec[0].strip()
@@ -917,32 +915,30 @@ class trackmeet:
                         h = None
                         #h.destroy()
                     else:
-                        _log.warning('Autospec event number not found: ' +
-                                     repr(evno))
+                        _log.warning('Autospec event not found: %r', evno)
                     self.autorecurse.remove(evno)
                 else:
-                    _log.debug('Ignoring loop in auto placelist: ' +
-                               repr(evno))
+                    _log.debug('Ignoring loop in auto placelist: %r', evno)
             else:
-                _log.warning('Ignoring erroneous autospec group: ' +
-                             repr(egroup))
+                _log.warning('Ignoring erroneous autospec group: %r', egroup)
         ret = ''
         for place in sorted(places):
             ret += ' ' + '-'.join(places[place])
         ## TODO: append to [] then join
-        _log.debug('Place set: ' + ret)
+        _log.debug('Place set: %r', ret)
         return ret
 
     def autostart_riders(self, race, autospec='', infocol=None, final=True):
         """Try to fetch the startlist from race result info."""
-        # Dubious: infocol allows selection of seed info
-        #          typical values:
-        #                           1 -> timed event qualifiers
-        #                           3 -> handicap
+        # infocol allows selection of seeding value for subsequent ruonds
+        # possible values:
+        #                   1 -> rank (ps/omnium, pursuit)
+        #                   2 -> time (sprint)
+        #                   3 -> info (handicap)
         # TODO: check default, maybe defer to None
         # TODO: IMPORTANT cache result gens for fast recall
         for egroup in autospec.split(';'):
-            _log.debug('Autospec group: ' + repr(egroup))
+            _log.debug('Autospec group: %r', egroup)
             specvec = egroup.split(':')
             if len(specvec) == 2:
                 evno = specvec[0].strip()
@@ -969,27 +965,21 @@ class trackmeet:
                                         seed = ri[infocol]
                                     evplacemap[rank].append([ri[0], seed])
                         else:
-                            _log.debug(
-                                'Event %r not yet final - no starters',
-                                evno)
+                            _log.debug('Event %r not final', evno)
                         #h.destroy()
                         h = None
                         # maintain ordering of autospec
                         for p in placeset:
                             if p in evplacemap:
                                 for ri in evplacemap[p]:
-                                    _log.debug('Adding rider %r(%r) place=%r, evno=%r', ri[0], ri[1], p, evno)
                                     race.addrider(ri[0], ri[1])
                     else:
-                        _log.warning('Autospec event number not found: ' +
-                                     repr(evno))
+                        _log.warning('Autospec event not found: %r', evno)
                     self.autorecurse.remove(evno)
                 else:
-                    _log.debug('Ignoring loop in auto startlist: ' +
-                               repr(evno))
+                    _log.debug('Ignoring loop in auto startlist: %r', evno)
             else:
-                _log.warning('Ignoring erroneous autospec group: ' +
-                             repr(egroup))
+                _log.warning('Ignoring erroneous autospec group: %r', egroup)
 
     def close_event(self):
         """Close the currently opened race."""
@@ -1058,7 +1048,7 @@ class trackmeet:
         try:
             self.finalresult()  # TODO: Call in sep thread
         except Exception as e:
-            _log.error('Error writing result: ' + str(e))
+            _log.error('%s writing result: %s', e.__class__.__name__, e)
             raise
 
     def finalresult(self):
@@ -1072,9 +1062,6 @@ class trackmeet:
                 if nsess != lastsess:
                     sections.append(
                         report.pagebreak(SESSBREAKTHRESH))  # force break
-                    _log.debug('Break between events: ' + repr(e['evid']) +
-                               ' with ' + repr(lastsess) + ' != ' +
-                               repr(nsess))
                 lastsess = nsess
                 if r.evtype in ['break', 'session']:
                     sec = report.section()
@@ -1150,16 +1137,16 @@ class trackmeet:
         try:
             self.printprogram()  # TODO: call from sep thread
         except Exception as e:
-            _log.error('Error writing report: ' + str(e))
+            _log.error('%s writing report: %s', e.__class__.__name__, e)
             raise
 
     def menu_data_update_activate_cb(self, menuitem, data=None):
         """Update meet, session, event and riders in external database."""
         try:
-            _log.info('Exporting data:')
+            _log.info('Exporting data.')
             self.updateindex()  # TODO: push into sep thread
         except Exception as e:
-            _log.error('Error exporting event data: ' + str(e))
+            _log.error('%s exporting event data: %s', e.__class__.__name__, e)
             raise
 
     def updatenexprev(self):
@@ -1364,7 +1351,7 @@ class trackmeet:
                 if dirty:
                     dord.append(key)  # maintains ordering
                     dmap[key] = [e, evno, etype, series, prefix, info, export]
-            _log.debug('Marked ' + str(len(dord)) + ' events dirty')
+            _log.debug('Marked %d events dirty', len(dord))
 
             dirty = {}
             for k in dmap:  # only output dirty events
@@ -1776,7 +1763,6 @@ class trackmeet:
             key = Gdk.keyval_name(event.keyval) or 'None'
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
-                    _log.debug('Got key = %r', key)
                     t = tod.now(chan=str(key), source='MAN')
                     self._timercb(t)
                     return True
@@ -2583,8 +2569,8 @@ class trackmeet:
         t.set_rules_hint(True)
         t.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
         uiutil.mkviewcoltxt(t, 'No.', 0)
-        uiutil.mkviewcoltxt(t, 'Info', 1, expand=True)
-        uiutil.mkviewcoltxt(t, 'Type', 2, expand=True)
+        uiutil.mkviewcoltxt(t, 'Info', 1, expand=True, maxwidth=100)
+        uiutil.mkviewcoltxt(t, 'Type', 2)
         t.show()
         t.connect('button_press_event', self._event_button_press)
         self._elv = t
