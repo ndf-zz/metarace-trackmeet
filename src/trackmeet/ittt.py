@@ -916,7 +916,7 @@ class ittt:
             time = None
             info = None
             cmts = r[COL_COMMENT]
-            if cmts in ['caught', 'rel', 'w/o']:
+            if cmts in ['caught', 'rel', 'w/o', 'lose']:
                 info = cmts
             if self.onestart:
                 pls = r[COL_PLACE]
@@ -947,6 +947,7 @@ class ittt:
         rcount = 0
         pcount = 0
         for r in self.riders:
+            _log.debug('Rider: %r', [c for c in r])
             rcount += 1
             rno = r[COL_BIB]
             rh = self.meet.rdb.get_rider(rno, self.series)
@@ -999,8 +1000,10 @@ class ittt:
                     else:
                         rtime = time.rawtime(2) + '\u2007'
                 elif r[COL_COMMENT]:
-                    rtime = str(r[COL_COMMENT])
-
+                    if r[COL_COMMENT] in ('catch', 'caught'):
+                        rtime = str(r[COL_COMMENT])
+                    elif r[COL_COMMENT] not in ('dns', 'dsq', 'dnf'):
+                        rtime = 'ntr'
             if rank:
                 sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
                 # then add team members if relevant
@@ -1284,20 +1287,19 @@ class ittt:
         for t in self.results:
             bib = t[0].refid
             if t[0] > tod.FAKETIMES['max']:
-                if t[0] == tod.FAKETIMES['dsq']:
-                    place = 'dsq'
-                elif t[0] == tod.FAKETIMES['caught']:
+                if t[0] in (tod.FAKETIMES['caught'], tod.FAKETIMES['lose'],
+                            tod.FAKETIMES['rel'], tod.FAKETIMES['caught']):
                     place = self.results.rank(bib) + 1
-                elif t[0] == tod.FAKETIMES['ntr']:
-                    place = 'ntr'
-                elif t[0] == tod.FAKETIMES['rel']:
-                    place = place + 1
+                    self.onestart = True
+                elif t[0] == tod.FAKETIMES['dsq']:
+                    place = 'dsq'
                 elif t[0] == tod.FAKETIMES['dns']:
                     place = 'dns'
                 elif t[0] == tod.FAKETIMES['dnf']:
                     place = 'dnf'
             else:
                 place = self.results.rank(bib) + 1
+                self.onestart = True
             i = self.getiter(bib)
             if i is not None:
                 if place == 'comment':  # superfluous but ok
