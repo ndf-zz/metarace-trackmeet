@@ -489,7 +489,9 @@ class ittt:
         """Return a startlist report."""
         ret = []
         cnt = 0
-        sec = report.dual_ittt_startlist()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.dual_ittt_startlist(secid)
+        sec.nobreak = True
         sec.showheats = True
         if self.timetype == 'single':
             sec.set_single()
@@ -933,9 +935,13 @@ class ittt:
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
+        slist = self.startlist_report()  # keep for unfinished
+        finriders = set()
         self.placexfer()
         ret = []
-        sec = report.section()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         lapstring = strops.lapstring(self.event['laps'])
@@ -1006,6 +1012,7 @@ class ittt:
                         rtime = 'ntr'
             if rank:
                 sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
+                finriders.add(rno)
                 # then add team members if relevant
                 if 't' in self.series:
                     for trno in strops.riderlist_split(rh['note']):
@@ -1015,17 +1022,32 @@ class ittt:
                             trinf = trh['uciid']
                             sec.lines.append(
                                 [None, trno, trname, trinf, None, None, None])
+        doheats = False
         sv = []
         if substr:
             sv.append(substr)
         if self.onestart:
             if rcount > 0 and pcount < rcount:
                 sv.append('STANDINGS')
+                doheats = True
             else:
                 sv.append('Result')
         sec.subheading = ' - '.join(sv)
 
         ret.append(sec)
+
+        if doheats and not self.difftime:
+            for s in slist:
+                if s.sectionid == secid:  # the startlist
+                    newlines = []
+                    for l in s.lines:
+                        if l[1] not in finriders:
+                            newlines.append(l)
+                    s.lines = newlines
+                    if s.lines:
+                        s.heading = None
+                        s.subheading = 'STARTLIST'
+                        ret.append(s)
 
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
@@ -1751,9 +1773,9 @@ class ittt:
         if sel is not None:
             bib = self.riders.get_value(sel[1], COL_BIB)
             if bib in self.traces:
-                # TODO: replace timy reprint with report
-                _log.info('CREATE AND PRINT TRACE REPORT')
-                sec = report.preformat_text()
+                secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
+                sec = report.preformat_text(secid)
+                sec.nobreak = True
                 sec.lines = self.traces[bib]
                 self.meet.print_report([sec], 'Timing Trace')
 

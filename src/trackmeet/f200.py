@@ -276,8 +276,9 @@ class f200:
                 nr[3] = dbr['org']
             nri = self.riders.append(nr)
             self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
-            if cr.has_option('traces', r):
-                self.traces[r] = cr.get('traces', r)
+            if not self.readonly:
+                if cr.has_option('traces', r):
+                    self.traces[r] = cr.get('traces', r)
         self.placexfer()
 
         # re-join an existing timer state
@@ -451,7 +452,9 @@ class f200:
         """Return a startlist report."""
         ret = []
         cnt = 0
-        sec = report.dual_ittt_startlist()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.dual_ittt_startlist(secid)
+        sec.nobreak = True
         sec.set_single()  # 200s are one-up
 
         headvec = [
@@ -690,9 +693,13 @@ class f200:
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
+        slist = self.startlist_report()  # keep for unfinished
+        finriders = set()
         self.placexfer()
         ret = []
-        sec = report.section()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         lapstring = strops.lapstring(self.event['laps'])
@@ -752,17 +759,33 @@ class f200:
 
             if rank:
                 sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
+                finriders.add(rno)
+        doheats = False
         sv = []
         if substr:
             sv.append(substr)
         if self.onestart:
             if rcount > 0 and pcount < rcount:
                 sv.append('STANDINGS')
+                doheats = True
             else:
                 sv.append('Result')
         sec.subheading = ' - '.join(sv)
 
         ret.append(sec)
+
+        if doheats:
+            for s in slist:
+                if s.sectionid == secid:  # the startlist
+                    newlines = []
+                    for l in s.lines:
+                        if l[1] not in finriders:
+                            newlines.append(l)
+                    s.lines = newlines
+                    if s.lines:
+                        s.heading = None
+                        s.subheading = 'STARTLIST'
+                        ret.append(s)
 
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
@@ -1269,8 +1292,11 @@ class f200:
         if sel is not None:
             bib = self.riders.get_value(sel[1], COL_BIB)
             if bib in self.traces:
-                # TODO: replace timy reprint with report
-                _log.info('CREATE AND PRINT TRACE REPORT')
+                secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
+                sec = report.preformat_text(secid)
+                sec.nobreak = True
+                sec.lines = self.traces[bib]
+                self.meet.print_report([sec], 'Timing Trace')
 
     def now_button_clicked_cb(self, button, entry=None):
         """Set specified entry to the current time."""

@@ -499,10 +499,12 @@ class race:
         sec = None
         etype = self.event['type']
         twocol = True
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if not self.inomnium and not program and etype in ['axe', 'run']:
-            sec = report.section('startlist')  # one column overrides
+            sec = report.section('secid')  # one column overrides
         else:
-            sec = report.twocol_startlist('startlist')
+            sec = report.twocol_startlist('secid')
+        sec.nobreak = True
         headvec = []
         if etype != 'break':
             headvec.extend(['Event', self.evno, ':'])
@@ -1227,7 +1229,9 @@ class race:
         """Return a list of report sections containing the race result."""
         self.placexfer(self.ctrl_places.get_text())
         ret = []
-        sec = report.section('result')
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         sec.lines = []

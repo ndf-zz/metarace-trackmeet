@@ -1227,8 +1227,12 @@ class trackmeet:
                     if eh['type'] in ['break', 'session']:
                         evno = None
                     referno = evno
+                    target = None
                     if eh['refe']:  # overwrite ref no, even on specials
                         referno = eh['refe']
+                        if referno != evno:
+                            target = 'ev-' + str(evno).translate(
+                                strops.WEBFILE_UTRANS)
                     linkfile = None
                     if referno:
                         linkfile = 'event_' + str(referno).translate(
@@ -1237,7 +1241,8 @@ class trackmeet:
                     extra = None  # STATUS INFO -> progress?
                     if eh['evov'] is not None and eh['evov'] != '':
                         evno = eh['evov'].strip()
-                    sec.lines.append([evno, None, descr, extra, linkfile])
+                    sec.lines.append(
+                        [evno, None, descr, extra, linkfile, target])
                     erec = {
                         'no': referno,
                         'prefix': eh['prefix'],
@@ -1394,6 +1399,7 @@ class trackmeet:
 
                 if self.mirrorpath and doexport:
                     orep = report.report()
+                    orep.showcard = False
                     self.report_strings(orep)
                     orep.strings['subtitle'] = evstr
                     orep.strings['docstr'] = evstr

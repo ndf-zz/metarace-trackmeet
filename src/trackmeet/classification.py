@@ -99,7 +99,9 @@ class classification:
     def startlist_report(self, program=False):
         """Return a startlist report."""
         ret = []
-        sec = report.section()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
         headvec = [
             'Event', self.evno, ':', self.event['pref'], self.event['info']
         ]
@@ -172,7 +174,9 @@ class classification:
         ret = []
 
         # start with the overall result
-        sec = report.section()
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
         if recurse:
             sec.heading = ' '.join([self.event['pref'],
                                     self.event['info']]).strip()

@@ -417,10 +417,12 @@ class sprnd:
     def startlist_report(self, program=False):
         """Return a startlist report."""
         ret = []
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if self.event['type'] == 'sprint final':
-            sec = report.sprintfinal()
+            sec = report.sprintfinal(secid)
         else:
-            sec = report.sprintround()
+            sec = report.sprintround(secid)
+        sec.nobreak = True
         headvec = [
             'Event', self.evno, ':', self.event['pref'], self.event['info']
         ]
@@ -1127,10 +1129,12 @@ class sprnd:
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
         ret = []
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if self.event['type'] == 'sprint final':
-            sec = report.sprintfinal()
+            sec = report.sprintfinal(secid)
         else:
-            sec = report.sprintround()
+            sec = report.sprintround(secid)
+        sec.nobreak = True
         sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
             [self.event['pref'], self.event['info']]).strip()
         sec.lines = []
