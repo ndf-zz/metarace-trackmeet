@@ -1324,6 +1324,34 @@ class trackmeet:
         finally:
             self.exportlock.release()
 
+    def check_depends_dirty(self, evno, checked=None):
+        """Recursively determine event dependencies"""
+        _log.debug('depends: evno=%r, checked=%r', evno, checked)
+        if checked is None:
+            checks = set()
+        else:
+            checks = set(checked)
+        checks.add(evno)
+
+        ev = self.edb[evno]
+
+        # scan any dependencies
+        for dev in ev['depe'].split():
+            if ev['dirty']:
+                # other dirty dependencies will be collected by caller
+                break
+            if dev in checks:
+                _log.debug('Circular dependency ignored')
+            else:
+                dep = self.check_depends_dirty(dev, checks)
+                checks.add(dev)
+                if dep:
+                    ev['dirty'] = True
+                    _log.debug('depends: %r set dirty by depend %r', evno, dev)
+
+        _log.debug('depends: %r returns %r', evno, ev['dirty'])
+        return ev['dirty']
+
     def __run_data_export(self):
         try:
             _log.debug('Exporting race info')
@@ -1342,12 +1370,7 @@ class trackmeet:
                 info = e['info']
                 export = e['resu']
                 key = evno  # no need to concat series, evno is unique
-                dirty = e['dirt']
-                if not dirty:  # check for any dependencies
-                    for dev in e['depe'].split():
-                        if dev in dmap:
-                            dirty = True
-                            break
+                dirty = self.check_depends_dirty(evno)
                 if dirty:
                     dord.append(key)  # maintains ordering
                     dmap[key] = [e, evno, etype, series, prefix, info, export]
