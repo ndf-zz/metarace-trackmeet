@@ -330,7 +330,7 @@ class ittt:
         self.update_expander_lbl_cb()
         self.info_expand.set_expanded(
             strops.confopt_bool(cr.get('event', 'showinfo')))
-        self.showcats = strops.confopt_bool(cr.get('event', 'showcats'))
+        self.showcats = cr.get_bool('event', 'showcats')
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 3  # read seeding from points standing
@@ -984,6 +984,8 @@ class ittt:
                     rcat = rh['cat']
             if rh['uciid']:
                 rcat = rh['uciid']  # overwrite by force
+            if self.showcats:
+                rcat = rh.primary_cat()
             info = None
             dtime = None
             if self.onestart:

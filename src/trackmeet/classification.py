@@ -63,10 +63,13 @@ class classification:
 
     def loadconfig(self):
         """Load race config from disk."""
+        findsource = False
+
         cr = jsonconfig.config({
             'event': {
                 'id': EVENT_ID,
                 'showinfo': True,
+                'showcats': False,
                 'showevents': '',
                 'decisions': [],
                 'placesrc': '',
@@ -83,9 +86,72 @@ class classification:
         else:
             _log.info('%r not found, loading defaults', self.configfile)
 
+        if self.event['info'] == 'Omnium':
+            # pre-load source events by searching event db unless config'd
+            if not cr.get('event', 'placesrc'):
+                cr.set('event', 'medals', 'Gold Silver Bronze')
+                sources = {
+                    'Scratch': None,
+                    'Tempo': None,
+                    'Elimination': None,
+                    'Points': None
+                }
+                mycat = self.event['prefix']
+                for e in self.meet.edb:
+                    if e['prefix'] == mycat and e['info'] in sources:
+                        sources[e['info']] = e['evid']
+                        _log.debug('Found event %s for %s', e['evid'],
+                                   e['info'])
+                if sources['Points'] is not None:
+                    _log.debug('Using event %s for classification places',
+                               sources['Points'])
+                    cr.set('event', 'placesrc',
+                           '%s:1-24' % (sources['Points'], ))
+                showevts = []
+                revevt = {}
+                for sid in ('Scratch', 'Tempo', 'Elimination', 'Points'):
+                    if sources[sid] is not None:
+                        showevts.append(sources[sid])
+                        revevt[sources[sid]] = sid
+                if showevts:
+                    _log.debug('Using %r as show events list', showevts)
+                    evtlist = ' '.join(showevts)
+                    cr.set('event', 'showevents', evtlist)
+                    self.event['depends'] = evtlist
+                    for sid in showevts:
+                        try:
+                            # while here - visit event config to update omnium flag
+                            config = self.meet.event_configfile(sid)
+                            ecr = jsonconfig.config()
+                            ecr.add_section('event')
+                            ecr.load(config)
+                            ecr.set('event', 'inomnium', True)
+                            stype = revevt[sid]
+                            if stype == 'Points':
+                                startevid = sources['Scratch']
+                                if startevid is not None:
+                                    ecr.set('event', 'autospec',
+                                            '%s:1-24' % (startevid, ))
+                            elif stype in ('Tempo', 'Elimination'):
+                                startevid = sources['Points']
+                                if startevid is not None:
+                                    ecr.set('event', 'autospec',
+                                            '%s:1-24' % (startevid, ))
+                            _log.debug('Saving event %s config file %s', sid,
+                                       config)
+                            with metarace.savefile(config) as f:
+                                ecr.write(f)
+                        except Excpetion as e:
+                            _log.error('%s updating config: %s',
+                                       e.__class__.__name__, e)
+                cr.set('event', 'showinfo', False)
+            else:
+                _log.debug('Omnium already configured')
+
         self.update_expander_lbl_cb()
         self.info_expand.set_expanded(
             strops.confopt_bool(cr.get('event', 'showinfo')))
+        self.showcats = cr.get_bool('event', 'showcats')
 
         self.showevents = cr.get('event', 'showevents')
         self.placesrc = cr.get('event', 'placesrc')
@@ -145,6 +211,7 @@ class classification:
         cw.set('event', 'medals', self.medals)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'showinfo', self.info_expand.get_expanded())
+        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
@@ -218,6 +285,10 @@ class classification:
                     if rh['uciid']:
                         rcat = rh['uciid']  # overwrite by force
 
+                    # overwrite info if showcats true
+                    if self.showcats:
+                        rcat = rh.primary_cat()
+
                     # consider partners here
                     if rh['cat'] and 'tandem' in rh['cat'].lower():
                         ph = self.meet.rdb.get_rider(rh['note'], self.series)
@@ -247,7 +318,6 @@ class classification:
             nrow = [rank, rno, rname, rcat, None, medal, plink]
             sec.lines.append(nrow)
             if 't' in self.series:
-                #for trno in strops.reformat_riderlist(rh[u'note']).split():
                 for trno in strops.riderlist_split(rh['note']):
                     trh = self.meet.rdb.get_rider(trno, self.series)
                     if trh is not None:
@@ -626,6 +696,7 @@ class classification:
 
         # race run time attributes
         self.onestart = True  # always true for autospec classification
+        self.showcats = False  # show primary category on result
         self.readonly = not ui
         self.winopen = ui
         self.placesrc = ''

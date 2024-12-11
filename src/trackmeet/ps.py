@@ -54,8 +54,18 @@ RES_COL_FINAL = 9
 RES_COL_INFO = 10
 RES_COL_STPTS = 11
 
-# scb consts
+# common sprint lap setups (loaded in omnium init)
+COMMON_SPRINTS = {
+    6: '4 2 0',
+    12: '9 6 3 0',
+    20: '15 10 5 0',
+    30: '25 20 15 10 5 0',
+    40: '30 20 10 0',
+    60: '50 40 30 20 10 0',
+    80: '70 60 50 40 30 20 10 0',
+}
 
+# scb consts
 SPRINT_PLACE_DELAY = 3  # 3 seconds per place
 SPRINT_PLACE_DELAY_MAX = 11  # to a maximum of 11
 
@@ -104,12 +114,19 @@ class ps:
         defsprintlaps = ''
         defscoretype = 'points'
         defmasterslaps = 'No'
+        tempopoints = False
+        findsource = False
         if self.evtype == 'madison':
             defscoretype = 'madison'
             defmasterslaps = 'No'
+        elif self.evtype == 'tempo':
+            definomnium = True
+            tempopoints = True
         elif self.evtype == 'omnium':
             definomnium = True
             defsprintlaps = 'scr tmp elm'
+            if self.event['laps'] and self.event['laps'] in COMMON_SPRINTS:
+                defsprintlaps += ' ' + COMMON_SPRINTS[self.event['laps']]
             self.laplabels = {
                 'scr': 'Scratch',
                 'tmp': 'Tempo',
@@ -123,11 +140,13 @@ class ps:
                 'elm':
                 '40 38 36 34 32 30 28 26 24 22 20 18 16 14 12 10 8 6 4 2 1 1 1 1 1 1',
             }
+            findsource = True
 
         cr = jsonconfig.config({
             'event': {
                 'startlist': '',
                 'id': EVENT_ID,
+                'showcats': False,
                 'start': None,
                 'lstart': None,
                 'finish': None,
@@ -155,6 +174,7 @@ class ps:
         self.inomnium = cr.get_bool('event', 'inomnium')
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
+        self.showcats = cr.get_bool('event', 'showcats')
 
         for r in cr.get('event', 'startlist').split():
             nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0]
@@ -192,14 +212,60 @@ class ps:
         self.autospec = cr.get('event', 'autospec')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
-        self.runlap = cr.get_posint('event', 'runlap')
-        self.masterslaps = cr.get_bool('event', 'masterslaps')
         # override laps from event listings
         if not self.onestart and self.event['laps']:
             self.units = 'laps'
             self.distance = strops.confopt_posint(self.event['laps'],
                                                   self.distance)
+            if tempopoints:
+                neutral = 4
+                if self.distance < 6:
+                    neutral = 1
+                elif self.distance < 12:
+                    neutral = 2
+                fl = self.distance - (neutral + 1)
 
+                # pre-populate config if not present
+                slt = cr.get('event', 'sprintlaps')
+                if fl >= 0 and not slt:
+                    sp = []
+                    while True:
+                        sid = str(fl)
+                        sp.append(sid)
+                        cr.set('sprintpoints', sid, '1')
+                        fl -= 1
+                        if fl < 0:
+                            break
+                    _log.debug('Auto-add tempo points: %r', sp)
+                    cr.set('event', 'sprintlaps', ' '.join(sp))
+                else:
+                    _log.debug('Sprint points already defined, tempo skipped')
+
+            if self.distance > 40:
+                _log.debug('Awarding double points on final sprint')
+                cr.set('sprintpoints', '0', '10 6 4 2')
+            else:
+                _log.debug('Gain/Lose 10pts per lap')
+                cr.set('event', 'masterslaps', True)
+
+        if findsource:
+            # search event db for source events unless already config'd
+            mycat = self.event['prefix']
+            for sid in ('scr', 'tmp', 'elm'):
+                if not cr.has_option('sprintsource', sid):
+                    infostr = self.laplabels[sid]
+                    for e in self.meet.edb:
+                        if e['prefix'] == mycat and e['info'] == infostr:
+                            _log.debug('Found match for %s source: %s %s %s',
+                                       sid, e['evid'], e['prefix'], e['info'])
+                            cr.set('sprintsource', sid,
+                                   '%s:1-24' % (e['evid'], ))
+                            break
+                else:
+                    _log.debug('Sprint source already defined for %r', sid)
+
+        self.runlap = cr.get_posint('event', 'runlap')
+        self.masterslaps = cr.get_bool('event', 'masterslaps')
         self.reset_lappoints()
         slt = cr.get('event', 'sprintlaps')
         self.sprintlaps = strops.reformat_biblist(slt)
@@ -301,6 +367,7 @@ class ps:
         cw.set('event', 'masterslaps', self.masterslaps)
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
+        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
         cw.set('event', 'decisions', self.decisions)
 
@@ -415,6 +482,8 @@ class ps:
                 rcat = None
             if rh is not None and rh['ucicode']:
                 rcat = rh['ucicode']  # overwrite by force
+            if self.showcats and rh is not None:
+                rcat = rh.primary_cat()
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
                 if r[RES_COL_PLACE].isdigit():
@@ -1981,6 +2050,7 @@ class ps:
         self.autospec = ''
         self.finished = False
         self.inomnium = False
+        self.showcats = False
         self.seedsrc = None
 
         # data models
