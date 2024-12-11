@@ -43,7 +43,7 @@ from . import ittt
 from . import sprnd
 from . import classification
 
-VERSION = '1.13.0'
+VERSION = '1.13.1'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG
 CONFIGFILE = 'config.json'
@@ -361,21 +361,21 @@ _EVENT_SCHEMA = {
 def mkrace(meet, event, ui=True):
     """Return a race object of the correct type."""
     ret = None
-    etype = event[u'type']
+    etype = event['type']
     if etype in [
             'indiv tt', 'indiv pursuit', 'pursuit race', 'team pursuit',
             'team pursuit race'
     ]:
         ret = ittt.ittt(meet, event, ui)
-    elif etype in [u'points', u'madison', u'omnium']:
+    elif etype in ['points', 'madison', 'omnium', 'tempo']:
         ret = ps.ps(meet, event, ui)
-    elif etype == u'classification':
+    elif etype == 'classification':
         ret = classification.classification(meet, event, ui)
-    elif etype in [u'flying 200', u'flying lap']:
+    elif etype in ['flying 200', 'flying lap']:
         ret = f200.f200(meet, event, ui)
     ##elif etype in [u'hour']:
     ##ret = hour.hourrec(meet, event, ui)
-    elif etype in [u'sprint round', u'sprint final']:
+    elif etype in ['sprint round', 'sprint final']:
         ret = sprnd.sprnd(meet, event, ui)
     ##elif etype in [u'aggregate']:
     ##ret = aggregate.aggregate(meet, event, ui)
@@ -1187,7 +1187,7 @@ class trackmeet:
             orep.strings['docstr'] = ''
             orep.strings['subtitle'] = self.subtitle
             orep.set_provisional(self.provisional)  # ! TODO
-            orep.shortname = self.title
+            orep.shortname = self.shortname
             orep.indexlink = '/'
             if self.provisional:
                 orep.reportstatus = 'provisional'
@@ -1218,10 +1218,22 @@ class trackmeet:
                 'organiser': self.organiser,
                 'events': {}
             }
+            rsec = report.event_index('resultindex')
+            rsec.heading = 'Results'
             sec = report.event_index('eventindex')
             sec.heading = 'Index of Events'
             #sec.subheading = Date?
             for eh in self.edb:
+                if eh['result']:  # include in result?
+                    referno = eh['evid']
+                    linkfile = None
+                    if referno:
+                        linkfile = 'event_' + str(referno).translate(
+                            strops.WEBFILE_UTRANS)
+                    descr = ' '.join([eh['pref'], eh['info']]).strip()
+                    extra = None  # STATUS INFO -> progress?
+                    rsec.lines.append(['', None, descr, extra, linkfile, None])
+
                 if eh['inde']:  # include in index?
                     evno = eh['evid']
                     if eh['type'] in ['break', 'session']:
@@ -1257,6 +1269,7 @@ class trackmeet:
                         erec['startlist'] = linkfile + '_startlist.json'
                         erec['result'] = linkfile + '_result.json'
                     pdata['events'][eh['evid']] = erec
+            orep.add_section(rsec)
             orep.add_section(sec)
             basename = 'index'
             ofile = os.path.join(EXPORTPATH, basename + '.html')
@@ -2265,7 +2278,7 @@ class trackmeet:
             if evno in self.edb:
                 ref = self.edb[evno]
             else:
-                _log.error(u'Event %r in view not found in model', evno)
+                _log.error('Event %r in view not found in model', evno)
         return ref
 
     def event_popup_edit_cb(self, menuitem, data=None):
@@ -2305,7 +2318,7 @@ class trackmeet:
         cnt = sel.count_selected_rows()
         # check for one selected
         if cnt == 0:
-            _log.debug(u'No rows selected for result')
+            _log.debug('No rows selected for result')
             return False
 
         # convert model iters into a list of event numbers
@@ -2321,7 +2334,7 @@ class trackmeet:
         cnt = sel.count_selected_rows()
         # check for one selected
         if cnt == 0:
-            _log.debug(u'No rows selected for result')
+            _log.debug('No rows selected for result')
             return False
 
         # convert model iters into a list of event numbers
@@ -2337,7 +2350,7 @@ class trackmeet:
         cnt = sel.count_selected_rows()
         # check for one selected
         if cnt == 0:
-            _log.debug(u'No rows selected for result')
+            _log.debug('No rows selected for result')
             return False
 
         # convert model iters into a list of event numbers
@@ -2357,7 +2370,7 @@ class trackmeet:
         cnt = sel.count_selected_rows()
         # check for one selected
         if cnt == 0:
-            _log.debug(u'No rows selected for delete')
+            _log.debug('No rows selected for delete')
             return False
 
         # convert model iters into a list of event numbers
@@ -2376,7 +2389,7 @@ class trackmeet:
 
         if uiutil.questiondlg(self.window, 'Delete events?', msg):
             for evt in elist:
-                _log.debug(u'Deleting event %r', evt)
+                _log.debug('Deleting event %r', evt)
                 del (self.edb[evt])
             self._ecb(None)
 
