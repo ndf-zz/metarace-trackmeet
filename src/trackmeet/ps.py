@@ -120,7 +120,6 @@ class ps:
             defscoretype = 'madison'
             defmasterslaps = 'No'
         elif self.evtype == 'tempo':
-            definomnium = True
             tempopoints = True
         elif self.evtype == 'omnium':
             definomnium = True
