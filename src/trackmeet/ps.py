@@ -703,6 +703,8 @@ class ps:
             if self.inomnium:
                 # inf holds seed, ignore for now
                 inf = None
+                if self.showcats and rh is not None:
+                    inf = rh.primary_cat()
             # layout needs adhjustment
             #if rh[u'ucicode']:
             #inf = rh[u'ucicode']   # overwrite by force

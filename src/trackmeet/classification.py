@@ -89,6 +89,7 @@ class classification:
         if self.event['info'] == 'Omnium':
             # pre-load source events by searching event db unless config'd
             if not cr.get('event', 'placesrc'):
+                cr.set('event', 'showcats', True)
                 cr.set('event', 'medals', 'Gold Silver Bronze')
                 sources = {
                     'Scratch': None,
@@ -126,6 +127,7 @@ class classification:
                             ecr.add_section('event')
                             ecr.load(config)
                             ecr.set('event', 'inomnium', True)
+                            ecr.set('event', 'showcats', True)
                             stype = revevt[sid]
                             if stype == 'Points':
                                 startevid = sources['Scratch']

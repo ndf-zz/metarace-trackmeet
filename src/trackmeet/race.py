@@ -259,6 +259,7 @@ class race:
             'event': {
                 'startlist': '',
                 'id': EVENT_ID,
+                'showcats': False,
                 'ctrl_places': '',
                 'eliminated': [],
                 'start': None,
@@ -284,6 +285,8 @@ class race:
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
+        self.showcats = cr.get_bool('event', 'showcats')
+
         self.autospec = cr.get('event', 'autospec')
         rlist = cr.get('event', 'startlist').split()
         for r in rlist:
@@ -537,6 +540,8 @@ class race:
             if self.inomnium:
                 # inf holds seed, ignore for now
                 inf = None
+                if self.showcats and rh is not None:
+                    inf = rh.primary_cat()
             rname = ''
             if rh is not None:
                 rname = rh.resname()
@@ -602,6 +607,7 @@ class race:
             cw.set('event', 'runlap', self.runlap)
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
+        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'startplace', self.startplace)
 
@@ -1270,6 +1276,8 @@ class race:
                 inf = None
             if self.evtype != 'handicap' and rh is not None and rh['ucicode']:
                 inf = rh['ucicode']  # overwrite by force
+            if self.showcats and rh is not None:
+                inf = rh.primary_cat()
             if plstr:  # don't emit a row for unplaced riders
                 if not first:
                     sec.lines.append([plstr, rno, rname, inf, None, None])
@@ -1369,6 +1377,7 @@ class race:
         self.startplace = 0  # offset to first place in this race (hack)
         self.autospec = ''  # automatic startlist
         self.inomnium = False
+        self.showcats = False
         self.seedsrc = None
         self.doscbplaces = True  # auto show result on scb
         self.reorderflag = 0
