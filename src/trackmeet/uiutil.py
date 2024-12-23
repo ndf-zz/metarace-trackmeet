@@ -20,7 +20,7 @@ from metarace import tod
 from metarace import strops
 from metarace.jsonconfig import config
 from metarace.riderdb import rider
-from metarace.eventdb import event
+from .eventdb import event
 
 _log = logging.getLogger('uiutil')
 _log.setLevel(logging.DEBUG)

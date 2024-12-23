@@ -23,7 +23,6 @@ from gi.repository import Gdk
 
 from metarace import jsonconfig
 from metarace import tod
-from metarace import eventdb
 from metarace import riderdb
 from metarace import strops
 from metarace import report
