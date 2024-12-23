@@ -226,6 +226,22 @@ _CONFIG_SCHEMA = {
         'hint': 'Event code saved in reports',
         'attr': 'eventcode',
     },
+    'indexlink': {
+        'prompt': 'Index link:',
+        'hint': 'Meet-level link to parent folder',
+        'attr': 'indexlink',
+        'default': '../',
+    },
+    'prevlink': {
+        'prompt': 'Previous link:',
+        'hint': 'Meet-level link to previous on index of events',
+        'attr': 'prevlink',
+    },
+    'nextlink': {
+        'prompt': 'Next link:',
+        'hint': 'Meet-level link to next on index of events',
+        'attr': 'nextlink',
+    },
     # deprecated config elements
     'linkbase': {
         'attr': 'linkbase',
@@ -952,7 +968,9 @@ class trackmeet:
                         ## load the place set map rank -> [[rider,seed],..]
                         h = mkrace(self, e, False)
                         h.loadconfig()
-                        if h.finished:
+                        # Source is finished or omnium and dest not class
+                        if h.finished or (h.evtype == 'omnium'
+                                          and race.evtype != 'classification'):
                             for ri in h.result_gen():
                                 if isinstance(ri[1],
                                               int) and ri[1] in placeset:
@@ -1188,7 +1206,12 @@ class trackmeet:
             orep.strings['subtitle'] = self.subtitle
             orep.set_provisional(self.provisional)  # ! TODO
             orep.shortname = self.shortname
-            orep.indexlink = '/'
+            if self.indexlink:
+                orep.indexlink = self.indexlink
+            if self.nextlink:
+                orep.nextlink = self.nextlink
+            if self.prevlink:
+                orep.prevlink = self.prevlink
             if self.provisional:
                 orep.reportstatus = 'provisional'
             else:
@@ -1224,7 +1247,8 @@ class trackmeet:
             sec.heading = 'Index of Events'
             #sec.subheading = Date?
             for eh in self.edb:
-                if eh['result']:  # include in result?
+                if eh['result'] and eh[
+                        'type'] == 'classification':  # include in result?
                     referno = eh['evid']
                     linkfile = None
                     if referno:
@@ -1269,8 +1293,10 @@ class trackmeet:
                         erec['startlist'] = linkfile + '_startlist.json'
                         erec['result'] = linkfile + '_result.json'
                     pdata['events'][eh['evid']] = erec
-            orep.add_section(rsec)
-            orep.add_section(sec)
+            if rsec.lines:
+                orep.add_section(rsec)
+            if sec.lines:
+                orep.add_section(sec)
             basename = 'index'
             ofile = os.path.join(EXPORTPATH, basename + '.html')
             with metarace.savefile(ofile) as f:
@@ -2486,6 +2512,9 @@ class trackmeet:
         self.mirrorcmd = None
         self.shortname = ''
         self.eventcode = ''
+        self.indexlink = '../'
+        self.prevlink = None
+        self.nextlink = None
         self.linkbase = '.'
 
         # printer preferences
