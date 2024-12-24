@@ -502,11 +502,13 @@ class race:
         sec = None
         etype = self.event['type']
         twocol = True
+        rankcol = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if not self.inomnium and not program and etype in ['axe', 'run']:
-            sec = report.section('secid')  # one column overrides
+            sec = report.section(secid)  # one column overrides
         else:
-            sec = report.twocol_startlist('secid')
+            sec = report.twocol_startlist(secid)
+
         sec.nobreak = True
         headvec = []
         if etype != 'break':
@@ -515,6 +517,8 @@ class race:
         headvec.append(self.event['info'])
         if not program:
             headvec.append('- Start List')
+        else:
+            rankcol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join([lapstring, self.event['dist'],
@@ -540,25 +544,44 @@ class race:
             if self.inomnium:
                 # inf holds seed, ignore for now
                 inf = None
-                if self.showcats and rh is not None:
-                    inf = rh.primary_cat()
+            if self.showcats and rh is not None:
+                inf = rh.primary_cat()
             rname = ''
             if rh is not None:
                 rname = rh.resname()
             if self.inomnium:
                 if cnt % 2 == 1:
-                    sec.lines.append([None, rno, rname, inf, None, None])
+                    sec.lines.append([rankcol, rno, rname, inf, None, None])
                 else:
-                    col2.append([None, rno, rname, inf, None, None])
+                    col2.append([rankcol, rno, rname, inf, None, None])
             else:
-                sec.lines.append([None, rno, rname, inf, None, None])
+                sec.lines.append([rankcol, rno, rname, inf, None, None])
         for i in col2:
             sec.lines.append(i)
         if self.event['plac']:
             while cnt < self.event['plac']:
-                sec.lines.append([None, None, None, None, None, None])
+                sec.lines.append([rankcol, None, None, None, None, None])
                 cnt += 1
 
+        # Prizemoney line
+        pvec = []
+        if self.event['prizemoney']:
+            count = 0
+            for place in self.event['prizemoney'].split():
+                count += 1
+                if place.isdigit():
+                    placeval = int(place)
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s $%d: ____' % (rank, placeval))
+                elif place == '-':
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s: ____' % (rank, ))
+                else:
+                    pvec.append('%s: ____' % (place, ))
+        if pvec:
+            sec.prizes = '\u2003'.join(pvec)
+
+        # Footer line
         fvec = []
         ptype = 'Riders'
         if etype == 'run':
@@ -569,6 +592,8 @@ class race:
             fvec.append('Total %s: %d' % (ptype, cnt))
         if self.event['reco']:
             fvec.append(self.event['reco'])
+        if self.event['sponsor']:
+            fvec.append('Sponsor: ' + self.event['sponsor'])
 
         if fvec:
             sec.footer = '\u2003'.join(fvec)

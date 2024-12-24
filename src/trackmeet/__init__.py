@@ -134,6 +134,15 @@ _CONFIG_SCHEMA = {
         'attr': 'provisional',
         'default': True,
     },
+    'riderlist': {
+        'prompt': 'Rider List:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Include?',
+        'hint': 'Include list of riders on program of events',
+        'attr': 'riderlist',
+        'default': False,
+    },
     'communiques': {
         'prompt': 'Communiqu\u00e9s:',
         'control': 'check',
@@ -382,7 +391,7 @@ def mkrace(meet, event, ui=True):
             'team pursuit race'
     ]:
         ret = ittt.ittt(meet, event, ui)
-    elif etype in ['points', 'madison', 'omnium', 'tempo']:
+    elif etype in ['points', 'madison', 'omnium', 'tempo', 'progressive']:
         ret = ps.ps(meet, event, ui)
     elif etype == 'classification':
         ret = classification.classification(meet, event, ui)
@@ -548,11 +557,12 @@ class trackmeet:
                      docstr='',
                      prov=False,
                      doprint=True,
-                     exportfile=None):
+                     exportfile=None,
+                     template=None):
         """Print the supplied sections in a standard report."""
         _log.info('Printing report %s %s', subtitle, docstr)
 
-        rep = report.report()
+        rep = report.report(template)
         rep.provisional = prov
         self.report_strings(rep)
         rep.strings['subtitle'] = (self.subtitle + ' ' + subtitle).strip()
@@ -646,6 +656,7 @@ class trackmeet:
         #       allows for creation of reports manually crafted.
         secs = []
         reptypestr = reptype.title()
+        template = None
         lsess = None
         for eno in evlist:
             e = self.edb[eno]
@@ -662,6 +673,7 @@ class trackmeet:
                 # from event list only include the individual events
                 secs.extend(h.result_report(recurse=False))
             elif reptype == 'program':
+                template = 'program'
                 reptypestr = 'Program of Events'
                 secs.extend(h.startlist_report(True))  # startlist in program
             else:
@@ -680,7 +692,8 @@ class trackmeet:
                 ##secs.append(msgsec)
             self.print_report(secs,
                               docstr=reptypestr,
-                              exportfile='trackmeet_' + reptype)
+                              exportfile='trackmeet_' + reptype,
+                              template=template)
         else:
             _log.info('%r callback: Nothing to report', reptype)
         return False
@@ -1106,7 +1119,8 @@ class trackmeet:
                           exportfile=filebase.translate(strops.WEBFILE_UTRANS))
 
     def printprogram(self):
-        r = report.report()
+        template = 'program_template.json'
+        r = report.report(template)
         subtitlestr = 'Program of Events'
         if self.subtitle:
             subtitlestr = self.subtitle + ' - ' + subtitlestr
@@ -1115,6 +1129,46 @@ class trackmeet:
         r.strings['subtitle'] = subtitlestr
 
         r.set_provisional(self.provisional)
+
+        # add coverpage
+        pass
+
+        # add rider listing
+        if self.riderlist:
+            seccount = 0
+            for series in self.rdb.listseries():
+                secid = 'riders'
+                if series:
+                    secid += series
+                sec = report.twocol_startlist(secid)
+                sec.nobreak = True
+                smeta = self.rdb.get_rider(series, 'series')
+                if smeta is not None:
+                    sec.heading = smeta['title']
+                    sec.subheading = smeta['subtitle']
+                    sec.footer = smeta['footer']
+                aux = []
+                count = 0
+                for rid in self.rdb.biblistfromseries(series):
+                    nr = self.rdb.get_rider(rid)
+                    if nr is not None:
+                        rno = strops.bibstr_key(nr['no'])
+                        aux.append((
+                            rno,
+                            count,
+                            nr,
+                        ))
+                    else:
+                        _log.warning('Missing details for rider %s', rid)
+                aux.sort()
+                for sr in aux:
+                    rh = sr[2]
+                    sec.lines.append(('', rh['no'], rh.resname(),
+                                      rh.primary_cat(), None, None))
+                r.add_section(sec)
+                seccount += 1
+            if seccount > 0:
+                r.add_section(report.pagebreak(0.01))
 
         cursess = None
         for e in self.edb:
@@ -2500,6 +2554,7 @@ class trackmeet:
         self.showevno = True
         self.provisional = False
         self.communiques = False
+        self.riderlist = False
         self.nextlinks = {}
         self.prevlinks = {}
         self.commalloc = {}

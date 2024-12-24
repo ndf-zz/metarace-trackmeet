@@ -11,7 +11,8 @@ from metarace import strops
 _log = logging.getLogger('eventdb')
 _log.setLevel(logging.DEBUG)
 
-# Note: These are for the trackmeet module, roadmeet re-defines race types
+## TODO: config schema
+
 defracetypes = [
     'sprint',
     'keirin',
@@ -24,6 +25,7 @@ defracetypes = [
     'madison',
     'omnium',
     'tempo',
+    'progressive',
     'classification',
     'hour',
     'competition',
@@ -68,7 +70,9 @@ EVENT_COLUMNS = {
     'prog': "Progression Rules String",
     'reco': "Record String",
     'dirt': "Dirty?",
-    'evov': "EVOverride"
+    'evov': "EVOverride",
+    'spon': "Sponsor",
+    'priz': "Prizemoney",
 }
 
 # for any non-strings, types as listed
@@ -84,7 +88,7 @@ EVENT_COLUMN_CONVERTERS = {
 DEFAULT_COLUMN_ORDER = [
     'evid', 'refe', 'pref', 'info', 'seri', 'type', 'star', 'depe', 'resu',
     'inde', 'prin', 'plac', 'sess', 'laps', 'dist', 'prog', 'evov', 'reco',
-    'dirt'
+    'spon', 'priz', 'dirt'
 ]
 
 

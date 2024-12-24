@@ -115,12 +115,15 @@ class ps:
         defscoretype = 'points'
         defmasterslaps = 'No'
         tempopoints = False
+        progressivepoints = False
         findsource = False
         if self.evtype == 'madison':
             defscoretype = 'madison'
             defmasterslaps = 'No'
         elif self.evtype == 'tempo':
             tempopoints = True
+        elif self.evtype == 'progressive':
+            progressivepoints = True
         elif self.evtype == 'omnium':
             definomnium = True
             defsprintlaps = 'scr tmp elm'
@@ -216,36 +219,64 @@ class ps:
             self.units = 'laps'
             self.distance = strops.confopt_posint(self.event['laps'],
                                                   self.distance)
-            if tempopoints:
-                neutral = 4
-                if self.distance < 6:
-                    neutral = 1
-                elif self.distance < 12:
-                    neutral = 2
-                fl = self.distance - (neutral + 1)
+            slt = cr.get('event', 'sprintlaps')
 
-                # pre-populate config if not present
-                slt = cr.get('event', 'sprintlaps')
-                if fl >= 0 and not slt:
-                    sp = []
-                    while True:
-                        sid = str(fl)
-                        sp.append(sid)
-                        cr.set('sprintpoints', sid, '1')
-                        fl -= 1
-                        if fl < 0:
-                            break
-                    _log.debug('Auto-add tempo points: %r', sp)
-                    cr.set('event', 'sprintlaps', ' '.join(sp))
+            # only make changes if sprint points not yet defined
+            if not slt:
+                # adjust points when distance >= 15km (!! Note: AU Only)
+                racelen = self.meet.get_distance(self.distance, 'laps')
+                _log.debug('Checking new event with length: %dm', racelen)
+                if racelen < 15000:
+                    _log.debug('< 15km: Gain/Lose 10pts per lap')
+                    cr.set('event', 'masterslaps', True)
                 else:
-                    _log.debug('Sprint points already defined, tempo skipped')
+                    _log.debug('>= 15km: Award double points on final sprint')
+                    cr.set('sprintpoints', '0', '10 6 4 2')
 
-            if self.distance > 40:
-                _log.debug('Awarding double points on final sprint')
-                cr.set('sprintpoints', '0', '10 6 4 2')
-            else:
-                _log.debug('Gain/Lose 10pts per lap')
-                cr.set('event', 'masterslaps', True)
+                if progressivepoints:
+                    fl = self.distance - 1
+                    # pre-populate config if not present
+                    slt = cr.get('event', 'sprintlaps')
+                    if fl >= 0 and not slt:
+                        pts = 1
+                        sp = []
+                        while True:
+                            sid = str(fl)
+                            sp.append(sid)
+                            cr.set('sprintpoints', sid, str(pts))
+                            pts += 1
+                            fl -= 1
+                            if fl < 0:
+                                break
+                        _log.debug('Auto-add tempo points: %r', sp)
+                        cr.set('event', 'sprintlaps', ' '.join(sp))
+                    else:
+                        _log.debug(
+                            'Sprint points defined, progressive skipped')
+
+                if tempopoints:
+                    neutral = 4
+                    if self.distance < 6:
+                        neutral = 1
+                    elif self.distance < 12:
+                        neutral = 2
+                    fl = self.distance - (neutral + 1)
+
+                    # pre-populate config if not present
+                    slt = cr.get('event', 'sprintlaps')
+                    if fl >= 0 and not slt:
+                        sp = []
+                        while True:
+                            sid = str(fl)
+                            sp.append(sid)
+                            cr.set('sprintpoints', sid, '1')
+                            fl -= 1
+                            if fl < 0:
+                                break
+                        _log.debug('Auto-add tempo points: %r', sp)
+                        cr.set('event', 'sprintlaps', ' '.join(sp))
+                    else:
+                        _log.debug('Sprint points defined, tempo skipped')
 
         if findsource:
             # search event db for source events unless already config'd
@@ -673,15 +704,22 @@ class ps:
     def startlist_report(self, program=False):
         """Return a startlist report."""
         ret = []
-        sec = report.twocol_startlist('startlist')
+        sec = None
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if self.evtype == 'madison':
             # use the team singlecol method
-            sec = report.section('startlist')
+            sec = report.section(secid)
+        else:
+            report.twocol_startlist(secid)
         headvec = [
             'Event', self.evno, ':', self.event['pref'], self.event['info']
         ]
+        rankCol = None
         if not program:
             headvec.append('- Start List')
+        else:
+            sec.nobreak = True
+            rankCol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join([lapstring, self.event['dist'],
@@ -716,12 +754,13 @@ class ps:
                 if r[RES_COL_PLACE].isdigit() or r[RES_COL_PLACE] == '':
                     cnt += 1
                     if cnt % 2 == 1:
-                        sec.lines.append([None, rno, rname, inf, None, None])
+                        sec.lines.append(
+                            [rankCol, rno, rname, inf, None, None])
                     else:
-                        col2.append([None, rno, rname, inf, None, None])
+                        col2.append([rankCol, rno, rname, inf, None, None])
             else:
                 cnt += 1
-                sec.lines.append([None, rno, rname, inf, None, None])
+                sec.lines.append([rankCol, rno, rname, inf, None, None])
                 if self.evtype == 'madison':
                     # add the black/red entry
                     if rh is not None:
@@ -733,8 +772,9 @@ class ps:
                             if trh is not None:
                                 trname = trh.resname()
                                 trinf = trh['ucicode']
-                            sec.lines.append(
-                                [None, 'Red', trname, trinf, None, None, None])
+                            sec.lines.append([
+                                rankCol, 'Red', trname, trinf, None, None, None
+                            ])
                             trname = ''
                             trinf = ''
                             trh = self.meet.rdb.get_rider(tvec[1], self.series)
@@ -742,7 +782,8 @@ class ps:
                                 trname = trh.resname()
                                 trinf = trh['ucicode']
                             sec.lines.append([
-                                None, 'Black', trname, trinf, None, None, None
+                                rankCol, 'Black', trname, trinf, None, None,
+                                None
                             ])
                             #sec.lines.append([None, None, None, None,
                             #None, None, None])
@@ -753,9 +794,28 @@ class ps:
         # placeholders - why was this suppressed?
         if self.event['plac']:
             while cnt < self.event['plac']:
-                sec.lines.append([None, None, None, None, None, None])
+                sec.lines.append([rankCol, None, None, None, None, None])
                 cnt += 1
 
+    # Prizemoney line
+        pvec = []
+        if self.event['prizemoney']:
+            count = 0
+            for place in self.event['prizemoney'].split():
+                count += 1
+                if place.isdigit():
+                    placeval = int(place)
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s $%d: ____' % (rank, placeval))
+                elif place == '-':
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s: ____' % (rank, ))
+                else:
+                    pvec.append('%s: ____' % (place, ))
+        if pvec:
+            sec.prizes = '\u2003'.join(pvec)
+
+        # Footer line
         fvec = []
         ptype = 'Riders'
         if self.evtype == 'madison':
@@ -764,6 +824,8 @@ class ps:
             fvec.append('Total %s: %d' % (ptype, cnt))
         if self.event['reco']:
             fvec.append(self.event['reco'])
+        if self.event['sponsor']:
+            fvec.append('Sponsor: ' + self.event['sponsor'])
 
         if fvec:
             sec.footer = '\u2003'.join(fvec)
