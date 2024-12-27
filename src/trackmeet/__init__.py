@@ -1137,36 +1137,37 @@ class trackmeet:
         if self.riderlist:
             seccount = 0
             for series in self.rdb.listseries():
-                secid = 'riders'
-                if series:
-                    secid += series
-                sec = report.twocol_startlist(secid)
-                sec.nobreak = True
-                smeta = self.rdb.get_rider(series, 'series')
-                if smeta is not None:
-                    sec.heading = smeta['title']
-                    sec.subheading = smeta['subtitle']
-                    sec.footer = smeta['footer']
-                aux = []
-                count = 0
-                for rid in self.rdb.biblistfromseries(series):
-                    nr = self.rdb.get_rider(rid)
-                    if nr is not None:
-                        rno = strops.bibstr_key(nr['no'])
-                        aux.append((
-                            rno,
-                            count,
-                            nr,
-                        ))
-                    else:
-                        _log.warning('Missing details for rider %s', rid)
-                aux.sort()
-                for sr in aux:
-                    rh = sr[2]
-                    sec.lines.append(('', rh['no'], rh.resname(),
-                                      rh.primary_cat(), None, None))
-                r.add_section(sec)
-                seccount += 1
+                if not series.startswith('t'):
+                    secid = 'riders'
+                    if series:
+                        secid += series
+                    sec = report.twocol_startlist(secid)
+                    sec.nobreak = True
+                    smeta = self.rdb.get_rider(series, 'series')
+                    if smeta is not None:
+                        sec.heading = smeta['title']
+                        sec.subheading = smeta['subtitle']
+                        sec.footer = smeta['footer']
+                    aux = []
+                    count = 0
+                    for rid in self.rdb.biblistfromseries(series):
+                        nr = self.rdb.get_rider(rid)
+                        if nr is not None:
+                            rno = strops.bibstr_key(nr['no'])
+                            aux.append((
+                                rno,
+                                count,
+                                nr,
+                            ))
+                        else:
+                            _log.warning('Missing details for rider %s', rid)
+                    aux.sort()
+                    for sr in aux:
+                        rh = sr[2]
+                        sec.lines.append(('', rh['no'], rh.resname(),
+                                          rh.primary_cat(), None, None))
+                    r.add_section(sec)
+                    seccount += 1
             if seccount > 0:
                 r.add_section(report.pagebreak(0.01))
 
