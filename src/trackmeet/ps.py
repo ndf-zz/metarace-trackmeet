@@ -298,7 +298,7 @@ class ps:
         self.masterslaps = cr.get_bool('event', 'masterslaps')
         self.reset_lappoints()
         slt = cr.get('event', 'sprintlaps')
-        self.sprintlaps = strops.reformat_biblist(slt)
+        self.sprintlaps = strops.reformat_bibserlist(slt)
 
         # load any special purpose sprint points
         for sid in cr.options('sprintpoints'):
@@ -706,11 +706,11 @@ class ps:
         ret = []
         sec = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
-        if self.evtype == 'madison':
+        if not program and self.evtype == 'madison':
             # use the team singlecol method
             sec = report.section(secid)
         else:
-            report.twocol_startlist(secid)
+            sec = report.twocol_startlist(secid)
         headvec = [
             'Event', self.evno, ':', self.event['pref'], self.event['info']
         ]
@@ -1399,7 +1399,7 @@ class ps:
         if response == 1:  # id 1 set in glade for "Apply"
             _log.debug('Updating race properties')
             if not self.onestart:
-                newlaps = strops.reformat_biblist(rle.get_text())
+                newlaps = strops.reformat_bibserlist(rle.get_text())
                 if self.sprintlaps != newlaps:
                     self.sprintlaps = newlaps
                     _log.info('Reset sprint model')
@@ -1976,8 +1976,9 @@ class ps:
         for sl in self.sprintlaps.split():
             isone = True
             lt = sl
-            if sl.isdigit():
-                if int(sl) == 0:
+            lapval = strops.confopt_float(sl)
+            if lapval is not None:
+                if lapval == 0:
                     lt = 'Final sprint'
                 else:
                     lt = 'Sprint at ' + sl + ' to go'
