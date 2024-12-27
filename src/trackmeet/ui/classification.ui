@@ -70,7 +70,6 @@
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="has_focus">True</property>
-                <property name="max_length">32</property>
                 <property name="invisible_char">&#x25CF;</property>
                 <property name="width_chars">24</property>
               </object>
@@ -110,7 +109,6 @@
               <object class="GtkEntry" id="classification_info_title">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
-                <property name="max_length">32</property>
                 <property name="invisible_char">&#x25CF;</property>
                 <property name="width_chars">24</property>
               </object>
