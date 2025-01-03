@@ -1916,8 +1916,9 @@ class ps:
         self.finished = False
         self.auxmap = {}
         idx = 0
+        lidx = len(self.sprints) - 1
         for s in self.sprints:
-            self.pointsxfer(s[SPRINT_COL_PLACES], s[SPRINT_COL_ID] == '0', idx,
+            self.pointsxfer(s[SPRINT_COL_PLACES], idx == lidx, idx,
                             s[SPRINT_COL_POINTS])
             idx += 1
 
