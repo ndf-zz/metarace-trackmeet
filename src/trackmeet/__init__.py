@@ -1086,8 +1086,8 @@ class trackmeet:
         sections = []
         lastsess = None
         for e in self.edb:
-            r = mkrace(self, e, False)
             if e['resu']:  # include in result
+                r = mkrace(self, e, False)
                 nsess = e['sess']
                 if nsess != lastsess:
                     sections.append(
@@ -1101,15 +1101,16 @@ class trackmeet:
                          e['prog']]).strip()
                     sections.append(sec)
                 else:
+                    _log.debug('MARK: about to loadconfig')
                     r.loadconfig()
+                    _log.debug('MARK: about to result_report')
                     if r.onestart:  # in progress or done...
                         rep = r.result_report()
                     else:
                         rep = r.startlist_report()
                     if len(rep) > 0:
                         sections.extend(rep)
-            r = None
-            #r.destroy()
+                r = None
 
         filebase = 'result'
         self.print_report(sections,
@@ -1184,7 +1185,6 @@ class trackmeet:
                 for sec in s:
                     r.add_section(sec)
                 h = None
-                #h.destroy()
 
         filebase = 'program'
         ofile = os.path.join('export', filebase + '.pdf')
@@ -1597,7 +1597,6 @@ class trackmeet:
                         json.dump(rdata, f)
 
                 r = None
-                #r.destroy()
             GLib.idle_add(self.mirror_start)
             _log.debug('Race info export')
         except Exception as e:
