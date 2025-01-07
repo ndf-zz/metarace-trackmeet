@@ -673,7 +673,6 @@ class trackmeet:
                 # from event list only include the individual events
                 secs.extend(h.result_report(recurse=False))
             elif reptype == 'program':
-                template = 'program'
                 reptypestr = 'Program of Events'
                 secs.extend(h.startlist_report(True))  # startlist in program
             else:
@@ -1120,7 +1119,7 @@ class trackmeet:
                           exportfile=filebase.translate(strops.WEBFILE_UTRANS))
 
     def printprogram(self):
-        template = 'program_template.json'
+        template = metarace.PROGRAM_TEMPLATE
         r = report.report(template)
         subtitlestr = 'Program of Events'
         if self.subtitle:
