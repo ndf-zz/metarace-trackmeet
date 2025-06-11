@@ -337,8 +337,8 @@ class ps:
             self.ctrl_place_combo.set_active(oft)
             self.onestart = True
 
-        ## for omnium - look up the places from event links if present
-        if self.inomnium:
+        ## look up places from event links if present
+        if self.sprintsource:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
                 if sid in self.sprintsource:
@@ -1599,20 +1599,24 @@ class ps:
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
         ret = ''
-        totsprints = 0
+        totsprints = 0  # in-race sprints
+        totcontests = 0  # all points sources
         lastsprint = None
         sprintid = None
         cur = 1
         for s in self.sprints:
+            totcontests += 1
             #_log.debug(u'cur: %r, val: %r', cur, s[SPRINT_COL_PLACES])
+            if s[SPRINT_COL_ID] not in self.laplabels:
+                totsprints += 1
             if s[SPRINT_COL_PLACES]:
                 lastsprint = cur
                 sprintid = s[SPRINT_COL_ID]
-            if s[SPRINT_COL_ID] not in self.laplabels:
-                totsprints += 1
-                cur += 1
+            else:
+                break
+            cur += 1
         if lastsprint is not None:
-            if lastsprint >= totsprints:
+            if lastsprint >= totcontests:
                 ret = 'Result'
                 # check for all places in final sprint?
                 for r in self.riders:
@@ -1626,12 +1630,15 @@ class ps:
                     if sprintid in self.laplabels:
                         ret += ' After ' + self.laplabels[sprintid]
                     elif totsprints > 0:
+                        # it's a "laps to go" sprint
+                        lapoft = totcontests - totsprints
+                        cursprint = lastsprint - lapoft
                         if width is not None and width < 25:
                             ret += ' - Sprint {0}/{1}'.format(
-                                lastsprint, totsprints)
+                                cursprint, totsprints)
                         else:
                             ret += ' After Sprint {0} of {1}'.format(
-                                lastsprint, totsprints)
+                                cursprint, totsprints)
                     else:
                         _log.debug('Total sprints was 0: %r / %r', lastsprint,
                                    totsprints)
