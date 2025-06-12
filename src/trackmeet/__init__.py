@@ -42,7 +42,7 @@ from . import ittt
 from . import sprnd
 from . import classification
 
-VERSION = '1.13.1'
+VERSION = '1.13.2'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG
 CONFIGFILE = 'config.json'
@@ -2384,10 +2384,10 @@ class trackmeet:
                                          'object': ref,
                                      },
                                  })
-        _log.warning('TODO: Handle change in event number')
         for k in res['edb']:
             if res['edb'][k][0]:
-                self._ecb(evno)
+                #self._ecb(evno)  # TODO: specific event update
+                self._scb(None)  # TEMP: re-read all events
                 break
 
     def event_popup_result_cb(self, menuitem, data=None):
