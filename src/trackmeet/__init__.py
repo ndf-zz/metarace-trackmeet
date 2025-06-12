@@ -2387,7 +2387,7 @@ class trackmeet:
         for k in res['edb']:
             if res['edb'][k][0]:
                 #self._ecb(evno)  # TODO: specific event update
-                self._scb(None)  # TEMP: re-read all events
+                self._ecb(None)  # TEMP: re-read all events
                 break
 
     def event_popup_result_cb(self, menuitem, data=None):
