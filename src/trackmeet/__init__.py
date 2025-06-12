@@ -575,9 +575,9 @@ class trackmeet:
             ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
             with metarace.savefile(ofile, mode='b') as f:
                 rep.output_pdf(f)
-            ofile = os.path.join(EXPORTPATH, exportfile + '.xls')
+            ofile = os.path.join(EXPORTPATH, exportfile + '.xlsx')
             with metarace.savefile(ofile, mode='b') as f:
-                rep.output_xls(f)
+                rep.output_xlsx(f)
             ofile = os.path.join(EXPORTPATH, exportfile + '.json')
             with metarace.savefile(ofile) as f:
                 rep.output_json(f)
@@ -585,7 +585,7 @@ class trackmeet:
             lt = []
             if self.mirrorpath:
                 lb = os.path.join(self.linkbase, exportfile)
-                lt = ['pdf', 'xls']
+                lt = ['pdf', 'xlsx']
             ofile = os.path.join(EXPORTPATH, exportfile + '.html')
             with metarace.savefile(ofile) as f:
                 rep.output_html(f, linkbase=lb, linktypes=lt)
@@ -1194,10 +1194,10 @@ class trackmeet:
         with metarace.savefile(ofile) as f:
             r.output_html(f)
             _log.info('Exported html program to %r', ofile)
-        ofile = os.path.join('export', filebase + '.xls')
+        ofile = os.path.join('export', filebase + '.xlsx')
         with metarace.savefile(ofile, mode='b') as f:
-            r.output_xls(f)
-            _log.info('Exported xls program to %r', ofile)
+            r.output_xlsx(f)
+            _log.info('Exported xlsx program to %r', ofile)
         ofile = os.path.join('export', filebase + '.json')
         with metarace.savefile(ofile) as f:
             r.output_json(f)
@@ -1278,10 +1278,10 @@ class trackmeet:
             lt = []
             lb = None
             if os.path.exists(rfile):
-                lt = ['pdf', 'xls']
+                lt = ['pdf', 'xlsx']
                 lb = os.path.join(self.linkbase, rfilebase)
             elif os.path.exists(pfile):
-                lt = ['pdf', 'xls']
+                lt = ['pdf', 'xlsx']
                 lb = os.path.join(self.linkbase, pfilebase)
 
             pdata = {
