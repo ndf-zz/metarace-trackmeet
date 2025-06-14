@@ -1470,7 +1470,7 @@ class trackmeet:
                 dirty = self.check_depends_dirty(evno)
                 if dirty:
                     dord.append(key)  # maintains ordering
-                    dmap[key] = [e, evno, etype, series, prefix, info, export]
+                    dmap[key] = (e, evno, etype, series, prefix, info, export)
             _log.debug('Marked %d events dirty', len(dord))
 
             dirty = {}
@@ -2789,6 +2789,12 @@ def edit_defaults():
     return 0
 
 
+def loadmeet():
+    """Select meet folder with chooser dialog"""
+    return uiutil.chooseFolder(title='Open Meet Folder',
+                               path=metarace.DATA_PATH)
+
+
 def createmeet():
     """Create a new empty meet folder"""
     ret = None
@@ -2842,10 +2848,12 @@ def main():
             doconfig = True
             configpath = metarace.DEFAULTS_PATH
             _log.debug('Edit defaults, configpath: %r', configpath)
+        elif sys.argv[1] == '--create':
+            configpath = createmeet()
         else:
             configpath = sys.argv[1]
     else:
-        configpath = createmeet()
+        configpath = loadmeet()
     configpath = metarace.config_path(configpath)
     if configpath is None:
         _log.debug('Missing path, command: %r', sys.argv)
@@ -2882,3 +2890,7 @@ def main():
         app.window.show()
         app.start()
         return Gtk.main()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

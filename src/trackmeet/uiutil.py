@@ -529,8 +529,7 @@ def about_dlg(window, version=None):
     if version:
         vtxt = 'Application: ' + version + '; ' + vtxt
     dlg.set_version(vtxt)
-    dlg.set_copyright(
-        'Copyright \u00a9 2012-2023 Nathan Fraser and contributors')
+    dlg.set_copyright('Copyright \u00a9 2012-2025 ndf-zz and contributors')
     dlg.set_comments('Track cycle race result handler')
     dlg.set_license_type(Gtk.License.MIT_X11)
     dlg.set_license(metarace.LICENSETEXT)
@@ -538,6 +537,25 @@ def about_dlg(window, version=None):
     dlg.run()
     dlg.hide()
     dlg.destroy()
+
+
+def chooseFolder(title='',
+                 mode=Gtk.FileChooserAction.SELECT_FOLDER,
+                 parent=None,
+                 path=None):
+    ret = None
+    modal = parent is not None
+    dlg = Gtk.FileChooserNative(title=title, modal=modal)
+    dlg.set_transient_for(parent)
+    dlg.set_action(mode)
+    if path is not None:
+        dlg.set_current_folder(path)
+    response = dlg.run()
+    if response == Gtk.ResponseType.ACCEPT:
+        ret = dlg.get_filename()
+    _log.debug('Open folder returns: %r (%r)', ret, response)
+    dlg.destroy()
+    return ret
 
 
 def chooseCsvFile(title='',
