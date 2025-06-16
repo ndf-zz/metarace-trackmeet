@@ -124,10 +124,11 @@ class race:
                 if self.evtype == 'handicap':  # reqd?
                     if info:
                         nr[COL_INFO] = str(info)
-            if self.evtype in ['handicap', 'keirin'] and not self.onestart:
-                self.reorderflag += 1
-                GLib.timeout_add_seconds(1, self.delayed_reorder)
             self.riders.append(nr)
+            if self.winopen:
+                if self.evtype in ['handicap', 'keirin'] and not self.onestart:
+                    self.reorderflag += 1
+                    GLib.timeout_add_seconds(1, self.delayed_reorder)
         else:
             if er is not None:
                 # Rider already in the model, set the info if
@@ -153,13 +154,17 @@ class race:
         if i is not None:
             self.riders.remove(i)
 
-    def placexfer(self, placestr):
+    def placexfer(self, placestr=None):
         """Transfer places in placestr to model."""
+        if placestr is not None:
+            self.placestr = placestr
         self.finished = False
         self.clearplaces()
         self.results = []
         placeset = set()
         resname_w = self.meet.scb.linelen - 11
+
+        # TODO: Replace riders.swap with single reorder
 
         # move dnf riders to bottom of list and count inriders
         cnt = 0
@@ -197,7 +202,7 @@ class race:
         place = 1
         count = 0
         clubmode = self.meet.get_clubmode()
-        for placegroup in placestr.split():
+        for placegroup in self.placestr.split():
             for bib in placegroup.split('-'):
                 if bib not in placeset:
                     if count >= incnt and not clubmode:
@@ -250,7 +255,7 @@ class race:
             deftimetype = '200m'
             defdistunits = 'metres'
             defdistance = '200'
-        if self.evtype == 'elimination':
+        if self.winopen and self.evtype == 'elimination':
             i = self.action_model.append(['Eliminate', 'out'])
             self.action_model.append(['Un-Eliminate', 'in'])
             if i is not None:
@@ -266,7 +271,6 @@ class race:
                 'lstart': None,
                 'decisions': [],
                 'finish': None,
-                'runlap': None,
                 'distance': defdistance,
                 'distunits': defdistunits,
                 'showinfo': True,
@@ -310,21 +314,23 @@ class race:
         self.set_timetype(cr.get('event', 'timetype'))
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
-        self.runlap = strops.confopt_posint(cr.get('event', 'runlap'))
         if self.timetype != '200m' and self.event['laps']:
             # use event program to override
             self.units = 'laps'
             self.distance = strops.confopt_posint(self.event['laps'],
                                                   self.distance)
-        self.update_expander_lbl_cb()
-        self.info_expand.set_expanded(
-            strops.confopt_bool(cr.get('event', 'showinfo')))
         self.set_start(cr.get('event', 'start'), cr.get('event', 'lstart'))
         self.set_finish(cr.get('event', 'finish'))
         self.set_elapsed()
         self.eliminated = cr.get('event', 'eliminated')
         places = strops.reformat_placelist(cr.get('event', 'ctrl_places'))
-        self.ctrl_places.set_text(places)
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(
+                strops.confopt_bool(cr.get('event', 'showinfo')))
+            self.ctrl_places.set_text(places)
+
         self.placexfer(places)
         if places:
             self.doscbplaces = False  # only show places on board if not set
@@ -416,23 +422,17 @@ class race:
 
     def set_elapsed(self):
         """Update elapsed time in race ui and announcer."""
-        if self.start is not None and self.finish is not None:
-            et = self.finish - self.start
-            self.time_lbl.set_text(et.timestr(2))
-        elif self.start is not None:  # Note: uses 'local start' for RT
-            runtm = (tod.now() - self.lstart).timestr(1)
-            self.time_lbl.set_text(runtm)
-            if self.runlap is not None:
-                if self.runlap != self.lastrunlap:
-                    _log.debug('Runlap: %r', self.runlap)
-                    self.lastrunlap = self.runlap
-        elif self.timerstat == 'armstart':
-            self.time_lbl.set_text('       0.0   ')  # tod.ZERO.timestr(1)
-            if self.runlap and self.runlap != self.lastrunlap:
-                _log.debug('Runlap: %r', self.runlap)
-                self.lastrunlap = self.runlap
-        else:
-            self.time_lbl.set_text('')
+        if self.winopen:
+            if self.start is not None and self.finish is not None:
+                et = self.finish - self.start
+                self.time_lbl.set_text(et.timestr(2))
+            elif self.start is not None:  # Note: uses 'local start' for RT
+                runtm = (tod.now() - self.lstart).timestr(1)
+                self.time_lbl.set_text(runtm)
+            elif self.timerstat == 'armstart':
+                self.time_lbl.set_text('       0.0   ')  # tod.ZERO.timestr(1)
+            else:
+                self.time_lbl.set_text('')
 
     def delayed_announce(self):
         """Initialise the announcer's screen after a delay."""
@@ -628,8 +628,6 @@ class race:
         cw.set('event', 'distance', self.distance)
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'timetype', self.timetype)
-        if self.runlap is not None:
-            cw.set('event', 'runlap', self.runlap)
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
@@ -734,27 +732,29 @@ class race:
         self.start = None
         self.lstart = None
         self.timerstat = 'idle'
-        self.ctrl_places.set_text('')
         self.eliminated = []
+        self.ctrl_places.set_text('')
         self.placexfer('')
         self.meet.main_timer.dearm(self.startchan)
         self.meet.main_timer.dearm(self.finchan)
         self.stat_but.update('idle', 'Idle')
         self.stat_but.set_sensitive(True)
         self.set_elapsed()
-        _log.info('Event reset - all places cleared.')
+        _log.info('Event reset - all places cleared')
 
     def setrunning(self):
         """Set timer state to 'running'."""
         self.timerstat = 'running'
-        self.stat_but.update('ok', 'Running')
+        if self.winopen:
+            self.stat_but.update('ok', 'Running')
 
     def setfinished(self):
         """Set timer state to 'finished'."""
         self.timerstat = 'finished'
-        self.stat_but.update('idle', 'Finished')
-        self.stat_but.set_sensitive(False)
-        self.ctrl_places.grab_focus()
+        if self.winopen:
+            self.stat_but.update('idle', 'Finished')
+            self.stat_but.set_sensitive(False)
+            self.ctrl_places.grab_focus()
 
     def armstart(self):
         """Toggle timer arm start state."""
@@ -841,15 +841,11 @@ class race:
                     self.do_places()
                     GLib.idle_add(self.delayed_announce)
                     return True
-                elif key == key_lapdown:
-                    if self.runlap is not None and self.runlap > 0:
-                        self.runlap -= 1
-                    return True
         return False
 
     def do_places(self):
         """Update model and show race result on scoreboard."""
-        secs = self.result_report()  # NOTE: calls into placexfer
+        secs = self.result_report()
         self.timerwin = False
         tp = 'Time:'
         if self.start is not None and self.finish is None:
@@ -949,7 +945,9 @@ class race:
         """Respond to activate on place entry."""
         places = strops.reformat_placelist(entry.get_text())
         if self.checkplaces(places):
-            entry.set_text(places)
+            self.placestr = places
+            _log.debug('Event %r places updated: %r', self.evno, self.placestr)
+            entry.set_text(self.placestr)
             self.do_places()
             GLib.idle_add(self.delayed_announce)
             self.meet.delayed_export()
@@ -974,9 +972,6 @@ class race:
             for bib in rlist:
                 self.delrider(bib)
             entry.set_text('')
-        elif acode == 'lap':
-            self.runlap = strops.confopt_posint(rlist)
-            _log.debug('Manually set runlap to: %r', self.runlap)
         elif acode == 'out' and self.evtype == 'elimination':
             bib = rlist.strip()
             if self.eliminate(bib):
@@ -1006,8 +1001,8 @@ class race:
             if not r[COL_DNF]:
                 if bib in self.eliminated:
                     self.eliminated.remove(bib)
-                    self.placexfer(self.ctrl_places.get_text())
-                    _log.info('Rider %r removed from eliminated riders.', bib)
+                    self.placexfer()
+                    _log.info('Rider %r removed from eliminated riders', bib)
                     GLib.idle_add(self.delayed_announce)
                     ret = True
                 else:
@@ -1027,8 +1022,8 @@ class race:
             if not r[COL_DNF]:
                 if bib not in self.eliminated:
                     self.eliminated.append(bib)
-                    self.placexfer(self.ctrl_places.get_text())
-                    _log.error('Rider %r eliminated.', bib)
+                    self.placexfer()
+                    _log.error('Rider %r eliminated', bib)
                     ret = True
                     fname = r[COL_FIRSTNAME]
                     lname = r[COL_LASTNAME]
@@ -1056,7 +1051,7 @@ class race:
                     self.meet.txt_postxt(21, 0, 'Out: ' + nrstr)
                     GLib.timeout_add_seconds(10, self.delayed_result)
                 else:
-                    _log.error('Rider %r already eliminated.', bib)
+                    _log.error('Rider %r already eliminated', bib)
             else:
                 _log.error('Cannot eliminate dnf rider: %r', bib)
         else:
@@ -1137,9 +1132,6 @@ class race:
     def starttrig(self, e):
         """React to start trigger."""
         if self.timerstat == 'armstart':
-            if self.distance and self.units == 'laps':
-                self.runlap = self.distance - 1
-                _log.debug('Set runlap: %r', self.runlap)
             self.start = e
             self.lstart = tod.now()
             self.setrunning()
@@ -1160,9 +1152,7 @@ class race:
 
     def timercb(self, e):
         """Handle a timer event."""
-        _log.debug('timercb: %r', e)
         chan = strops.chan2id(e.chan)
-        _log.debug('chan: %r', chan)
         if chan == self.startchan or chan == 0:
             _log.debug('Got a start impulse')
             self.starttrig(e)
@@ -1258,7 +1248,7 @@ class race:
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
-        self.placexfer(self.ctrl_places.get_text())
+        self.placexfer()
         ret = []
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
@@ -1387,9 +1377,8 @@ class race:
         _log.debug('Init %sevent %s', rstr, self.evno)
         self.decisions = []
         self.eliminated = []
+        self.placestr = ''
         self.onestart = False
-        self.runlap = None
-        self.lastrunlap = None
         self.start = None
         self.lstart = None
         self.finish = None
@@ -1419,37 +1408,36 @@ class race:
             bool,  # 5 DNF/DNS
             str)  # 6 placing
 
-        b = uiutil.builder('race.ui')
-        self.frame = b.get_object('race_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('race_info_evno').set_text(self.evno)
-        self.showev = b.get_object('race_info_evno_show')
-        self.prefix_ent = b.get_object('race_info_prefix')
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.info_ent = b.get_object('race_info_title')
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-        self.info_ent.set_text(self.event['info'])
-
-        self.time_lbl = b.get_object('race_info_time')
-        self.time_lbl.modify_font(uiutil.MONOFONT)
-
-        # ctrl pane
-        self.stat_but = uiutil.statButton()
-        self.stat_but.set_sensitive(True)
-        b.get_object('race_ctrl_stat_but').add(self.stat_but)
-
-        self.ctrl_places = b.get_object('race_ctrl_places')
-        self.ctrl_action_combo = b.get_object('race_ctrl_action_combo')
-        self.ctrl_action = b.get_object('race_ctrl_action')
-        self.action_model = b.get_object('race_action_model')
-
         # start timer and show window
         if ui:
-            _log.debug('Connecting event ui handlers')
+            b = uiutil.builder('race.ui')
+            self.frame = b.get_object('race_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('race_info_evno').set_text(self.evno)
+            self.showev = b.get_object('race_info_evno_show')
+            self.prefix_ent = b.get_object('race_info_prefix')
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.info_ent = b.get_object('race_info_title')
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+            self.info_ent.set_text(self.event['info'])
+
+            self.time_lbl = b.get_object('race_info_time')
+            self.time_lbl.modify_font(uiutil.MONOFONT)
+
+            # ctrl pane
+            self.stat_but = uiutil.statButton()
+            self.stat_but.set_sensitive(True)
+            b.get_object('race_ctrl_stat_but').add(self.stat_but)
+
+            self.ctrl_places = b.get_object('race_ctrl_places')
+            self.ctrl_action_combo = b.get_object('race_ctrl_action_combo')
+            self.ctrl_action = b.get_object('race_ctrl_action')
+            self.action_model = b.get_object('race_action_model')
+
             # riders pane
             t = Gtk.TreeView(self.riders)
             self.view = t
