@@ -54,7 +54,7 @@ RES_COL_FINAL = 9
 RES_COL_INFO = 10
 RES_COL_STPTS = 11
 
-# common sprint lap setups (loaded in omnium init)
+# common sprint lap setups (TBC)
 COMMON_SPRINTS = {
     6: '4 2 0',
     12: '9 6 3 0',
@@ -155,7 +155,6 @@ class ps:
                 'decisions': [],
                 'sprintlaps': defsprintlaps,
                 'distance': '',
-                'runlap': '',
                 'distunits': 'laps',
                 'masterslaps': defmasterslaps,
                 'inomnium': definomnium,
@@ -206,7 +205,6 @@ class ps:
             self.scoring = 'madison'
         else:
             self.scoring = 'points'
-        self.type_lbl.set_text(self.scoring.capitalize())
 
         # race infos
         self.decisions = cr.get('event', 'decisions')
@@ -248,7 +246,7 @@ class ps:
                             fl -= 1
                             if fl < 0:
                                 break
-                        _log.debug('Auto-add tempo points: %r', sp)
+                        _log.debug('Auto-add progressive points: %r', sp)
                         cr.set('event', 'sprintlaps', ' '.join(sp))
                     else:
                         _log.debug(
@@ -294,7 +292,6 @@ class ps:
                 else:
                     _log.debug('Sprint source already defined for %r', sid)
 
-        self.runlap = cr.get_posint('event', 'runlap')
         self.masterslaps = cr.get_bool('event', 'masterslaps')
         self.reset_lappoints()
         slt = cr.get('event', 'sprintlaps')
@@ -331,13 +328,16 @@ class ps:
             if cr.has_option('sprintplaces', sid + '_split'):
                 s[SPRINT_COL_SPLIT] = tod.mktod(
                     cr.get('sprintplaces', sid + '_split'))
-        if oft > 0:
-            if oft >= len(self.sprints):
-                oft = len(self.sprints) - 1
-            self.ctrl_place_combo.set_active(oft)
-            self.onestart = True
 
-        ## look up places from event links if present
+        # set entry
+        if oft > 0:
+            self.onestart = True
+            if self.winopen:
+                if oft >= len(self.sprints):
+                    oft = len(self.sprints) - 1
+                self.ctrl_place_combo.set_active(oft)
+
+        # look up places from event links if present
         if self.sprintsource:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
@@ -349,9 +349,14 @@ class ps:
                                self.sprintsource[sid], splac)
                     if splac:
                         s[SPRINT_COL_PLACES] = splac
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(cr.get_bool('event', 'showinfo'))
+            self.type_lbl.set_text(self.scoring.capitalize())
+
         self.recalculate()
 
-        self.info_expand.set_expanded(cr.get_bool('event', 'showinfo'))
         self.set_start(cr.get('event', 'start'), cr.get('event', 'lstart'))
         self.set_finish(cr.get('event', 'finish'))
         self.set_elapsed()
@@ -392,8 +397,6 @@ class ps:
         cw.set('event', 'distance', self.distance)
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'scoring', self.scoring)
-        if self.runlap is not None:
-            cw.set('event', 'runlap', self.runlap)
         cw.set('event', 'masterslaps', self.masterslaps)
         cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
@@ -471,15 +474,12 @@ class ps:
                 if ll is not None:
                     down = fl - laps
                     if ll != laps:
-                        yield [
-                            '', ' ',
-                            str(down) + ' Lap' + strops.plural(down) +
-                            ' Behind', ''
-                        ]
+                        yield ('', ' ', str(down) + ' Lap' +
+                               strops.plural(down) + ' Behind', '')
                 ll = laps
 
             time = None
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
@@ -698,7 +698,6 @@ class ps:
                 auxmap.append([cnt, rno, seed, rank])
                 cnt += 1
             auxmap.sort(key=cmp_to_key(self.sort_handicap))
-            #_log.debug('auxmap looks like: %r', auxmap)
             self.riders.reorder([a[0] for a in auxmap])
 
     def startlist_report(self, program=False):
@@ -900,10 +899,6 @@ class ps:
                     self.do_places()
                     GLib.idle_add(self.delayed_announce)
                     return True
-                elif key == key_lapdown:
-                    if self.runlap is not None and self.runlap > 0:
-                        self.runlap -= 1
-                    return True
         return False
 
     def delayed_announce(self):
@@ -1047,8 +1042,8 @@ class ps:
                                 leaderboard.append('-')
                         leaderboard.append(r[RES_COL_BIB].rjust(2) +
                                            psrc.rjust(3))
-                self.meet.cmd_announce('leaderboard',
-                                       chr(unt4.US).join(leaderboard))
+                # legacy vertical leaderboard: \x1f = unt4.US
+                self.meet.cmd_announce('leaderboard', '\x1f'.join(leaderboard))
             else:
                 # use scratch race style layout for up to 26 riders
                 count = 0
@@ -1312,9 +1307,6 @@ class ps:
     def starttrig(self, e):
         """React to start trigger."""
         if self.timerstat == 'armstart':
-            if self.distance and self.units == 'laps':
-                self.runlap = self.distance - 1
-                _log.debug('SET RUNLAP: %r', self.runlap)
             self.set_start(e, tod.now())
         elif self.timerstat == 'armsprintstart':
             self.stat_but.update('activity', 'Arm Sprint')
@@ -1491,25 +1483,17 @@ class ps:
 
     def set_elapsed(self):
         """Update elapsed race time."""
-        if self.start is not None and self.finish is not None:
-            et = self.finish - self.start
-            self.time_lbl.set_text(et.timestr(2))
-        elif self.start is not None:
-            runtm = (tod.now() - self.lstart).timestr(1)
-            self.time_lbl.set_text(runtm)
-
-            if self.runlap is not None:
-                if self.runlap != self.lastrunlap:
-                    _log.debug('Runlap: %r', self.runlap)
-                    self.lastrunlap = self.runlap
-
-        elif self.timerstat == 'armstart':
-            self.time_lbl.set_text(tod.tod(0).timestr(1))
-            if self.runlap and self.runlap != self.lastrunlap:
-                _log.debug('Runlap: %r', self.runlap)
-                self.lastrunlap = self.runlap
-        else:
-            self.time_lbl.set_text('')
+        if self.winopen:
+            if self.start is not None and self.finish is not None:
+                et = self.finish - self.start
+                self.time_lbl.set_text(et.timestr(2))
+            elif self.start is not None:
+                runtm = (tod.now() - self.lstart).timestr(1)
+                self.time_lbl.set_text(runtm)
+            elif self.timerstat == 'armstart':
+                self.time_lbl.set_text(tod.tod(0).timestr(1))
+            else:
+                self.time_lbl.set_text('')
 
     def log_elapsed(self):
         """Log elapsed time on timy receipt"""
@@ -1522,14 +1506,16 @@ class ps:
     def set_running(self):
         """Set timer to running"""
         self.timerstat = 'running'
-        self.stat_but.update('ok', 'Running')
+        if self.winopen:
+            self.stat_but.update('ok', 'Running')
 
     def set_finished(self):
         """Set timer to finished"""
         self.timerstat = 'finished'
-        self.stat_but.update('idle', 'Finished')
-        self.stat_but.set_sensitive(False)
-        self.ctrl_places.grab_focus()
+        if self.winopen:
+            self.stat_but.update('idle', 'Finished')
+            self.stat_but.set_sensitive(False)
+            self.ctrl_places.grab_focus()
 
     def update_expander_lbl_cb(self):
         """Update the expander label"""
@@ -1606,14 +1592,11 @@ class ps:
         cur = 1
         for s in self.sprints:
             totcontests += 1
-            #_log.debug(u'cur: %r, val: %r', cur, s[SPRINT_COL_PLACES])
             if s[SPRINT_COL_ID] not in self.laplabels:
                 totsprints += 1
             if s[SPRINT_COL_PLACES]:
                 lastsprint = cur
                 sprintid = s[SPRINT_COL_ID]
-            else:
-                break
             cur += 1
         if lastsprint is not None:
             if lastsprint >= totcontests:
@@ -1752,8 +1735,6 @@ class ps:
             for bib in rlist:
                 self.delrider(bib)
             entry.set_text('')
-        elif acode == 'lap':
-            self.runlap = strops.confopt_posint(rlist)
         else:
             _log.debug('Ignoring invalid action')
         GLib.idle_add(self.delayed_announce)
@@ -1974,8 +1955,9 @@ class ps:
 
     def sprint_model_init(self):
         """Initialise the sprint places model"""
-        self.ctrl_place_combo.set_active(-1)
-        self.ctrl_places.set_sensitive(False)
+        if self.winopen:
+            self.ctrl_place_combo.set_active(-1)
+            self.ctrl_places.set_sensitive(False)
         self.sprints.clear()
         self.auxmap = {}
         self.nopts = []
@@ -2004,7 +1986,7 @@ class ps:
             self.sprints.append(nr)
             self.sprintresults.append([])
             self.nopts.append('')
-        if isone:
+        if isone and self.winopen:
             self.ctrl_place_combo.set_active(0)
             self.ctrl_places.set_sensitive(True)
 
@@ -2087,6 +2069,7 @@ class ps:
         if self.readonly:
             rstr = 'readonly '
         _log.debug('Init %sevent %s', rstr, self.evno)
+        self.winopen = ui
 
         # race property attributes
         self.decisions = []
@@ -2105,13 +2088,10 @@ class ps:
 
         # race run time attributes
         self.onestart = False
-        self.runlap = None
-        self.lastrunlap = None
 
         self.start = None
         self.lstart = None
         self.finish = None
-        self.winopen = ui
         self.timerwin = False
         self.timerstat = 'idle'
         self.curtimerstr = ''
@@ -2148,40 +2128,39 @@ class ps:
             str,  # INFO = 10
             int)  # STPTS = 11
 
-        b = uiutil.builder('ps.ui')
-        self.frame = b.get_object('ps_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('ps_info_evno').set_text(self.evno)
-        self.showev = b.get_object('ps_info_evno_show')
-        self.prefix_ent = b.get_object('ps_info_prefix')
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.info_ent = b.get_object('ps_info_title')
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-        self.info_ent.set_text(self.event['info'])
-
-        self.time_lbl = b.get_object('ps_info_time')
-        self.time_lbl.modify_font(uiutil.MONOFONT)
-        self.update_expander_lbl_cb()
-        self.type_lbl = b.get_object('race_type')
-        self.type_lbl.set_text(self.scoring.capitalize())
-
-        # ctrl pane
-        self.stat_but = uiutil.statButton()
-        self.stat_but.set_sensitive(True)
-        b.get_object('ps_ctrl_stat_but').add(self.stat_but)
-
-        self.ctrl_place_combo = b.get_object('ps_ctrl_place_combo')
-        self.ctrl_place_combo.set_model(self.sprints)
-        self.ctrl_places = b.get_object('ps_ctrl_places')
-        self.ctrl_action_combo = b.get_object('ps_ctrl_action_combo')
-        self.ctrl_action = b.get_object('ps_ctrl_action')
-        self.action_model = b.get_object('ps_action_model')
-
         if ui:
+            b = uiutil.builder('ps.ui')
+            self.frame = b.get_object('ps_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('ps_info_evno').set_text(self.evno)
+            self.showev = b.get_object('ps_info_evno_show')
+            self.prefix_ent = b.get_object('ps_info_prefix')
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.info_ent = b.get_object('ps_info_title')
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+            self.info_ent.set_text(self.event['info'])
+
+            self.time_lbl = b.get_object('ps_info_time')
+            self.time_lbl.modify_font(uiutil.MONOFONT)
+            self.type_lbl = b.get_object('race_type')
+            self.type_lbl.set_text(self.scoring.capitalize())
+
+            # ctrl pane
+            self.stat_but = uiutil.statButton()
+            self.stat_but.set_sensitive(True)
+            b.get_object('ps_ctrl_stat_but').add(self.stat_but)
+
+            self.ctrl_place_combo = b.get_object('ps_ctrl_place_combo')
+            self.ctrl_place_combo.set_model(self.sprints)
+            self.ctrl_places = b.get_object('ps_ctrl_places')
+            self.ctrl_action_combo = b.get_object('ps_ctrl_action_combo')
+            self.ctrl_action = b.get_object('ps_ctrl_action')
+            self.action_model = b.get_object('ps_action_model')
+
             # sprints pane
             t = Gtk.TreeView(self.sprints)
             t.set_reorderable(True)
