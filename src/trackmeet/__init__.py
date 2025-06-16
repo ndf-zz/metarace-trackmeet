@@ -615,7 +615,6 @@ class trackmeet:
         print_op.set_default_page_setup(self.pageset)
         print_op.connect('begin_print', self.begin_print, rep)
         print_op.connect('draw_page', self.draw_print_page, rep)
-        _log.debug('Calling into print_op.run()')
         res = print_op.run(Gtk.PrintOperationAction.PREVIEW, None)
         if res == Gtk.PrintOperationResult.APPLY:
             self.printprefs = print_op.get_print_settings()
@@ -906,10 +905,16 @@ class trackmeet:
             starters = eventhdl['star']
             if starters is not None and starters != '':
                 if 'auto' in starters:
-                    spec = starters.lower().replace('auto', '').strip()
-                    self.curevent.autospec += spec
-                    _log.info('Transferred autospec %r to event %r', spec,
-                              self.curevent.evno)
+                    av = []
+                    oldspec = self.curevent.autospec.strip()
+                    if oldspec:
+                        av.append(oldspec.rstrip(';'))
+                    newspec = starters.lower().replace('auto', '').strip()
+                    if newspec:
+                        av.append(newspec.rstrip(';'))
+                    self.curevent.autospec = '; '.join(av)
+                    _log.debug('Oldspec: %r, Newspec: %r, Updated: %r',
+                               oldspec, newspec, self.curevent.autospec)
                 else:
                     self.addstarters(
                         self.curevent,
@@ -1125,9 +1130,7 @@ class trackmeet:
                          e['prog']]).strip()
                     sections.append(sec)
                 else:
-                    _log.debug('MARK: about to loadconfig')
                     r.loadconfig()
-                    _log.debug('MARK: about to result_report')
                     if r.onestart:  # in progress or done...
                         rep = r.result_report()
                     else:
@@ -1465,14 +1468,11 @@ class trackmeet:
 
         ev = self.edb[evno]
 
-        # scan any dependencies
+        # scan dependencies
         for dev in ev['depe'].split():
             if ev['dirty']:
-                # other dirty dependencies will be collected by caller
                 break
-            if dev in checks:
-                _log.debug('Circular dependency ignored')
-            else:
+            if dev not in checks:
                 dep = self.check_depends_dirty(dev, checks)
                 checks.add(dev)
                 if dep:
@@ -1509,7 +1509,7 @@ class trackmeet:
                 startrep = r.startlist_report()
                 startsec = None
 
-                if self.mirrorpath and doexport:
+                if doexport:
                     orep = report.report()
                     orep.showcard = False
                     self.report_strings(orep)
@@ -1616,7 +1616,8 @@ class trackmeet:
                         json.dump(rdata, f)
                 # release handle provided by mkrace
                 r = None
-            GLib.idle_add(self.mirror_start)
+            if self.mirrorpath:
+                GLib.idle_add(self.mirror_start)
             _log.debug('End data export')
         except Exception as e:
             _log.error('%s data export: %s', e.__class__.__name__, e)
