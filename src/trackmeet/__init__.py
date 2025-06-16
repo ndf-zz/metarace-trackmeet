@@ -42,7 +42,7 @@ from . import ittt
 from . import sprnd
 from . import classification
 
-VERSION = '1.13.2'
+VERSION = '1.13.3'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG
 CONFIGFILE = 'config.json'
@@ -51,6 +51,7 @@ EXPORTPATH = 'export'
 MAXREP = 10000  # communique max number
 SESSBREAKTHRESH = 0.075  # forced page break threshold
 ANNOUNCE_LINELEN = 80  # length of lines on text-only DHI announcer
+MAX_AUTORECURSE = 8  # maximum levels of autostart dependency
 
 _log = logging.getLogger('trackmeet')
 _log.setLevel(logging.DEBUG)
@@ -386,25 +387,40 @@ def mkrace(meet, event, ui=True):
     """Return a race object of the correct type."""
     ret = None
     etype = event['type']
-    if etype in [
-            'indiv tt', 'indiv pursuit', 'pursuit race', 'team pursuit',
-            'team pursuit race'
-    ]:
-        ret = ittt.ittt(meet, event, ui)
-    elif etype in ['points', 'madison', 'omnium', 'tempo', 'progressive']:
-        ret = ps.ps(meet, event, ui)
+    if etype in (
+            'indiv tt',
+            'indiv pursuit',
+            'pursuit race',
+            'team pursuit',
+            'team pursuit race',
+    ):
+        ret = ittt.ittt(meet=meet, event=event, ui=ui)
+    elif etype in (
+            'points',
+            'madison',
+            'omnium',
+            'tempo',
+            'progressive',
+    ):
+        ret = ps.ps(meet=meet, event=event, ui=ui)
     elif etype == 'classification':
-        ret = classification.classification(meet, event, ui)
-    elif etype in ['flying 200', 'flying lap']:
-        ret = f200.f200(meet, event, ui)
-    ##elif etype in [u'hour']:
-    ##ret = hour.hourrec(meet, event, ui)
-    elif etype in ['sprint round', 'sprint final']:
-        ret = sprnd.sprnd(meet, event, ui)
-    ##elif etype in [u'aggregate']:
-    ##ret = aggregate.aggregate(meet, event, ui)
+        ret = classification.classification(meet=meet, event=event, ui=ui)
+    elif etype in (
+            'flying 200',
+            'flying lap',
+    ):
+        ret = f200.f200(meet=meet, event=event, ui=ui)
+    elif etype in (
+            'sprint round',
+            'sprint final',
+    ):
+        ret = sprnd.sprnd(meet=meet, event=event, ui=ui)
+    ##elif etype == 'hour':
+    ##ret = hourrec.hourrec(meet=meet, event=event, ui=ui)
+    ##elif etype == 'aggregate':
+    ##ret = aggregate.aggregate(meet=meet, event=event, ui=ui)
     else:
-        ret = race.race(meet, event, ui)
+        ret = race.race(meet=meet, event=event, ui=ui)
     return ret
 
 
@@ -417,7 +433,7 @@ class trackmeet:
         ret = None
         eh = self.edb[evno]
         if eh is not None:
-            ret = mkrace(self, eh, ui)
+            ret = mkrace(meet=self, event=eh, ui=ui)
         return ret
 
     def menu_meet_save_cb(self, menuitem, data=None):
@@ -674,7 +690,7 @@ class trackmeet:
                 secs.extend(h.result_report(recurse=False))
             elif reptype == 'program':
                 reptypestr = 'Program of Events'
-                secs.extend(h.startlist_report(True))  # startlist in program
+                secs.extend(h.startlist_report(program=True))
             else:
                 _log.error('Unknown type in eventdb calback: %r', reptype)
             h = None
@@ -773,8 +789,12 @@ class trackmeet:
 
     def menu_race_make_activate_cb(self, menuitem, data=None):
         """Create and open a new race of the chosen type."""
+        etype = menuitem.get_label().lower().replace('_', '')
+        if data is not None:
+            etype = data
         event = self.edb.add_empty()
-        event['type'] = data
+        event['type'] = etype
+
         # Backup an existing config
         oldconf = self.event_configfile(event['evid'])
         if os.path.isfile(oldconf):
@@ -962,51 +982,56 @@ class trackmeet:
         #                   1 -> rank (ps/omnium, pursuit)
         #                   2 -> time (sprint)
         #                   3 -> info (handicap)
-        # TODO: check default, maybe defer to None
         # TODO: IMPORTANT cache result gens for fast recall
+        if len(self.autorecurse) > MAX_AUTORECURSE:
+            _log.debug('Recursion limit exceeded %s=%s', race.event['evid'],
+                       autospec)
+            return
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
             specvec = egroup.split(':')
             if len(specvec) == 2:
                 evno = specvec[0].strip()
-                if evno not in self.autorecurse:
-                    self.autorecurse.add(evno)
-                    placeset = strops.placeset(specvec[1])
-                    e = self.edb[evno]
-                    if e is not None:
-                        evplacemap = {}
-                        _log.debug('Loading places from event %r', evno)
-                        ## load the place set map rank -> [[rider,seed],..]
-                        h = mkrace(self, e, False)
-                        h.loadconfig()
-                        # Source is finished or omnium and dest not class
-                        if h.finished or (h.evtype == 'omnium'
-                                          and race.evtype != 'classification'):
-                            for ri in h.result_gen():
-                                if isinstance(ri[1],
-                                              int) and ri[1] in placeset:
-                                    rank = ri[1]
-                                    if rank not in evplacemap:
-                                        evplacemap[rank] = []
-                                    seed = None
-                                    if infocol is not None and infocol < len(
-                                            ri):
-                                        seed = ri[infocol]
-                                    evplacemap[rank].append([ri[0], seed])
+                if evno in self.edb:
+                    if evno not in self.autorecurse:
+                        self.autorecurse.add(evno)
+                        placeset = strops.placeset(specvec[1])
+                        e = self.edb[evno]
+                        if e is not None:
+                            evplacemap = {}
+                            _log.debug('Loading places from event %r', evno)
+                            ## load the place set map rank -> [(rider,seed),..]
+                            h = mkrace(self, e, False)
+                            h.loadconfig()
+                            # Source is finished or omnium and dest not class
+                            if h.finished or (h.evtype == 'omnium' and
+                                              race.evtype != 'classification'):
+                                for ri in h.result_gen():
+                                    if isinstance(ri[1],
+                                                  int) and ri[1] in placeset:
+                                        rank = ri[1]
+                                        if rank not in evplacemap:
+                                            evplacemap[rank] = []
+                                        seed = None
+                                        if infocol is not None and infocol < len(
+                                                ri):
+                                            seed = ri[infocol]
+                                        evplacemap[rank].append((ri[0], seed))
+                            else:
+                                _log.debug('Event %r not final', evno)
+                            h = None
+                            # maintain ordering of autospec
+                            for p in placeset:
+                                if p in evplacemap:
+                                    for ri in evplacemap[p]:
+                                        race.addrider(ri[0], ri[1])
                         else:
-                            _log.debug('Event %r not final', evno)
-                        #h.destroy()
-                        h = None
-                        # maintain ordering of autospec
-                        for p in placeset:
-                            if p in evplacemap:
-                                for ri in evplacemap[p]:
-                                    race.addrider(ri[0], ri[1])
+                            _log.warning('Autospec event not found: %r', evno)
+                        self.autorecurse.remove(evno)
                     else:
-                        _log.warning('Autospec event not found: %r', evno)
-                    self.autorecurse.remove(evno)
+                        _log.debug('Ignoring loop in auto startlist: %r', evno)
                 else:
-                    _log.debug('Ignoring loop in auto startlist: %r', evno)
+                    _log.debug('Missing event in auto startlist: %r', evno)
             else:
                 _log.warning('Ignoring erroneous autospec group: %r', egroup)
 
@@ -1180,7 +1205,7 @@ class trackmeet:
                     cursess = e['sess']
                 h = mkrace(self, e, False)
                 h.loadconfig()
-                s = h.startlist_report(True)
+                s = h.startlist_report(program=True)
                 for sec in s:
                     r.add_section(sec)
                 h = None
@@ -1410,20 +1435,28 @@ class trackmeet:
         """Export race data."""
         if not self.exportlock.acquire(False):
             _log.info('Export already in progress')
-            return None  # allow only one entry
-        if self.exporter is not None:
-            _log.warning('Export in progress, re-run required')
-            return False
+            return None
         try:
-            self.exporter = threading.Thread(target=self.__run_data_export)
+            if self.exporter is not None:
+                if not self.exporter.is_alive():
+                    _log.debug('Stale exporter handle removed')
+                    self.exporter = None
+                else:
+                    _log.info('Export already in progress')
+                return False
+
+            self.exporter = threading.Thread(target=self.__run_data_export,
+                                             name='export',
+                                             daemon=True)
             self.exporter.start()
-            _log.debug('Created export worker %r: ', self.exporter)
+            _log.debug('Started export: %s', self.exporter.native_id)
+        except Exception as e:
+            _log.error('%s starting export: %s', e.__class__.__name__, e)
         finally:
             self.exportlock.release()
 
     def check_depends_dirty(self, evno, checked=None):
         """Recursively determine event dependencies"""
-        _log.debug('depends: evno=%r, checked=%r', evno, checked)
         if checked is None:
             checks = set()
         else:
@@ -1444,49 +1477,36 @@ class trackmeet:
                 checks.add(dev)
                 if dep:
                     ev['dirty'] = True
-                    _log.debug('depends: %r set dirty by depend %r', evno, dev)
+                    _log.debug('Event %r dirty by dependency %r', evno, dev)
 
-        _log.debug('depends: %r returns %r', evno, ev['dirty'])
         return ev['dirty']
 
     def __run_data_export(self):
         try:
-            _log.debug('Exporting race info')
+            _log.debug('Begin data export')
             self.updatenexprev()  # re-compute next/prev link struct
 
-            # determine 'dirty' events 	## TODO !!
+            # determine 'dirty' events
             dmap = {}
-            dord = []
-            for e in self.edb:  # note - this is the only traversal
-                series = e['seri']
-                #if series not in rmap:
-                #rmap[series] = {}
+            for e in self.edb:
                 evno = e['evid']
-                etype = e['type']
-                prefix = e['pref']
-                info = e['info']
-                export = e['resu']
-                key = evno  # no need to concat series, evno is unique
                 dirty = self.check_depends_dirty(evno)
                 if dirty:
-                    dord.append(key)  # maintains ordering
-                    dmap[key] = (e, evno, etype, series, prefix, info, export)
-            _log.debug('Marked %d events dirty', len(dord))
+                    dmap[evno] = e
+            _log.debug('Marked %d events dirty', len(dmap))
 
             dirty = {}
-            for k in dmap:  # only output dirty events
-                # turn key into read-only event handle
-                e = dmap[k][0]
-                evno = dmap[k][1]
-                etype = dmap[k][2]
-                series = dmap[k][3]
-                evstr = (dmap[k][4] + ' ' + dmap[k][5]).strip()
-                doexport = dmap[k][6]
-                e['dirt'] = False
-                r = mkrace(self, e, False)
+            for evno, e in dmap.items():
+                etype = e['type']
+                series = e['series']
+                evstr = (e['prefix'] + ' ' + e['info']).strip()
+                doexport = e['result']
+                e['dirty'] = False
+                _log.debug('Data export event %r', evno)
+                r = mkrace(meet=self, event=e, ui=False)
                 r.loadconfig()
 
-                startrep = r.startlist_report('startlist')
+                startrep = r.startlist_report()
                 startsec = None
 
                 if self.mirrorpath and doexport:
@@ -1538,7 +1558,7 @@ class trackmeet:
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
 
-                    # startlist data file !!!
+                    # TODO: startlist data [to be removed]
                     sdata = {
                         'id': e['evid'],
                         'reference': e['refe'],
@@ -1565,7 +1585,7 @@ class trackmeet:
                     with metarace.savefile(ofile) as f:
                         json.dump(sdata, f)
 
-                    # result data file
+                    # TODO: result data file [to be removed]
                     rdata = {
                         'id': e['evid'],
                         'reference': e['refe'],
@@ -1594,12 +1614,12 @@ class trackmeet:
                     ofile = os.path.join(EXPORTPATH, basename + '_result.json')
                     with metarace.savefile(ofile) as f:
                         json.dump(rdata, f)
-
+                # release handle provided by mkrace
                 r = None
             GLib.idle_add(self.mirror_start)
-            _log.debug('Race info export')
+            _log.debug('End data export')
         except Exception as e:
-            _log.error('Error exporting results: %s', e)
+            _log.error('%s data export: %s', e.__class__.__name__, e)
 
     ## SCB menu callbacks
     def menu_scb_enable_toggled_cb(self, button, data=None):
@@ -1686,34 +1706,33 @@ class trackmeet:
     ## Timer callbacks
     def menu_clock_timeout(self):
         """Update time of day on clock button."""
-
         if not self.running:
             return False
+
+        nt = tod.now().meridiem()
+        if self.scb.connected():
+            self.rfustat.update('ok', nt)
         else:
-            nt = tod.now().meridiem()
-            if self.scb.connected():
-                self.rfustat.update('ok', nt)
-            else:
-                self.rfustat.update('idle', nt)
+            self.rfustat.update('idle', nt)
 
-            # check for completion in the export workers
-            if self.mirror is not None:
-                if not self.mirror.is_alive():  # replaces join() non-blocking
-                    self.mirror = None
-                    _log.debug('Removing completed export thread.')
+        # check for completion in the export workers
+        if self.mirror is not None:
+            if not self.mirror.is_alive():
+                _log.debug('Removing completed mirror')
+                self.mirror = None
 
-            if self.exporter is not None:
-                if not self.exporter.is_alive():
-                    _log.debug('Deleting complete export: %r', self.exporter)
-                    self.exporter = None
-                else:
-                    _log.info('Incomplete export: %r', self.exporter)
+        if self.exporter is not None:
+            if not self.exporter.is_alive():
+                _log.debug('Removing completed export')
+                self.exporter = None
+
         return True
 
     def timeout(self):
         """Update internal state and call into race timeout."""
         if not self.running:
             return False
+
         try:
             if self.curevent is not None:
                 self.curevent.timeout()

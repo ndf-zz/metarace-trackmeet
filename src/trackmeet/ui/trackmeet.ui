@@ -93,6 +93,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Generic Race</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -105,6 +106,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Handicap</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -112,6 +114,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Keirin</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -119,6 +122,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Elimination</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -126,6 +130,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Points</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -133,6 +138,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Madison</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -140,6 +146,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Omnium</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -147,6 +154,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Flying 200</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -154,6 +162,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Flying Lap</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -161,6 +170,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Indiv TT</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -168,6 +178,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Indiv Pursuit</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -175,13 +186,16 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Pursuit Race</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
                                   <object class="GtkMenuItem" id="mkrace_hour">
+                                    <property name="sensitive">False</property>
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Hour Record</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
@@ -189,6 +203,7 @@
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">_Classification</property>
                                     <property name="use_underline">True</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                               </object>
