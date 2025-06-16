@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Classification/Medal meta-event handler for trackmeet."""
 
 import os
@@ -21,9 +22,6 @@ from metarace import report
 
 from . import uiutil
 from . import scbwin
-
-# temporary
-from functools import cmp_to_key
 
 _log = logging.getLogger('classification')
 _log.setLevel(logging.DEBUG)
@@ -77,14 +75,8 @@ class classification:
             }
         })
         cr.add_section('event')
-        if os.path.exists(self.configfile):
-            try:
-                with open(self.configfile, 'rb') as f:
-                    cr.read(f)
-            except Exception as e:
-                _log.error('Unable to read config: %s', e)
-        else:
-            _log.info('%r not found, loading defaults', self.configfile)
+        if not cr.load(self.configfile):
+            _log.info('%r not read, loading defaults', self.configfile)
 
         if self.event['info'] == 'Omnium':
             # pre-load source events by searching event db unless config'd
@@ -121,7 +113,8 @@ class classification:
                     self.event['depends'] = evtlist
                     for sid in showevts:
                         try:
-                            # while here - visit event config to update omnium flag
+                            # while here - visit event config
+                            # and update omnium flag
                             config = self.meet.event_configfile(sid)
                             ecr = jsonconfig.config()
                             ecr.add_section('event')
@@ -143,23 +136,26 @@ class classification:
                                        config)
                             with metarace.savefile(config) as f:
                                 ecr.write(f)
-                        except Excpetion as e:
+                        except Exception as e:
                             _log.error('%s updating config: %s',
                                        e.__class__.__name__, e)
                 cr.set('event', 'showinfo', False)
             else:
                 _log.debug('Omnium already configured')
 
-        self.update_expander_lbl_cb()
-        self.info_expand.set_expanded(
-            strops.confopt_bool(cr.get('event', 'showinfo')))
         self.showcats = cr.get_bool('event', 'showcats')
-
         self.showevents = cr.get('event', 'showevents')
         self.placesrc = cr.get('event', 'placesrc')
         self.medals = cr.get('event', 'medals')
         self.decisions = cr.get('event', 'decisions')
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(
+                strops.confopt_bool(cr.get('event', 'showinfo')))
+
         self.recalculate()  # model is cleared and loaded in recalc
+
         eid = cr.get('event', 'id')
         if eid and eid != EVENT_ID:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
@@ -236,7 +232,7 @@ class classification:
                     info = None  # no seeding info available
             time = None
 
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
 
     def result_report(self, recurse=True):  # by default include inners
         """Return a list of report sections containing the race result."""
@@ -346,7 +342,7 @@ class classification:
                         ret.extend(r.result_report())
                     else:  # go for startlist
                         ret.extend(r.startlist_report())
-                    r.destroy()
+                    r = None
         return ret
 
     def addrider(self, bib='', place=''):
@@ -392,18 +388,16 @@ class classification:
 
     def recalculate(self):
         """Update internal model."""
-
-        # TODO: update to allow for keirin and sprint inter rounds
         self.riders.clear()
 
-        # Pass one: Create ordered place lookup
+        # Create ordered place lookup
         currank = 0
         lookup = {}
         for p in self.placesrc.split(';'):
             placegroup = p.strip()
             if placegroup:
-                _log.debug('Adding place group %r at rank %r', placegroup,
-                           currank)
+                #_log.debug('Adding place group %r at rank %r', placegroup,
+                #currank)
                 if placegroup == 'X':
                     _log.debug('Added placeholder at rank %r', currank)
                     currank += 1
@@ -427,9 +421,10 @@ class classification:
             else:
                 _log.debug('Empty placegroup at rank %r', currank)
 
-        # Pass 2: create an ordered list of rider numbers using lookup
+        # Create an ordered list of rider numbers using lookup
         placemap = {}
         maxcrank = 0
+        self.finished = True  # Assume finished unless one source is not
         for evno in lookup:
             r = self.meet.get_event(evno, False)
             if r is None:
@@ -439,19 +434,21 @@ class classification:
             r.loadconfig()  # now have queryable event handle
             if r.finished:
                 for res in r.result_gen():
-                    _log.debug('Result gen %r: %r', evno, res)
                     if isinstance(res[1], int):
                         if res[1] in lookup[evno]:
                             crank = lookup[evno][res[1]] + 1
                             maxcrank = max(maxcrank, crank)
-                            _log.debug(
-                                'Assigned place %r to rider %r at rank %r',
-                                crank, res[0], res[1])
+                            #_log.debug(
+                            #'Assigned place %r to rider %r at rank %r',
+                            #crank, res[0], res[1])
                             if crank not in placemap:
                                 placemap[crank] = []
                             placemap[crank].append(res[0])
+            else:
+                self.finished = False
+            r = None
 
-        # Pass 3: add riders to model in rank order
+        # Add riders to model in rank order
         i = 1
         while i <= maxcrank:
             if i in placemap:
@@ -461,7 +458,8 @@ class classification:
 
         if len(self.riders) > 0:  # got at least one result to report
             self.onestart = True
-        # Pass 4: Mark medals if required and determine status
+
+        # Mark medals/awards if required and determine status
         self._standingstat = ''
         medalmap = {}
         placecount = 0
@@ -602,7 +600,10 @@ class classification:
 
     def shutdown(self, win=None, msg='Exiting'):
         """Terminate race object."""
-        _log.debug('Shutdown event %s: %s', self.evno, msg)
+        rstr = ''
+        if self.readonly:
+            rstr = 'readonly '
+        _log.debug('Shutdown %sevent %s: %s', rstr, self.evno, msg)
         if not self.readonly:
             self.saveconfig()
         self.winopen = False
@@ -655,8 +656,6 @@ class classification:
 
     def destroy(self):
         """Signal race shutdown."""
-        if self.context_menu is not None:
-            self.context_menu.destroy()
         self.frame.destroy()
 
     def show(self):
@@ -694,12 +693,16 @@ class classification:
         self.evtype = event['type']
         self.series = event['seri']
         self.configfile = meet.event_configfile(self.evno)
-        _log.debug('Init event %s', self.evno)
 
         # race run time attributes
+        self.autospec = ''  # automatic startlist - ignored
         self.onestart = True  # always true for autospec classification
         self.showcats = False  # show primary category on result
         self.readonly = not ui
+        rstr = ''
+        if self.readonly:
+            rstr = 'readonly '
+        _log.debug('Init %sevent %s', rstr, self.evno)
         self.winopen = ui
         self.placesrc = ''
         self.medals = ''
@@ -716,23 +719,22 @@ class classification:
             str,  # 5 place
             str)  # 6 medal
 
-        b = uiutil.builder('classification.ui')
-        self.frame = b.get_object('classification_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('classification_info_evno').set_text(self.evno)
-        self.showev = b.get_object('classification_info_evno_show')
-        self.prefix_ent = b.get_object('classification_info_prefix')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.info_ent = b.get_object('classification_info_title')
-        self.info_ent.set_text(self.event['info'])
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-
-        self.context_menu = None
         if ui:
+            b = uiutil.builder('classification.ui')
+            self.frame = b.get_object('classification_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('classification_info_evno').set_text(self.evno)
+            self.showev = b.get_object('classification_info_evno_show')
+            self.prefix_ent = b.get_object('classification_info_prefix')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.info_ent = b.get_object('classification_info_title')
+            self.info_ent.set_text(self.event['info'])
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+
             # riders pane
             t = Gtk.TreeView(self.riders)
             self.view = t

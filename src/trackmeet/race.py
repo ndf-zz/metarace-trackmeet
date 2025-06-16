@@ -1227,7 +1227,7 @@ class race:
             bib = r[COL_BIB]
             rank = None
             info = ''
-            if self.evtype in ['handicap', 'sprint']:
+            if self.evtype in ('handicap', 'sprint'):
                 # include handicap and previous win info
                 info = r[COL_INFO].strip()
             if self.onestart:
@@ -1236,7 +1236,7 @@ class race:
                         rank = int(r[COL_PLACE])
                 else:
                     inft = r[COL_INFO]
-                    if inft in ['dns', 'dsq']:
+                    if inft in ('dns', 'dsq'):
                         rank = inft
                     else:
                         rank = 'dnf'
@@ -1244,7 +1244,7 @@ class race:
             if self.finish is not None and ft is None:
                 time = (self.finish - self.start).rawtime(2)
                 ft = True
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
