@@ -239,9 +239,7 @@ class f200:
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
         self.autoarm = strops.confopt_bool(cr.get('event', 'autoarm'))
-        self.update_expander_lbl_cb()
-        self.info_expand.set_expanded(
-            strops.confopt_bool(cr.get('event', 'showinfo')))
+
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 3  # read seeding from points standinds
@@ -281,28 +279,33 @@ class f200:
                     self.traces[r] = cr.get('traces', r)
         self.placexfer()
 
-        # re-join an existing timer state
-        curstart = tod.mktod(cr.get('event', 'start'))
-        lstart = tod.mktod(cr.get('event', 'lstart'))
-        if lstart is None:
-            lstart = curstart  # can still be None if start not set
-        dorejoin = False
-        fsstat = cr.get('event', 'fsstat')
-        if fsstat not in ['idle', 'finish']:
-            self.fs.setrider(cr.get('event', 'fsbib'))  # load rider
-            if fsstat in ['running', 'armfin', 'armint'
-                          ] and curstart is not None:
-                self.fs.start(curstart)  # overrides to 'running'
-                dorejoin = True
-
         if not self.onestart and self.autospec:
             self.meet.autostart_riders(self,
                                        self.autospec,
                                        infocol=self.seedsrc)
-        if dorejoin:
-            self.torunning(curstart, lstart)
-        elif self.timerstat == 'idle':
-            GLib.idle_add(self.fs.grab_focus)
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(
+                strops.confopt_bool(cr.get('event', 'showinfo')))
+
+            # re-join an existing timer state
+            curstart = tod.mktod(cr.get('event', 'start'))
+            lstart = tod.mktod(cr.get('event', 'lstart'))
+            if lstart is None:
+                lstart = curstart  # can still be None if start not set
+            dorejoin = False
+            fsstat = cr.get('event', 'fsstat')
+            if fsstat not in ('idle', 'finish'):
+                self.fs.setrider(cr.get('event', 'fsbib'))  # load rider
+                if fsstat in ('running', 'armfin',
+                              'armint') and curstart is not None:
+                    self.fs.start(curstart)  # overrides to 'running'
+                    dorejoin = True
+            if dorejoin:
+                self.torunning(curstart, lstart)
+            elif self.timerstat == 'idle':
+                GLib.idle_add(self.fs.grab_focus)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -677,7 +680,7 @@ class f200:
             time = None
             info = None
             cmts = r[COL_COMMENT]
-            if cmts in ['rel']:
+            if cmts in ('rel', ):
                 info = cmts
             if self.onestart:
                 pls = r[COL_PLACE]
@@ -689,7 +692,7 @@ class f200:
                 if r[COL_FINISH] is not None:
                     time = (r[COL_FINISH] - r[COL_START]).truncate(3)
 
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
@@ -1487,6 +1490,7 @@ class f200:
         self.seedsrc = 1  # default seeding is by rank in last round
         self.finished = False
         self._standingstr = ''
+        self.context_menu = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
@@ -1500,35 +1504,33 @@ class f200:
             object,  # 8 Finish
             object)  # 9 100m
 
-        b = uiutil.builder('ittt.ui')
-        self.frame = b.get_object('race_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('race_info_evno').set_text(self.evno)
-        self.showev = b.get_object('race_info_evno_show')
-        self.prefix_ent = b.get_object('race_info_prefix')
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.info_ent = b.get_object('race_info_title')
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-        self.info_ent.set_text(self.event['info'])
-        self.traces = {}
-
-        # Timer Pane
-        mf = b.get_object('race_timer_pane')
-        self.fs = uiutil.timerpane('Timer', doser=False)
-        self.fs.bibent.connect('activate', self.bibent_cb, self.fs)
-        self.fs.hide_splits()
-        self.fs.splitlbls = ['100\u2006m Split', 'Finish']
-        self.fslog = None
-        mf.pack_start(self.fs.frame, True, True, 0)
-
         # show window
-        self.context_menu = None
         if ui:
-            _log.debug('Connecting event ui handlers')
+            b = uiutil.builder('ittt.ui')
+            self.frame = b.get_object('race_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('race_info_evno').set_text(self.evno)
+            self.showev = b.get_object('race_info_evno_show')
+            self.prefix_ent = b.get_object('race_info_prefix')
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.info_ent = b.get_object('race_info_title')
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+            self.info_ent.set_text(self.event['info'])
+            self.traces = {}
+
+            # Timer Pane
+            mf = b.get_object('race_timer_pane')
+            self.fs = uiutil.timerpane('Timer', doser=False)
+            self.fs.bibent.connect('activate', self.bibent_cb, self.fs)
+            self.fs.hide_splits()
+            self.fs.splitlbls = ['100\u2006m Split', 'Finish']
+            self.fslog = None
+            mf.pack_start(self.fs.frame, True, True, 0)
+
             # riders pane
             t = Gtk.TreeView(self.riders)
             self.view = t
