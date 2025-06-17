@@ -217,12 +217,12 @@ class ittt:
             track_n = float(self.meet.tracklen_n)
             track_d = float(self.meet.tracklen_d)
             track_l = track_n / track_d
-            if self.units in ['metres', 'meters']:
+            if self.units in ('metres', 'meters'):
                 event_d = float(self.distance)
             elif self.units == 'laps':
                 event_d = track_n * float(self.distance) / track_d
         except Exception as e:
-            _log.warning('Unable to setup split points: %s', e)
+            _log.warning('Unable to setup splits: %s', e)
         if event_d is not None and track_l is not None:
             _log.debug('Track lap=%0.1f, Event dist=%0.1f', track_l, event_d)
             # add a dummy entry for the finish passing
@@ -244,17 +244,18 @@ class ittt:
                 count += 1
             _log.debug('Configured %r splits: %r', len(self.splitlist),
                        self.splitlist)
-            self.fs.splitlbls = self.splitlist
-            self.bs.splitlbls = self.splitlist
+            if self.winopen:
+                self.fs.splitlbls = self.splitlist
+                self.bs.splitlbls = self.splitlist
         else:
-            _log.debug('Split points not available')
+            _log.debug('Splits not available')
 
     def loadconfig(self):
         """Load race config from disk."""
         self.riders.clear()
         self.results.clear()
 
-        # failsafe defaults -> dual timer, C0 start, PA/PB
+        # defaults: dual timer, C0 start, PA/PB
         deftimetype = 'dual'
         defdistance = ''
         defdistunits = 'metres'
@@ -266,10 +267,10 @@ class ittt:
         self.seedsrc = 1  # fetch seed from the rank col
 
         # type specific overrides
-        if self.evtype in ['pursuit race', 'team pursuit race']:
+        if self.evtype in ('pursuit race', 'team pursuit race'):
             self.difftime = True  # NOT CONFIGURABLE
 
-        if self.evtype in ['team pursuit', 'team pursuit race']:
+        if self.evtype in ('team pursuit', 'team pursuit race'):
             self.teampursuit = True
             defprecision = 2
         else:
@@ -321,20 +322,17 @@ class ittt:
                                                   self.distance)
             _log.debug('Event distance set by program entry: %r laps',
                        self.distance)
-        # re-initialise split data for the event
-        if not self.readonly:
-            self.setup_splits()
 
         self.set_timetype(cr.get('event', 'timetype'))
         self.autotime = strops.confopt_bool(cr.get('event', 'autotime'))
-        self.update_expander_lbl_cb()
-        self.info_expand.set_expanded(
-            strops.confopt_bool(cr.get('event', 'showinfo')))
         self.showcats = cr.get_bool('event', 'showcats')
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 3  # read seeding from points standing
         self.precision = strops.confopt_posint(cr.get('event', 'precision'), 3)
+
+        # re-initialise split data
+        self.setup_splits()
 
         # re-load starters and results
         self.onestart = False
@@ -371,8 +369,8 @@ class ittt:
                     self.traces[r] = cr.get('traces', r)
                 if cr.has_option('splits', r):
                     rsplit = cr.get('splits', r)
-                    for sid in rsplit:
-                        sp[sid] = tod.mktod(rsplit[sid])
+                    for sid, split in rsplit.items():
+                        sp[sid] = tod.mktod(split)
             self.settimes(nri, st, ft, lt, sp, doplaces=False, comment=co)
         if self.series and 't' in self.series:
             self.teamnames = True
@@ -381,35 +379,45 @@ class ittt:
                 self.precision = 2
         self.placexfer()
 
-        # re-join any existing timer state
-        curstart = tod.mktod(cr.get('event', 'start'))
-        lstart = tod.mktod(cr.get('event', 'lstart'))
-        if lstart is None:
-            lstart = curstart  # can still be None if start not set
-        dorejoin = False
-        # Front straight
-        fsstat = cr.get('event', 'fsstat')
-        if fsstat in ['running', 'load']:  # running with no start gets load
-            self.fs.setrider(cr.get('event', 'fsbib'))  # will set 'load'
-            if fsstat == 'running' and curstart is not None:
-                self.fs.start(curstart)  # overrides to 'running'
-                dorejoin = True
-        # Back straight
-        bsstat = cr.get('event', 'bsstat')
-        if bsstat in ['running', 'load']:  # running with no start gets load
-            self.bs.setrider(cr.get('event', 'bsbib'))  # will set 'load'
-            if bsstat == 'running' and curstart is not None:
-                self.bs.start(curstart)  # overrides to 'running'
-                dorejoin = True
-
         if not self.onestart and self.autospec:
             self.meet.autostart_riders(self,
                                        self.autospec,
                                        infocol=self.seedsrc)
-        if dorejoin:
-            self.torunning(curstart, lstart)
-        elif self.timerstat == 'idle':
-            GLib.idle_add(self.fs.grab_focus)
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(
+                strops.confopt_bool(cr.get('event', 'showinfo')))
+
+            # re-join any existing timer state
+            curstart = tod.mktod(cr.get('event', 'start'))
+            lstart = tod.mktod(cr.get('event', 'lstart'))
+            if lstart is None:
+                lstart = curstart  # can still be None if start not set
+            dorejoin = False
+
+            # Front straight
+            fsstat = cr.get('event', 'fsstat')
+            if fsstat in ['running',
+                          'load']:  # running with no start gets load
+                self.fs.setrider(cr.get('event', 'fsbib'))  # will set 'load'
+                if fsstat == 'running' and curstart is not None:
+                    self.fs.start(curstart)  # overrides to 'running'
+                    dorejoin = True
+
+            # Back straight
+            bsstat = cr.get('event', 'bsstat')
+            if bsstat in ['running',
+                          'load']:  # running with no start gets load
+                self.bs.setrider(cr.get('event', 'bsbib'))  # will set 'load'
+                if bsstat == 'running' and curstart is not None:
+                    self.bs.start(curstart)  # overrides to 'running'
+                    dorejoin = True
+
+            if dorejoin:
+                self.torunning(curstart, lstart)
+            elif self.timerstat == 'idle':
+                GLib.idle_add(self.fs.grab_focus)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -918,7 +926,7 @@ class ittt:
             time = None
             info = None
             cmts = r[COL_COMMENT]
-            if cmts in ['caught', 'rel', 'w/o', 'lose']:
+            if cmts in ('caught', 'rel', 'w/o', 'lose'):
                 info = cmts
             if self.onestart:
                 pls = r[COL_PLACE]
@@ -931,7 +939,7 @@ class ittt:
                     time = (r[COL_FINISH] - r[COL_START]).truncate(
                         self.precision)
 
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
@@ -953,7 +961,6 @@ class ittt:
         rcount = 0
         pcount = 0
         for r in self.riders:
-            _log.debug('Rider: %r', [c for c in r])
             rcount += 1
             rno = r[COL_BIB]
             rh = self.meet.rdb.get_rider(rno, self.series)
@@ -1381,12 +1388,12 @@ class ittt:
         if splits is not None:
             # save reference to rider model
             self.riders.set_value(iter, COL_SPLITS, splits)
-            for sid in splits:
+            for sid, split in splits.items():
                 # and transfer into inter-ranks
                 if sid in self.splitmap:
                     self.splitmap[sid]['data'].remove(bib)
-                    if splits[sid] is not None:
-                        splitval = splits[sid] - st
+                    if split is not None:
+                        splitval = split - st
                         self.splitmap[sid]['data'].insert(splitval, None, bib)
                 else:
                     _log.info('Unknown split %r for rider %r', sid, bib)
@@ -1426,7 +1433,7 @@ class ittt:
     def armlap(self, sp, cid):
         """Arm timer for a manual lap split."""
         if self.timerstat == 'autotime':
-            _log.info('Autotime disabled by manual intervention.')
+            _log.info('Autotime disabled by manual intervention')
             self.disable_autotime()
         if self.timerstat == 'running':
             if sp.getstatus() in ['caught', 'running']:
@@ -1531,7 +1538,7 @@ class ittt:
     def armfinish(self, sp, cid):
         """Arm timer for finish trigger."""
         if self.timerstat == 'autotime':
-            _log.info('Autotime disabled by manual intervention.')
+            _log.info('Autotime disabled by manual intervention')
             self.disable_autotime()
         if self.timerstat == 'running':
             if sp.getstatus() in ['running', 'caught', 'finish']:
@@ -1927,16 +1934,17 @@ class ittt:
         """Update timer panes to match timetype or data if provided."""
         if data is not None:
             self.timetype = strops.confopt_pair(data, 'single', 'dual')
-        if self.timetype == 'single':
-            self.bs.frame.hide()
-            self.bs.hide_splits()
-            self.fs.frame.set_label('Timer')
-            self.fs.show_splits()
-        else:
-            self.bs.frame.show()
-            self.bs.show_splits()
-            self.fs.frame.set_label('Front Straight')
-            self.fs.show_splits()
+        if self.winopen:
+            if self.timetype == 'single':
+                self.bs.frame.hide()
+                self.bs.hide_splits()
+                self.fs.frame.set_label('Timer')
+                self.fs.show_splits()
+            else:
+                self.bs.frame.show()
+                self.bs.show_splits()
+                self.fs.frame.set_label('Front Straight')
+                self.fs.show_splits()
 
     def destroy(self):
         """Signal race shutdown."""
@@ -1955,11 +1963,12 @@ class ittt:
     def __init__(self, meet, event, ui=True):
         """Constructor."""
         self.meet = meet
-        self.event = event  # Note: now a treerowref
+        self.event = event
         self.evno = event['evid']
         self.evtype = event['type']
         self.series = event['seri']
         self.configfile = meet.event_configfile(self.evno)
+
         self.readonly = not ui
         rstr = ''
         if self.readonly:
@@ -2003,6 +2012,7 @@ class ittt:
         self.splitlist = []  # ordered list of split ids
         self.splitmap = {}  # map of split ids and rank data
         self.results = tod.todlist('FIN')  # FIX FOR LAST LAP
+        self.context_menu = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
@@ -2017,36 +2027,33 @@ class ittt:
             object,  # 9 Last Lap
             object)  # 10 Splits
 
-        b = uiutil.builder('ittt.ui')
-        self.frame = b.get_object('race_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # meta info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('race_info_evno').set_text(self.evno)
-        self.showev = b.get_object('race_info_evno_show')
-        self.prefix_ent = b.get_object('race_info_prefix')
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.info_ent = b.get_object('race_info_title')
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-        self.info_ent.set_text(self.event['info'])
-
-        # Timer Panes
-        mf = b.get_object('race_timer_pane')
-        self.fs = uiutil.timerpane('Front Straight', doser=False)
-        self.fs.bibent.connect('activate', self.bibent_cb, self.fs)
-        self.bs = uiutil.timerpane('Back Straight', doser=False)
-        self.bs.urow = 6  # scb row for timer messages
-        self.bs.bibent.connect('activate', self.bibent_cb, self.bs)
-        mf.pack_start(self.fs.frame, True, True, 0)
-        mf.pack_start(self.bs.frame, True, True, 0)
-        mf.set_focus_chain([self.fs.frame, self.bs.frame, self.fs.frame])
-
-        # show window
-        self.context_menu = None
         if ui:
-            _log.debug('Connecting event ui handlers')
+            b = uiutil.builder('ittt.ui')
+            self.frame = b.get_object('race_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # meta info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('race_info_evno').set_text(self.evno)
+            self.showev = b.get_object('race_info_evno_show')
+            self.prefix_ent = b.get_object('race_info_prefix')
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.info_ent = b.get_object('race_info_title')
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+            self.info_ent.set_text(self.event['info'])
+
+            # Timer Panes
+            mf = b.get_object('race_timer_pane')
+            self.fs = uiutil.timerpane('Front Straight', doser=False)
+            self.fs.bibent.connect('activate', self.bibent_cb, self.fs)
+            self.bs = uiutil.timerpane('Back Straight', doser=False)
+            self.bs.urow = 6  # scb row for timer messages
+            self.bs.bibent.connect('activate', self.bibent_cb, self.bs)
+            mf.pack_start(self.fs.frame, True, True, 0)
+            mf.pack_start(self.bs.frame, True, True, 0)
+            mf.set_focus_chain([self.fs.frame, self.bs.frame, self.fs.frame])
+
             # riders pane
             t = Gtk.TreeView(self.riders)
             self.view = t
