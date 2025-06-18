@@ -820,13 +820,19 @@ class sprnd:
             self.event['info'] = entry.get_text()
         self.update_expander_lbl_cb()
 
-    def starttrig(self, e):
+    def starttrig(self, e, wallstart=None):
         """React to start trigger."""
         if self.timerstat == 'armstart':
             self.start = e
-            self.lstart = tod.now()
+            if wallstart:
+                self.lstart = wallstart
+            else:
+                self.lstart = tod.now()
             self.setrunning()
-            GLib.timeout_add_seconds(4, self.armfinish)
+            if wallstart is None:
+                GLib.timeout_add_seconds(4, self.armfinish)
+            else:
+                GLib.idle_add(self.armfinish)
 
     def fintrig(self, e):
         """React to finish trigger."""
@@ -846,6 +852,21 @@ class sprnd:
                 if self.start is not None:
                     self.meet.gemini.rtick(self.finish - self.start, 2)
             GLib.idle_add(self.delayed_announce)
+
+    def recover_start(self):
+        """Recover missed start time"""
+        if self.timerstat in ('idle', 'armstart'):
+            rt = self.meet.recover_time(self.startchan)
+            if rt is not None:
+                # rt: (event, wallstart)
+                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                if self.timerstat == 'idle':
+                    self.timerstat = 'armstart'
+                self.meet.main_timer.dearm(self.startchan)
+                self.meet.main_timer.dearm('C0')
+                self.starttrig(rt[0], rt[1])
+            else:
+                _log.info('No recent start time to recover')
 
     def timercb(self, e):
         """Handle a timer event."""

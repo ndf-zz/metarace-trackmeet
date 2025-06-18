@@ -216,6 +216,15 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkMenuItem" id="menu_race_recover">
+                            <property name="label">Recover _Start</property>
+                            <property name="visible">True</property>
+                            <property name="sensitive">False</property>
+                            <property name="use_underline">True</property>
+                            <signal name="activate" handler="menu_race_recover_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkMenuItem" id="menu_race_info">
                             <property name="label">Show _Info</property>
                             <property name="visible">True</property>

@@ -874,7 +874,7 @@ class ittt:
             self.autotime = aa.get_active()
             if not self.splitlist:
                 self.autotime = False
-                _log.info('No splits configured, autotime disabled.')
+                _log.info('No splits configured, autotime disabled')
 
             self.chan_S = chs.get_active()
             self.chan_A = cha.get_active()
@@ -1187,9 +1187,38 @@ class ittt:
             self.meet.gemini.show_dual()
         # call for a delayed announce...
         GLib.idle_add(self.delayed_announce)
-        # AND THEN, if other lane not armed, export result
+
+        # if other lane not armed, export result
         if self.t_other(sp).getstatus() != 'armfin':
             self.meet.delayed_export()
+
+        # check for heat completion
+        finished = True
+        if self.fs.getrider() and self.fs.getstatus() != 'finish':
+            finished = False
+        if self.bs.getrider() and self.bs.getstatus() != 'finish':
+            finished = False
+        if finished:
+            self.meet.delayimp('2.00')
+
+    def recover_start(self):
+        """Recover missed start time"""
+        if self.timerstat in ('idle', 'armstart'):
+            rt = self.meet.recover_time(self.chan_S)
+            if rt is not None:
+                # rt: (event, wallstart)
+                if self.timerstat == 'idle':
+                    self.toarmstart()
+                if 'armstart' in (self.fs.status, self.bs.status):
+                    _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                    self.meet.main_timer.dearm(self.chan_S)
+                    self.torunning(rt[0], rt[1])
+                else:
+                    _log.info('No competitors loaded - recover start skipped')
+            else:
+                _log.info('No recent start time to recover')
+        else:
+            _log.info('Unable to recover start')
 
     def timercb(self, e):
         """Handle a timer event."""
@@ -1248,16 +1277,16 @@ class ittt:
         scb.sett2(t2)
         return False
 
-    def torunning(self, st, lst=None):
+    def torunning(self, st, wallstart=None):
         """Set timer running."""
         if self.fs.status == 'armstart':
             self.fs.start(st)
         if self.bs.status == 'armstart':
             self.bs.start(st)
         self.curstart = st
-        if lst is None:
-            lst = tod.now()
-        self.lstart = lst
+        if wallstart is None:
+            wallstart = tod.now()
+        self.lstart = wallstart
         self.diffstart = None
         self.difflane = None
         if self.autotime:
@@ -1267,9 +1296,6 @@ class ittt:
         self.onestart = True
         if self.timetype == 'single':
             pass
-            #if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
-            #GLib.timeout_add_seconds(3, self.show_200_ttb,
-            #self.meet.scbwin)
 
     def clearplaces(self):
         """Clear rider places."""

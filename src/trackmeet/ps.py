@@ -357,8 +357,10 @@ class ps:
 
         self.recalculate()
 
-        self.set_start(cr.get('event', 'start'), cr.get('event', 'lstart'))
-        self.set_finish(cr.get('event', 'finish'))
+        st = tod.mktod(cr.get('event', 'start'))
+        lst = tod.mktod(cr.get('event', 'lstart'))
+        self.set_start(st, lst)
+        self.set_finish(tod.mktod(cr.get('event', 'finish')))
         self.set_elapsed()
 
         # after load, add auto if required
@@ -386,12 +388,9 @@ class ps:
             return
         cw = jsonconfig.config()
         cw.add_section('event')
-        if self.start is not None:
-            cw.set('event', 'start', self.start.rawtime())
-        if self.lstart is not None:
-            cw.set('event', 'lstart', self.lstart.rawtime())
-        if self.finish is not None:
-            cw.set('event', 'finish', self.finish.rawtime())
+        cw.set('event', 'start', self.start)
+        cw.set('event', 'lstart', self.lstart)
+        cw.set('event', 'finish', self.finish)
         cw.set('event', 'startlist', self.get_startlist())
         cw.set('event', 'showinfo', self.info_expand.get_expanded())
         cw.set('event', 'distance', self.distance)
@@ -493,8 +492,8 @@ class ps:
                            self.event['prog']]).strip()
         sec.units = 'Pts'
         fs = ''
-        if self.finish is not None:
-            fs = self.time_lbl.get_text().strip()
+        if self.finish is not None and self.start is not None:
+            fs = (self.finish - self.start).rawtime(2)
         fl = None
         ll = None
         for r in self.riders:
@@ -1304,10 +1303,10 @@ class ps:
             self.saveconfig()
         self.winopen = False
 
-    def starttrig(self, e):
+    def starttrig(self, e, wallstart=None):
         """React to start trigger."""
         if self.timerstat == 'armstart':
-            self.set_start(e, tod.now())
+            self.set_start(e, wallstart)
         elif self.timerstat == 'armsprintstart':
             self.stat_but.update('activity', 'Arm Sprint')
             self.meet.main_timer.arm(1)
@@ -1335,12 +1334,26 @@ class ps:
                     self.meet.scbwin.setavg(elap)
             self.sprintstart = None
 
+    def recover_start(self):
+        """Recover missed start time"""
+        if self.timerstat in ('idle', 'armstart'):
+            rt = self.meet.recover_time('C0')
+            if rt is not None:
+                # rt: (event, wallstart)
+                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                if self.timerstat == 'idle':
+                    self.timerstat = 'armstart'
+                self.meet.main_timer.dearm('C0')
+                self.starttrig(rt[0], rt[1])
+            else:
+                _log.info('No recent start time to recover')
+
     def timercb(self, e):
         """Handle a timer event"""
         chan = strops.chan2id(e.chan)
         if chan == 0:
             _log.debug('Start impulse %s', e.rawtime(3))
-            self.starttrig(e)
+            self.starttrig(e, tod.now())
         elif chan == 1:
             _log.debug('Finish impulse %s', e.rawtime(3))
             self.fintrig(e)
@@ -1447,42 +1460,34 @@ class ps:
         dlg.destroy()
 
     ## Race timing manipulations
-    def set_start(self, start='', lstart=None):
+    def set_start(self, start=None, wallstart=None):
         """Set the race start time."""
-        if type(start) is tod.tod:
-            self.start = start
-            if lstart is not None:
-                self.lstart = lstart
-            else:
-                self.lstart = self.start
+        self.start = start
+        if wallstart is not None:
+            self.lstart = wallstart
         else:
-            self.start = tod.mktod(start)
-            if lstart is not None:
-                self.lstart = tod.mktod(lstart)
-            else:
-                self.lstart = self.start
+            self.lstart = self.start
+
         if self.start is None:
             pass
         else:
             if self.finish is None:
                 self.set_running()
 
-    def set_finish(self, finish=''):
+    def set_finish(self, finish=None):
         """Set the race finish time."""
-        if type(finish) is tod.tod:
-            self.finish = finish
-        else:
-            self.finish = tod.mktod(finish)
+        self.finish = finish
         if self.finish is None:
             if self.start is not None:
                 self.set_running()
         else:
             if self.start is None:
-                self.set_start(tod.ZERO)
+                _log.info('Ignore finish without start time')
+                self.set_start()
             self.set_finished()
 
     def set_elapsed(self):
-        """Update elapsed race time."""
+        """Update displayed elapsed race time."""
         if self.winopen:
             if self.start is not None and self.finish is not None:
                 et = self.finish - self.start

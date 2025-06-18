@@ -736,6 +736,7 @@ class race:
         self.ctrl_places.set_text('')
         self.placexfer('')
         self.meet.main_timer.dearm(self.startchan)
+        self.meet.main_timer.dearm('C0')
         self.meet.main_timer.dearm(self.finchan)
         self.stat_but.update('idle', 'Idle')
         self.stat_but.set_sensitive(True)
@@ -770,9 +771,7 @@ class race:
             self.time_lbl.set_text('')
             self.stat_but.update('idle', 'Idle')
             self.meet.main_timer.dearm(self.startchan)
-            if self.timetype == '200m':
-                # also accept C0 on sprint types
-                self.meet.main_timer.dearm(0)
+            self.meet.main_timer.dearm('C0')
 
     def armfinish(self):
         """Toggle timer arm finish state."""
@@ -1129,15 +1128,20 @@ class race:
         """Toggle rider dnf flag."""
         self.riders[path][col] = not self.riders[path][col]
 
-    def starttrig(self, e):
+    def starttrig(self, e, wallstart=None):
         """React to start trigger."""
         if self.timerstat == 'armstart':
             self.start = e
-            self.lstart = tod.now()
+            if wallstart is not None:
+                self.lstart = wallstart
+            else:
+                self.lstart = tod.now()
             self.setrunning()
             if self.timetype == '200m':
-                GLib.timeout_add_seconds(4, self.armfinish)
-                # delayed auto arm 200...
+                if wallstart is None:
+                    GLib.timeout_add_seconds(4, self.armfinish)
+                else:
+                    GLib.idle_add(self.armfinish)
 
     def fintrig(self, e):
         """React to finish trigger."""
@@ -1149,6 +1153,23 @@ class race:
             if self.timerwin and type(self.meet.scbwin) is scbwin.scbtimer:
                 self.showtimer()
             GLib.idle_add(self.delayed_announce)
+
+    def recover_start(self):
+        """Recover missed start time"""
+        if self.timerstat in ('idle', 'armstart'):
+            rt = self.meet.recover_time(self.startchan)
+            if rt is not None:
+                # rt: (event, wallstart)
+                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                if self.timerstat == 'idle':
+                    self.timerstat = 'armstart'
+                self.meet.main_timer.dearm(self.startchan)
+                self.meet.main_timer.dearm('C0')
+                self.starttrig(rt[0], rt[1])
+            else:
+                _log.info('No recent start time to recover')
+        else:
+            _log.info('Unable to recover start')
 
     def timercb(self, e):
         """Handle a timer event."""
@@ -1261,8 +1282,8 @@ class race:
                            self.event['prog']]).strip()
         first = True
         fs = ''
-        if self.finish is not None:
-            fs = self.time_lbl.get_text().strip()
+        if self.finish is not None and self.start is not None:
+            fs = (self.finish - self.start).rawtime(2)
         rcount = 0
         pcount = 0
         for r in self.riders:

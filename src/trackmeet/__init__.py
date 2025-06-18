@@ -52,6 +52,7 @@ MAXREP = 10000  # communique max number
 SESSBREAKTHRESH = 0.075  # forced page break threshold
 ANNOUNCE_LINELEN = 80  # length of lines on text-only DHI announcer
 MAX_AUTORECURSE = 8  # maximum levels of autostart dependency
+RECOVER_TIMEOUT = 8  # ignore previous impulses that are too old
 
 _log = logging.getLogger('trackmeet')
 _log.setLevel(logging.DEBUG)
@@ -804,6 +805,11 @@ class trackmeet:
         self.open_event(event)
         self.menu_race_properties.activate()
 
+    def menu_race_recover_activate_cb(self, menuitem, data=None):
+        """Attempt to recover missed start impulse."""
+        if self.curevent is not None:
+            self.curevent.recover_start()
+
     def menu_race_info_activate_cb(self, menuitem, data=None):
         """Show race information on scoreboard."""
         if self.curevent is not None:
@@ -897,11 +903,17 @@ class trackmeet:
             newevent.loadconfig()
             self.curevent = newevent
             self.race_box.add(self.curevent.frame)
+            if self.curevent.evtype not in ('classification', 'aggregate',
+                                            'break'):
+
+                self.menu_race_recover.set_sensitive(True)
             self.menu_race_info.set_sensitive(True)
             self.menu_race_close.set_sensitive(True)
             self.menu_race_abort.set_sensitive(True)
             self.menu_race_startlist.set_sensitive(True)
             self.menu_race_result.set_sensitive(True)
+            self.menu_race_properties.set_sensitive(True)
+            self.menu_race_decisions.set_sensitive(True)
             starters = eventhdl['star']
             if starters is not None and starters != '':
                 if 'auto' in starters:
@@ -928,8 +940,6 @@ class trackmeet:
                             self.curevent.evno, slist)
                         self.addstarters(self.curevent, eventhdl, slist)
                     eventhdl['star'] = ''
-            self.menu_race_properties.set_sensitive(True)
-            self.menu_race_decisions.set_sensitive(True)
             self.curevent.show()
 
     def addstarters(self, race, event, startlist):
@@ -1051,6 +1061,7 @@ class trackmeet:
         if self.curevent is not None:
             self.menu_race_properties.set_sensitive(False)
             self.menu_race_decisions.set_sensitive(False)
+            self.menu_race_recover.set_sensitive(False)
             self.menu_race_info.set_sensitive(False)
             self.menu_race_close.set_sensitive(False)
             self.menu_race_abort.set_sensitive(False)
@@ -1750,6 +1761,20 @@ class trackmeet:
         return True
 
     ## Timy utility methods.
+    def recover_time(self, channel=None):
+        """Recover (impulse, walltime) for the named channel if possible"""
+        lt = self.main_timer.lastimpulse(channel)
+        if lt is not None:
+            # check for timeout
+            nt = tod.now()
+            if nt - lt[1] > RECOVER_TIMEOUT:
+                lt = None
+        if lt is not None:
+            _log.debug('Recover %s %s @ %s',
+                       strops.id2chan(strops.chan2id(channel)),
+                       lt[0].rawtime(3), lt[1].meridiem())
+        return lt
+
     def timer_reprint(self, event='', trace=[]):
         self.main_timer.printer(True)  # turn on printer
         self.main_timer.printimp(False)  # suppress intermeds
@@ -2639,6 +2664,7 @@ class trackmeet:
         #self.log_view.modify_font(uiutil.LOGVIEWFONT)
         self.log_scroll = b.get_object('log_box').get_vadjustment()
         self.context = self.status.get_context_id('metarace meet')
+        self.menu_race_recover = b.get_object('menu_race_recover')
         self.menu_race_info = b.get_object('menu_race_info')
         self.menu_race_properties = b.get_object('menu_race_properties')
         self.menu_race_decisions = b.get_object('menu_race_decisions')

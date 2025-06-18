@@ -359,7 +359,7 @@ class classification:
             nr[COL_PLACE] = place
             return self.riders.append(nr)
         else:
-            _log.warning('Rider %r already in model', bib)
+            _log.warning('Rider %r already in event %s', bib, self.evno)
             return None
 
     def getrider(self, bib):
@@ -607,6 +607,10 @@ class classification:
         if not self.readonly:
             self.saveconfig()
         self.winopen = False
+
+    def recover_start(self):
+        """Recover missed start time"""
+        pass
 
     def timercb(self, e):
         """Handle a timer event."""

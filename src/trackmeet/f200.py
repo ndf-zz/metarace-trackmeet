@@ -866,6 +866,29 @@ class f200:
         GLib.idle_add(self.delayed_announce)
         self.meet.delayed_export()
 
+        # set delay for next heat / end of event
+        self.meet.delayimp('2.00')
+
+    def recover_start(self):
+        """Recover missed start time"""
+        if self.timerstat in ('idle', 'armstart'):
+            rt = self.meet.recover_time(self.chan_S)
+            if rt is not None:
+                # rt: (event, wallstart)
+                if self.timerstat == 'idle':
+                    self.toarmstart()
+                if self.fs.status == 'armstart':
+                    _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                    self.meet.main_timer.dearm(self.chan_S)
+                    self.torunning(rt[0], rt[1])
+                    GLib.idle_add(self.armfinish, self.fs, True)
+                else:
+                    _log.info('No competitor loaded - recover start skipped')
+            else:
+                _log.info('No recent start time to recover')
+        else:
+            _log.info('Unable to recover start')
+
     def timercb(self, e):
         """Handle a timer event."""
         chan = strops.chan2id(e.chan)
@@ -912,19 +935,21 @@ class f200:
         scb.sett2(t2)
         return False
 
-    def torunning(self, st, lst=None):
+    def torunning(self, st, walltime=None):
         """Set timer running."""
         if self.fs.status == 'armstart':
             self.fs.start(st)
         self.curstart = st
-        if lst is None:
-            lst = tod.now()
-        self.lstart = lst
+        if walltime is not None:
+            self.lstart = walltime
+        else:
+            self.lstart = tod.now()
         self.timerstat = 'running'
         self.onestart = True
         if self.autoarm:
             self.armsplit(self.fs)
-        if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
+        if walltime is not None and self.timerwin and type(
+                self.meet.scbwin) is scbwin.scbtt:
             GLib.timeout_add_seconds(3, self.show_200_ttb, self.meet.scbwin)
 
     def clearplaces(self):
