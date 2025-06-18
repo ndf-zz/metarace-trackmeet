@@ -905,22 +905,29 @@ class trackmeet:
             starters = eventhdl['star']
             if starters is not None and starters != '':
                 if 'auto' in starters:
-                    av = []
-                    oldspec = self.curevent.autospec.strip()
-                    if oldspec:
-                        av.append(oldspec.rstrip(';'))
+                    # override/update if values differ, but don't delete
                     newspec = starters.lower().replace('auto', '').strip()
-                    if newspec:
-                        av.append(newspec.rstrip(';'))
-                    self.curevent.autospec = '; '.join(av)
-                    _log.debug('Oldspec: %r, Newspec: %r, Updated: %r',
-                               oldspec, newspec, self.curevent.autospec)
+                    if eventhdl['type'] == 'classification':
+                        # auto populate the places property
+                        if newspec != self.curevent.placesrc:
+                            _log.debug('Updated placesrc %s => %s',
+                                       self.curevent.placesrc, newspec)
+                            self.curevent.placesrc = newspec
+                    else:
+                        if newspec != self.curevent.autospec:
+                            _log.debug('Updated autospec %s => %s',
+                                       self.curevent.autospec, newspec)
+                            self.curevent.autospec = newspec
                 else:
-                    self.addstarters(
-                        self.curevent,
-                        eventhdl,  # xfer starters
-                        strops.reformat_biblist(starters))
-                eventhdl['star'] = ''
+                    slist = ' '.join(
+                        strops.riderlist_split(starters, self.rdb,
+                                               eventhdl['series']))
+                    if slist:
+                        _log.info(
+                            'Deprecated starter entry from edb ev=%s: %s',
+                            self.curevent.evno, slist)
+                        self.addstarters(self.curevent, eventhdl, slist)
+                    eventhdl['star'] = ''
             self.menu_race_properties.set_sensitive(True)
             self.menu_race_decisions.set_sensitive(True)
             self.curevent.show()
@@ -965,7 +972,6 @@ class trackmeet:
                                         places[rank] = []
                                     places[rank].append(ri[0])
                         h = None
-                        #h.destroy()
                     else:
                         _log.warning('Autospec event not found: %r', evno)
                     self.autorecurse.remove(evno)
@@ -1058,7 +1064,7 @@ class trackmeet:
             self.race_box.remove(delevent.frame)
             delevent.event['dirt'] = True  # mark event exportable
             delevent.saveconfig()
-            #delevent.destroy()
+            delevent = None
 
     def race_evno_change(self, old_no, new_no):
         """Handle a change in a race number."""
