@@ -184,7 +184,7 @@ class race:
         outriders = []
         for bib in self.eliminated:
             r = self.getrider(bib)
-            rank = incnt + self.startplace
+            rank = incnt
             r[COL_PLACE] = str(rank)
             club = ''
             if len(r[COL_CLUB]) == 3:
@@ -214,7 +214,7 @@ class race:
                         _log.warn('Adding non-starter: %r', bib)
                         self.addrider(bib)
                         r = self.getrider(bib)
-                    rank = place + self.startplace
+                    rank = place
                     r[COL_PLACE] = str(rank)
                     club = ''
                     if len(r[COL_CLUB]) == 3:
@@ -275,7 +275,6 @@ class race:
                 'distunits': defdistunits,
                 'showinfo': True,
                 'inomnium': False,
-                'startplace': 0,
                 'autospec': '',
                 'timetype': deftimetype
             },
@@ -310,7 +309,6 @@ class race:
 
         # race infos
         self.decisions = cr.get('event', 'decisions')
-        self.startplace = strops.confopt_posint(cr.get('event', 'startplace'))
         self.set_timetype(cr.get('event', 'timetype'))
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
@@ -632,7 +630,6 @@ class race:
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'decisions', self.decisions)
-        cw.set('event', 'startplace', self.startplace)
 
         cw.add_section('riders')
         for r in self.riders:
@@ -1409,7 +1406,6 @@ class race:
         self.distance = None
         self.units = 'laps'
         self.timetype = 'start/finish'
-        self.startplace = 0  # offset to first place in this race (hack)
         self.autospec = ''  # automatic startlist
         self.inomnium = False
         self.showcats = False
