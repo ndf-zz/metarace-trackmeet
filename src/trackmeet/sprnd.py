@@ -64,20 +64,20 @@ key_rel_b = 'F12'
 
 # Pre-defined "standard" contests
 _STD_CONTESTS = {
-    3: ['bye', '2v3'],
-    4: ['1v4', '2v3'],
-    5: ['bye', 'bye', 'bye', '4v5'],
-    6: ['bye', 'bye', '3v6', '4v5'],
-    7: ['bye', '2v7', '3v6', '4v5'],
-    8: ['1v8', '2v7', '3v6', '4v5'],
-    9: ['bye', 'bye', 'bye', 'bye', 'bye', 'bye', 'bye', '8v9'],
-    10: ['bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'],
-    11: ['bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'],
-    12: ['bye', 'bye', 'bye', 'bye', '5v12', '6v11', '7v10', '8v9'],
-    13: ['bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'],
-    14: ['bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
-    15: ['bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
-    16: ['1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'],
+    3: ('bye', '2v3'),
+    4: ('1v4', '2v3'),
+    5: ('bye', 'bye', 'bye', '4v5'),
+    6: ('bye', 'bye', '3v6', '4v5'),
+    7: ('bye', '2v7', '3v6', '4v5'),
+    8: ('1v8', '2v7', '3v6', '4v5'),
+    9: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', 'bye', '8v9'),
+    10: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'),
+    11: ('bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'),
+    12: ('bye', 'bye', 'bye', 'bye', '5v12', '6v11', '7v10', '8v9'),
+    13: ('bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    15: ('bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    16: ('1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
 }
 
 
@@ -171,9 +171,17 @@ class sprnd:
                         self._standingstat = 'Virtual Standing'
                     else:
                         self._standingstat = 'Provisional Result'
-        _log.debug('ccount=%d, dcount=%d, finished=%r, str=%s', ccount, dcount,
-                   self.finished, self._standingstat)
+        #_log.debug('ccount=%d, dcount=%d, finished=%r, str=%s',
+        # ccount, dcount, self.finished, self._standingstat)
         return self._standingstat
+
+    def ismedalphase(self):
+        ret = False
+        if len(self.contestlist) == 2:
+            if self.contestlist[0].lower() == 'bronze':
+                if self.contestlist[1].lower() == 'gold':
+                    ret = True
+        return ret
 
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
@@ -295,8 +303,6 @@ class sprnd:
             _log.info('%r not read, loading defaults', self.configfile)
 
         # event metas
-        self.info_expand.set_expanded(
-            strops.confopt_bool(cr.get('event', 'showinfo')))
         self.autospec = cr.get('event', 'autospec')
         self.decisions = cr.get('event', 'decisions')
         self.otherstime = cr.get_bool('event', 'otherstime', def_otherstime)
@@ -307,10 +313,11 @@ class sprnd:
         if not contestlist and self.event['plac']:
             # placeholders is set and contests are not
             if self.event['info'] == 'Final' and self.event['plac'] == 4:
-                contestlist = ['Bronze', 'Gold']
+                contestlist = ('Bronze', 'Gold')
             else:
                 if self.event['plac'] in _STD_CONTESTS:
                     contestlist = _STD_CONTESTS[self.event['plac']]
+        self.contestlist = contestlist
 
         # restore contest details
         oft = 0
@@ -351,12 +358,24 @@ class sprnd:
 
         if not self.onestart and self.autospec:
             self.del_riders()
-            self.meet.autostart_riders(self, self.autospec, infocol=2)
-
-        self.current_contest_combo.set_active(curactive)
+            usespec = self.autospec.strip()
+            evpart, tailpart = usespec.split(':', 1)
+            if self.ismedalphase():
+                # special case: assignment is 3,1,2,4
+                if evpart in self.meet.edb and tailpart == '1-4':
+                    usespec = '%s:3,1,2,4' % (evpart, )
+                    _log.debug('Assigning riders for medal finals: %s',
+                               usespec)
+            self.meet.autostart_riders(self, usespec, infocol=2)
 
         # update the standing status (like placexfer :/)
         self.standingstr()
+
+        if self.winopen:
+            self.update_expander_lbl_cb()
+            self.info_expand.set_expanded(
+                strops.confopt_bool(cr.get('event', 'showinfo')))
+            self.current_contest_combo.set_active(curactive)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -386,10 +405,10 @@ class sprnd:
             c[COL_B_QUAL] = None
 
     def add_contest(self, c, cv=[], bye=False):
-        _log.debug('Adding contest %r: %r, bye=%r', c, cv, bye)
         if len(cv) == 13:
             self.contests.append(cv)
         else:
+            # create new cv
             self.contests.append(
                 [c, '', '', '', '', '', '', None, '', '', None, None, bye])
 
@@ -409,7 +428,7 @@ class sprnd:
                 self.delrider(bib)
             entry.set_text('')
         else:
-            _log.error('Ignoring invalid action.')
+            _log.error('Ignoring invalid action')
             return False
         self.standingstr()
         GLib.idle_add(self.delayed_announce)
@@ -487,7 +506,7 @@ class sprnd:
     def saveconfig(self):
         """Save race to disk."""
         if self.readonly:
-            _log.error('Attempt to save readonly ob.')
+            _log.error('Attempt to save readonly event')
             return
         cw = jsonconfig.config()
         cw.add_section('event')
@@ -702,6 +721,8 @@ class sprnd:
                 self.meet.gemini.set_time(fstr.strip().rjust(4) + ' ')
                 self.meet.gemini.show_brt()
         self.standingstr()
+        if self.winopen:
+            self.meet.delayed_export()
 
     def redo_places(self):
         i = self.current_contest_combo.get_active_iter()
@@ -830,10 +851,10 @@ class sprnd:
         """Handle a timer event."""
         chan = strops.chan2id(e.chan)
         if chan == self.startchan or chan == 0:
-            _log.debug('Got a start impulse.')
+            _log.debug('Got a start impulse')
             self.starttrig(e)
         elif chan == self.finchan:
-            _log.debug('Got a finish impulse.')
+            _log.debug('Got a finish impulse')
             self.fintrig(e)
         return False
 
@@ -942,9 +963,9 @@ class sprnd:
                 self.set_winner('B')
                 GLib.idle_add(self.delayed_announce)
             else:
-                _log.error('Ignored rider not in contest.')
+                _log.error('Ignored rider not in contest')
         else:
-            _log.info('No contest selected.')
+            _log.info('No contest selected')
 
     def race_info_time_edit_activate_cb(self, button):
         """Display contest timing edit dialog."""
@@ -977,13 +998,13 @@ class sprnd:
                     self.contests.set_value(i, COL_200M, self.curelap)
                 if self.start is not None and self.finish is not None:
                     self.log_elapsed(cid)
-                _log.info('Updated race times.')
+                _log.info('Updated race times')
             except Exception as v:
                 _log.error('%s updating times: %s', v.__class__.__name__, v)
 
             GLib.idle_add(self.delayed_announce)
         else:
-            _log.info('Edit race times cancelled.')
+            _log.info('Edit race times cancelled')
 
     def delayed_announce(self):
         """Initialise the announcer's screen after a delay."""
@@ -1087,7 +1108,7 @@ class sprnd:
                     others.append((ltime, -placeoft, lose, lr))
                     #cstack.insert(0, (lose, lr, ltime))
                 time = None
-                yield [win, rank, wtime, info]
+                yield (win, rank, wtime, info)
                 placeoft += 1
         else:
             for c in self.contests:
@@ -1112,7 +1133,7 @@ class sprnd:
                 ltime = tod.MAX if ltime is None else ltime
                 others.append((ltime, -placeoft, lose, lr))
                 time = None
-                yield [win, rank, wtime, info]
+                yield (win, rank, wtime, info)
                 placeoft += 1
 
         others.sort()
@@ -1123,7 +1144,7 @@ class sprnd:
                 time = None
             if lr:
                 rank = placeoft
-            yield [bib, rank, time, info]
+            yield (bib, rank, time, info)
             placeoft += 1
 
     def result_report(self, recurse=False):
@@ -1178,7 +1199,8 @@ class sprnd:
                     ])
         else:
             for cr in self.contests:
-                # if winner set, report a result, otherwise, use startlist style:
+                # if winner set, report a result
+                # otherwise, use startlist style:
                 aqual = None
                 if cr[COL_A_QUAL] is not None:
                     aqual = cr[COL_A_QUAL].rawtime(2)
@@ -1257,13 +1279,13 @@ class sprnd:
         if self.readonly:
             rstr = 'readonly '
         _log.debug('Init %sevent %s', rstr, self.evno)
+        self.winopen = ui
 
         self.onestart = False
         self.start = None
         self.lstart = None
         self.finish = None
         self.curelap = None
-        self.winopen = ui  # window 'open' on proper load- or consult edb
         self.timerwin = False
         self.timerstat = 'idle'
         self.autospec = ''  # automatic startlist
@@ -1271,7 +1293,8 @@ class sprnd:
         self.startchan = 4
         self.finchan = 1
         self.otherstime = True  # Order places of "others" by qualifying time
-        self.contests = []
+        self.contestlist = []  # Configured list of contest labels
+        self.contests = []  # Expanded list of contest objects
         self.decisions = []
         self._standingstat = ''
         self._rescache = {}
@@ -1293,44 +1316,43 @@ class sprnd:
             bool,  # COL_BYE = 12
         )
 
-        b = uiutil.builder('sprnd.ui')
-        self.frame = b.get_object('race_vbox')
-        self.frame.connect('destroy', self.shutdown)
-
-        # info pane
-        self.info_expand = b.get_object('info_expand')
-        b.get_object('race_info_evno').set_text(self.evno)
-        self.showev = b.get_object('race_info_evno_show')
-        self.prefix_ent = b.get_object('race_info_prefix')
-        self.prefix_ent.connect('changed', self.editent_cb, 'pref')
-        self.prefix_ent.set_text(self.event['pref'])
-        self.info_ent = b.get_object('race_info_title')
-        self.info_ent.connect('changed', self.editent_cb, 'info')
-        self.info_ent.set_text(self.event['info'])
-
-        self.time_lbl = b.get_object('race_info_time')
-        self.time_lbl.modify_font(uiutil.MONOFONT)
-        self.type_lbl = b.get_object('race_type')
-        self.type_lbl.set_text(self.event['type'].capitalize())
-
-        # ctrl pane
-        self.stat_but = uiutil.statButton()
-        self.stat_but.set_sensitive(True)
-        b.get_object('race_ctrl_stat_but').add(self.stat_but)
-
-        self.ctrl_winner = b.get_object('race_ctrl_winner')
-        self.ctrl_action_combo = b.get_object('race_ctrl_action_combo')
-        self.ctrl_action = b.get_object('race_ctrl_action')
-        self.action_model = b.get_object('race_action_model')
-
-        self.current_contest_combo = b.get_object('current_contest_combo')
-        self.current_contest_combo.set_model(self.contests)
-        self.current_contest_combo.connect(
-            'changed', self.current_contest_combo_changed_cb)
-
         # start timer and show window
         if ui:
-            _log.debug('Connecting event ui handlers')
+            b = uiutil.builder('sprnd.ui')
+            self.frame = b.get_object('race_vbox')
+            self.frame.connect('destroy', self.shutdown)
+
+            # info pane
+            self.info_expand = b.get_object('info_expand')
+            b.get_object('race_info_evno').set_text(self.evno)
+            self.showev = b.get_object('race_info_evno_show')
+            self.prefix_ent = b.get_object('race_info_prefix')
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
+            self.prefix_ent.set_text(self.event['pref'])
+            self.info_ent = b.get_object('race_info_title')
+            self.info_ent.connect('changed', self.editent_cb, 'info')
+            self.info_ent.set_text(self.event['info'])
+
+            self.time_lbl = b.get_object('race_info_time')
+            self.time_lbl.modify_font(uiutil.MONOFONT)
+            self.type_lbl = b.get_object('race_type')
+            self.type_lbl.set_text(self.event['type'].capitalize())
+
+            # ctrl pane
+            self.stat_but = uiutil.statButton()
+            self.stat_but.set_sensitive(True)
+            b.get_object('race_ctrl_stat_but').add(self.stat_but)
+
+            self.ctrl_winner = b.get_object('race_ctrl_winner')
+            self.ctrl_action_combo = b.get_object('race_ctrl_action_combo')
+            self.ctrl_action = b.get_object('race_ctrl_action')
+            self.action_model = b.get_object('race_action_model')
+
+            self.current_contest_combo = b.get_object('current_contest_combo')
+            self.current_contest_combo.set_model(self.contests)
+            self.current_contest_combo.connect(
+                'changed', self.current_contest_combo_changed_cb)
+
             # riders pane
             t = Gtk.TreeView(self.contests)
             self.view = t
