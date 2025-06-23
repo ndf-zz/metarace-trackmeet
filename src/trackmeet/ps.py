@@ -98,12 +98,33 @@ class ps:
     """Data handling for point score omnium and Madison races."""
 
     def ridercb(self, rider):
-        """Rider change notification function"""
-        pass
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    dbr = self.meet.rdb[rider]
+                    rh = self.getrider(rno)
+                    if rh is not None:
+                        _log.debug('Rider change notify: %r', rider)
+                        rh[RES_COL_FIRST] = dbr['first']
+                        rh[RES_COL_LAST] = dbr['last']
+                        rh[RES_COL_CLUB] = dbr['organisation']
+            else:
+                # riders db changed, handled by meet object
+                pass
 
     def eventcb(self, event):
         """Event change notification function"""
-        pass
+        if self.winopen:
+            if event is None or event == self.evno:
+                if self.prefix_ent.get_text() != self.event['pref']:
+                    self.prefix_ent.set_text(self.event['pref'])
+                if self.info_ent.get_text() != self.event['info']:
+                    self.info_ent.set_text(self.event['info'])
+                # re-draw summary line
+                self.update_expander_lbl_cb()
 
     def loadconfig(self):
         """Load race config from disk."""
@@ -159,7 +180,6 @@ class ps:
                 'masterslaps': defmasterslaps,
                 'inomnium': definomnium,
                 'showinfo': True,
-                'autospec': '',
                 'scoring': defscoretype
             }
         })
@@ -209,7 +229,6 @@ class ps:
         # race infos
         self.decisions = cr.get('event', 'decisions')
 
-        self.autospec = cr.get('event', 'autospec')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
         # override laps from event listings
@@ -364,10 +383,12 @@ class ps:
         self.set_elapsed()
 
         # after load, add auto if required
-        if not self.onestart and self.autospec:
+        if not self.onestart and self.event['starters']:
+            self.riders.clear()
             _log.debug('Fetching starters using autospec=%r with seedsrc=%r',
-                       self.autospec, self.seedsrc)
-            self.meet.autostart_riders(self, self.autospec, self.seedsrc)
+                       self.event['starters'], self.seedsrc)
+            self.meet.autostart_riders(self, self.event['starters'],
+                                       self.seedsrc)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -397,7 +418,6 @@ class ps:
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'scoring', self.scoring)
         cw.set('event', 'masterslaps', self.masterslaps)
-        cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
@@ -485,11 +505,10 @@ class ps:
         self.recalculate()
         ret = []
         sec = report.section('result')
-        sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-            [self.event['pref'], self.event['info']]).strip()
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         sec.units = 'Pts'
         fs = ''
         if self.finish is not None and self.start is not None:
@@ -709,9 +728,7 @@ class ps:
             sec = report.section(secid)
         else:
             sec = report.twocol_startlist(secid)
-        headvec = [
-            'Event', self.evno, ':', self.event['pref'], self.event['info']
-        ]
+        headvec = self.event.get_info(showevno=True).split()
         rankCol = None
         if not program:
             headvec.append('- Start List')
@@ -720,8 +737,8 @@ class ps:
             rankCol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             sec.subheading = substr
         self.reorder_riderno()
@@ -840,7 +857,7 @@ class ps:
         name_w = self.meet.scb.linelen - 8
         for r in self.riders:
             if r[RES_COL_INRACE]:
-                nfo = r[RES_COL_CLUB]
+                nfo = ''
                 if self.inomnium:
                     if self.evtype == 'omnium':
                         # this is the omnium aggregate, use standings for nfo
@@ -849,14 +866,8 @@ class ps:
                         # overwrite nfo with seed value
                         nfo = r[RES_COL_INFO]
                 else:
-                    if len(nfo) > 3:
-                        nfo = nfo[0:3]
-                        ## look it up?
-                        #if self.series in self.meet.ridermap:
-                        #rh = self.meet.ridermap[self.series][
-                        #r[RES_COL_BIB]]
-                        #if rh is not None:
-                        #nfo = rh['note']
+                    if len(r[RES_COL_CLUB]) == 3:
+                        nfo = r[RES_COL_CLUB]
                 startlist.append([
                     r[RES_COL_BIB],
                     strops.fitname(r[RES_COL_FIRST], r[RES_COL_LAST], name_w),
@@ -904,11 +915,7 @@ class ps:
         """Initialise the announcer's screen after a delay."""
         if self.winopen:
             self.meet.txt_clear()
-            self.meet.txt_title(' '.join([
-                self.meet.event_string(self.evno), ':', self.event['pref'],
-                self.event['info']
-            ]))
-
+            self.meet.txt_title(self.event.get_info(showevno=True))
             self.meet.txt_line(1, '_')
             self.meet.txt_line(8, '_')
 
@@ -1376,8 +1383,8 @@ class ps:
         dlg.set_transient_for(self.meet.window)
         rle = b.get_object('race_laps_entry')
         rle.set_text(self.sprintlaps)
-        if self.onestart:
-            rle.set_sensitive(False)
+        #if self.onestart:
+        #rle.set_sensitive(False)
         rsb = b.get_object('race_showbib_toggle')
         rsb.set_active(self.masterslaps)
         rt = b.get_object('race_score_type')
@@ -1398,17 +1405,18 @@ class ps:
         se = b.get_object('race_series_entry')
         se.set_text(self.series)
         as_e = b.get_object('auto_starters_entry')
-        as_e.set_text(self.autospec)
+        as_e.set_text(self.event['starters'])
 
         response = dlg.run()
         if response == 1:  # id 1 set in glade for "Apply"
             _log.debug('Updating race properties')
-            if not self.onestart:
-                newlaps = strops.reformat_bibserlist(rle.get_text())
-                if self.sprintlaps != newlaps:
-                    self.sprintlaps = newlaps
-                    _log.info('Reset sprint model')
-                    self.sprint_model_init()
+            newlaps = strops.reformat_bibserlist(rle.get_text())
+            if self.sprintlaps != newlaps:
+                self.sprintlaps = newlaps
+                self.sprint_model_init(retain=True)
+                if self.onestart:
+                    _log.warning('Intermediate sprints updated to: %r',
+                                 newlaps)
             self.masterslaps = rsb.get_active()
             if rt.get_active() == 0:
                 self.scoring = 'madison'
@@ -1433,12 +1441,12 @@ class ps:
 
             # update auto startlist spec
             nspec = as_e.get_text()
-            if nspec != self.autospec:
-                self.autospec = nspec
+            if nspec != self.event['starters']:
+                self.event.set_value('starters', nspec)
                 if not self.onestart:
-                    if self.autospec:
-                        self.meet.autostart_riders(self, self.autospec,
-                                                   self.seedsrc)
+                    if nspec:
+                        self.riders.clear()
+                        self.meet.autostart_riders(self, nspec, self.seedsrc)
 
             # xfer starters if not empty
             slist = strops.riderlist_split(
@@ -1524,8 +1532,7 @@ class ps:
 
     def update_expander_lbl_cb(self):
         """Update the expander label"""
-        self.info_expand.set_label('Race Info : ' +
-                                   self.meet.racenamecat(self.event, 64))
+        self.info_expand.set_label(self.meet.infoline(self.event))
 
     def ps_info_time_edit_clicked_cb(self, button, data=None):
         """Run the edit times dialog."""
@@ -1763,8 +1770,22 @@ class ps:
         """Cell update with writeback to meet"""
         new_text = new_text.strip()
         self.riders[path][col] = new_text.strip()
-        GLib.idle_add(self.meet.rider_edit, self.riders[path][RES_COL_BIB],
-                      self.series, col, new_text)
+        dbr = self.meet.rdb.get_rider(self.riders[path][RES_COL_BIB],
+                                      self.series)
+        if dbr is None:
+            self.meet.rdb.add_empty(self.riders[path][RES_COL_BIB],
+                                    self.series)
+            dbr = self.meet.rdb.get_rider(self.riders[path][RES_COL_BIB],
+                                          self.series)
+        if dbr is not None:
+            if col == RES_COL_FIRST:
+                dbr['first'] = new_text
+            elif col == RES_COL_LAST:
+                dbr['last'] = new_text
+            elif col == RES_COL_CLUB:
+                dbr['org'] = new_text
+            else:
+                _log.debug('Ignore update to unknown column')
 
     def editcol_cb(self, cell, path, new_text, col):
         self.riders[path][col] = new_text.strip()
@@ -1958,11 +1979,22 @@ class ps:
         if self.standingstr() == 'Result':
             self.finished = True
 
-    def sprint_model_init(self):
+    def sprint_model_init(self, retain=False):
         """Initialise the sprint places model"""
         if self.winopen:
             self.ctrl_place_combo.set_active(-1)
             self.ctrl_places.set_sensitive(False)
+        prev = {}
+        if retain:
+            # retain any 200, split, points and places
+            for s in self.sprints:
+                sid = s[SPRINT_COL_ID]
+                prev[sid] = {
+                    '200': s[SPRINT_COL_200],
+                    'split': s[SPRINT_COL_SPLIT],
+                    'places': s[SPRINT_COL_PLACES],
+                    'points': s[SPRINT_COL_POINTS],
+                }
         self.sprints.clear()
         self.auxmap = {}
         self.nopts = []
@@ -1988,6 +2020,13 @@ class ps:
                         break
                 sp = nextp
             nr = [sl, lt, None, None, '', sp]
+            if sl in prev:
+                pv = prev[sl]
+                nr[SPRINT_COL_200] = pv['200']
+                nr[SPRINT_COL_SPLIT] = pv['split']
+                nr[SPRINT_COL_PLACES] = pv['places']
+                nr[SPRINT_COL_POINTS] = pv['points']
+                _log.debug('Retained previous values for %r: %r', sl, nr)
             self.sprints.append(nr)
             self.sprintresults.append([])
             self.nopts.append('')
@@ -2058,7 +2097,6 @@ class ps:
             self.event['pref'] = entry.get_text()
         elif col == 'info':
             self.event['info'] = entry.get_text()
-        self.update_expander_lbl_cb()
 
     def __init__(self, meet, event, ui=True):
         """Constructor"""
@@ -2104,7 +2142,6 @@ class ps:
         self.sprintlstart = None
         self.next_sprint_counter = 0
         self.oktochangecombo = False
-        self.autospec = ''
         self.finished = False
         self.inomnium = False
         self.showcats = False

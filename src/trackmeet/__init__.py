@@ -32,9 +32,9 @@ from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
+from .eventdb import eventdb, _CONFIG_SCHEMA as _EVENT_SCHEMA
 from . import uiutil
 from . import scbwin
-from . import eventdb
 from . import race
 from . import ps
 from . import f200
@@ -260,132 +260,9 @@ _CONFIG_SCHEMA = {
     },
 }
 
-# Temporary
-_EVENT_SCHEMA = {
-    'evid': {
-        'prompt': 'Event No:',
-        'control': 'short',
-        'attr': 'evid',
-        'defer': True,
-        'default': '',
-    },
-    'pref': {
-        'prompt': 'Prefix:',
-        'attr': 'pref',
-        'defer': True,
-        'default': '',
-    },
-    'info': {
-        'prompt': 'Information:',
-        'attr': 'info',
-        'defer': True,
-        'default': '',
-    },
-    'type': {
-        'prompt': 'Type Handler:',
-        'control': 'short',
-        'attr': 'type',
-        'defer': True,
-        'default': '',
-    },
-    'depe': {
-        'prompt': 'Depends on:',
-        'attr': 'depe',
-        'defer': True,
-        'default': '',
-    },
-    'resu': {
-        'prompt': 'Include in:',
-        'control': 'check',
-        'type': 'bool',
-        'subtext': 'Results?',
-        'attr': 'resu',
-        'defer': True,
-        'default': True,
-    },
-    'inde': {
-        'prompt': '',
-        'control': 'check',
-        'type': 'bool',
-        'subtext': 'Event Index?',
-        'attr': 'inde',
-        'defer': True,
-        'default': False,
-    },
-    'prin': {
-        'prompt': '',
-        'control': 'check',
-        'type': 'bool',
-        'subtext': 'Printed Program?',
-        'attr': 'prin',
-        'defer': True,
-        'default': False,
-    },
-    'plac': {
-        'prompt': 'Placeholders:',
-        'control': 'short',
-        'type': 'int',
-        'attr': 'plac',
-        'defer': True,
-    },
-    'sess': {
-        'prompt': 'Session ID:',
-        'control': 'short',
-        'attr': 'sess',
-        'defer': True,
-        'default': '',
-    },
-    'laps': {
-        'prompt': 'Lap Count:',
-        'control': 'short',
-        'type': 'int',
-        'attr': 'laps',
-        'defer': True,
-    },
-    'dist': {
-        'prompt': 'Distance text:',
-        'attr': 'dist',
-        'defer': True,
-        'default': '',
-    },
-    'prog': {
-        'prompt': 'Progression text:',
-        'attr': 'prog',
-        'defer': True,
-        'default': '',
-    },
-    'reco': {
-        'prompt': 'Record text:',
-        'attr': 'reco',
-        'defer': True,
-        'default': '',
-    },
-    'seri': {
-        'prompt': 'Series',
-        'control': 'short',
-        'attr': 'seri',
-        'defer': True,
-        'default': '',
-    },
-    'refe': {
-        'prompt': 'Reference No:',
-        'control': 'short',
-        'attr': 'refe',
-        'defer': True,
-        'default': '',
-    },
-    'evov': {
-        'prompt': 'Event no override:',
-        'control': 'short',
-        'attr': 'evov',
-        'defer': True,
-        'default': '',
-    },
-}
-
 
 def mkrace(meet, event, ui=True):
-    """Return a race object of the correct type."""
+    """Create a new object of the correct type."""
     ret = None
     etype = event['type']
     if etype in (
@@ -432,8 +309,8 @@ class trackmeet:
     def get_event(self, evno, ui=False):
         """Return an event object for the given event number."""
         ret = None
-        eh = self.edb[evno]
-        if eh is not None:
+        if evno in self.edb:
+            eh = self.edb[evno]
             ret = mkrace(meet=self, event=eh, ui=ui)
         return ret
 
@@ -675,26 +552,27 @@ class trackmeet:
         template = None
         lsess = None
         for eno in evlist:
-            e = self.edb[eno]
-            nsess = e['sess']
-            if nsess != lsess and lsess is not None:
-                secs.append(report.pagebreak(SESSBREAKTHRESH))
-            lsess = nsess
-            h = mkrace(self, e, False)
-            h.loadconfig()
-            if reptype == 'startlist':
-                secs.extend(h.startlist_report())
-            elif reptype == 'result':
-                reptypestr = 'Results'
-                # from event list only include the individual events
-                secs.extend(h.result_report(recurse=False))
-            elif reptype == 'program':
-                reptypestr = 'Program of Events'
-                secs.extend(h.startlist_report(program=True))
-            else:
-                _log.error('Unknown type in eventdb calback: %r', reptype)
-            h = None
-            secs.append(report.pagebreak())
+            if eno in self.edb:
+                e = self.edb[eno]
+                nsess = e['sess']
+                if nsess != lsess and lsess is not None:
+                    secs.append(report.pagebreak(SESSBREAKTHRESH))
+                lsess = nsess
+                h = mkrace(self, e, False)
+                h.loadconfig()
+                if reptype == 'startlist':
+                    secs.extend(h.startlist_report())
+                elif reptype == 'result':
+                    reptypestr = 'Results'
+                    # from event list only include the individual events
+                    secs.extend(h.result_report(recurse=False))
+                elif reptype == 'program':
+                    reptypestr = 'Program of Events'
+                    secs.extend(h.startlist_report(program=True))
+                else:
+                    _log.error('Unknown type in eventdb calback: %r', reptype)
+                h = None
+                secs.append(report.pagebreak())
         if len(secs) > 0:
             reporthash = reptype + ', '.join(evlist)
             if self.communiques:
@@ -816,7 +694,8 @@ class trackmeet:
             self.scbwin = None
             eh = self.curevent.event
             if self.showevno and eh['type'] not in ['break', 'session']:
-                self.scbwin = scbwin.scbclock(self.scb, 'Event ' + eh['evid'],
+                self.scbwin = scbwin.scbclock(self.scb,
+                                              'Event ' + eh.get_evno(),
                                               eh['pref'], eh['info'])
             else:
                 self.scbwin = scbwin.scbclock(self.scb, eh['pref'], eh['info'])
@@ -864,7 +743,7 @@ class trackmeet:
     def select_event(self, event):
         """Find matching event in view and set selection"""
         for e in self._elm:
-            if e[0] == event['evid']:
+            if e[3] == event['evid']:
                 self._elv.set_cursor(e.path, None, False)
                 break
 
@@ -914,32 +793,6 @@ class trackmeet:
             self.menu_race_result.set_sensitive(True)
             self.menu_race_properties.set_sensitive(True)
             self.menu_race_decisions.set_sensitive(True)
-            starters = eventhdl['star']
-            if starters is not None and starters != '':
-                if 'auto' in starters:
-                    # override/update if values differ, but don't delete
-                    newspec = starters.lower().replace('auto', '').strip()
-                    if eventhdl['type'] == 'classification':
-                        # auto populate the places property
-                        if newspec != self.curevent.placesrc:
-                            _log.debug('Updated placesrc %s => %s',
-                                       self.curevent.placesrc, newspec)
-                            self.curevent.placesrc = newspec
-                    else:
-                        if newspec != self.curevent.autospec:
-                            _log.debug('Updated autospec %s => %s',
-                                       self.curevent.autospec, newspec)
-                            self.curevent.autospec = newspec
-                else:
-                    slist = ' '.join(
-                        strops.riderlist_split(starters, self.rdb,
-                                               eventhdl['series']))
-                    if slist:
-                        _log.info(
-                            'Deprecated starter entry from edb ev=%s: %s',
-                            self.curevent.evno, slist)
-                        self.addstarters(self.curevent, eventhdl, slist)
-                    eventhdl['star'] = ''
             self.curevent.show()
 
     def addstarters(self, race, event, startlist):
@@ -966,8 +819,8 @@ class trackmeet:
                 if evno not in self.autorecurse:
                     self.autorecurse.add(evno)
                     placeset = strops.placeset(specvec[1])
-                    e = self.edb[evno]
-                    if e is not None:
+                    if evno in self.edb:
+                        e = self.edb[evno]
                         h = mkrace(self, e, False)
                         h.loadconfig()
                         isFinal = h.standingstr() == 'Result'
@@ -1018,36 +871,33 @@ class trackmeet:
                         self.autorecurse.add(evno)
                         placeset = strops.placeset(specvec[1])
                         e = self.edb[evno]
-                        if e is not None:
-                            evplacemap = {}
-                            _log.debug('Loading places from event %r', evno)
-                            ## load the place set map rank -> [(rider,seed),..]
-                            h = mkrace(self, e, False)
-                            h.loadconfig()
-                            # Source is finished or omnium and dest not class
-                            if h.finished or (h.evtype == 'omnium' and
-                                              race.evtype != 'classification'):
-                                for ri in h.result_gen():
-                                    if isinstance(ri[1],
-                                                  int) and ri[1] in placeset:
-                                        rank = ri[1]
-                                        if rank not in evplacemap:
-                                            evplacemap[rank] = []
-                                        seed = None
-                                        if infocol is not None and infocol < len(
-                                                ri):
-                                            seed = ri[infocol]
-                                        evplacemap[rank].append((ri[0], seed))
-                            else:
-                                _log.debug('Event %r not final', evno)
-                            h = None
-                            # maintain ordering of autospec
-                            for p in placeset:
-                                if p in evplacemap:
-                                    for ri in evplacemap[p]:
-                                        race.addrider(ri[0], ri[1])
+                        evplacemap = {}
+                        _log.debug('Loading places from event %r', evno)
+                        ## load the place set map rank -> [(rider,seed),..]
+                        h = mkrace(self, e, False)
+                        h.loadconfig()
+                        # Source is finished or omnium and dest not class
+                        if h.finished or (h.evtype == 'omnium'
+                                          and race.evtype != 'classification'):
+                            for ri in h.result_gen():
+                                if isinstance(ri[1],
+                                              int) and ri[1] in placeset:
+                                    rank = ri[1]
+                                    if rank not in evplacemap:
+                                        evplacemap[rank] = []
+                                    seed = None
+                                    if infocol is not None and infocol < len(
+                                            ri):
+                                        seed = ri[infocol]
+                                    evplacemap[rank].append((ri[0], seed))
                         else:
-                            _log.warning('Autospec event not found: %r', evno)
+                            _log.debug('Event %r not final', evno)
+                        h = None
+                        # maintain ordering of autospec
+                        for p in placeset:
+                            if p in evplacemap:
+                                for ri in evplacemap[p]:
+                                    race.addrider(ri[0], ri[1])
                         self.autorecurse.remove(evno)
                     else:
                         _log.debug('Ignoring loop in auto startlist: %r', evno)
@@ -1076,23 +926,6 @@ class trackmeet:
             delevent.event['dirt'] = True  # mark event exportable
             delevent.saveconfig()
             delevent = None
-
-    def race_evno_change(self, old_no, new_no):
-        """Handle a change in a race number."""
-        if self.curevent is not None and self.curevent.evno == old_no:
-            _log.warning('Ignoring change to open event: %r', old_no)
-            return False
-        newconf = self.event_configfile(new_no)
-        if os.path.isfile(newconf):
-            rnconf = newconf + '.old'
-            _log.debug('Backup existing config to %r', rnconf)
-            os.rename(newconf, rnconf)
-        oldconf = self.event_configfile(old_no)
-        if os.path.isfile(oldconf):
-            _log.debug('Rename config %r to %r', oldconf, newconf)
-            os.rename(oldconf, newconf)
-        _log.debug('Event %r changed to %r', old_no, new_no)
-        return True
 
     ## Data menu callbacks.
     def menu_data_import_activate_cb(self, menuitem, data=None):
@@ -1142,9 +975,11 @@ class trackmeet:
                 if r.evtype in ['break', 'session']:
                     sec = report.section()
                     sec.heading = ' '.join([e['pref'], e['info']]).strip()
-                    sec.subheading = '\t'.join(
-                        [strops.lapstring(e['laps']), e['dist'],
-                         e['prog']]).strip()
+                    sec.subheading = '\t'.join((
+                        strops.lapstring(e['laps']),
+                        e['distance'],
+                        e['phase'],
+                    )).strip()
                     sections.append(sec)
                 else:
                     r.loadconfig()
@@ -1218,8 +1053,8 @@ class trackmeet:
 
         cursess = None
         for e in self.edb:
-            if e['prin']:  # include this event in program
-                if e['sess']:  # add harder break for new session
+            if e['program']:  # include this event in program
+                if e['session']:  # add harder break for new session
                     if cursess and cursess != e['sess']:
                         r.add_section(report.pagebreak(SESSBREAKTHRESH))
                     cursess = e['sess']
@@ -1293,144 +1128,87 @@ class trackmeet:
 
     def updateindex(self):
         self.updatenexprev()  # re-compute next/prev link struct
-        # check for printed program link
-        # check for final result link
-        # check for timing log link
-        # build index of events report
-        if self.mirrorpath:
-            orep = report.report()
-            self.report_strings(orep)
-            orep.strings['docstr'] = ''
-            orep.strings['subtitle'] = self.subtitle
-            orep.set_provisional(self.provisional)  # ! TODO
-            orep.shortname = self.shortname
-            if self.indexlink:
-                orep.indexlink = self.indexlink
-            if self.nextlink:
-                orep.nextlink = self.nextlink
-            if self.prevlink:
-                orep.prevlink = self.prevlink
-            if self.provisional:
-                orep.reportstatus = 'provisional'
-            else:
-                orep.reportstatus = 'final'
+        orep = report.report()
+        self.report_strings(orep)
+        orep.strings['docstr'] = ''
+        orep.strings['subtitle'] = self.subtitle
+        orep.set_provisional(self.provisional)  # ! TODO
+        orep.shortname = self.shortname
+        if self.indexlink:
+            orep.indexlink = self.indexlink
+        if self.nextlink:
+            orep.nextlink = self.nextlink
+        if self.prevlink:
+            orep.prevlink = self.prevlink
+        if self.provisional:
+            orep.reportstatus = 'provisional'
+        else:
+            orep.reportstatus = 'final'
 
-            pfilebase = 'program'
-            pfile = os.path.join('export', pfilebase + '.pdf')
-            rfilebase = 'result'
-            rfile = os.path.join('export', rfilebase + '.pdf')
+        pfilebase = 'program'
+        pfile = os.path.join('export', pfilebase + '.pdf')
+        rfilebase = 'result'
+        rfile = os.path.join('export', rfilebase + '.pdf')
 
-            lt = []
-            lb = None
-            if os.path.exists(rfile):
-                lt = ['pdf', 'xlsx']
-                lb = os.path.join(self.linkbase, rfilebase)
-            elif os.path.exists(pfile):
-                lt = ['pdf', 'xlsx']
-                lb = os.path.join(self.linkbase, pfilebase)
+        lt = []
+        lb = None
+        if os.path.exists(rfile):
+            lt = ['pdf', 'xlsx']
+            lb = os.path.join(self.linkbase, rfilebase)
+        elif os.path.exists(pfile):
+            lt = ['pdf', 'xlsx']
+            lb = os.path.join(self.linkbase, pfilebase)
+        rsec = report.event_index('resultindex')
+        rsec.heading = 'Results'
+        sec = report.event_index('eventindex')
+        sec.heading = 'Index of Events'
+        #sec.subheading = Date?
+        for eh in self.edb:
+            if eh['result'] and eh[
+                    'type'] == 'classification':  # include in result?
+                referno = eh['evid']
+                linkfile = None
+                if referno:
+                    linkfile = 'event_' + str(referno).translate(
+                        strops.WEBFILE_UTRANS)
+                descr = ' '.join([eh['pref'], eh['info']]).strip()
+                extra = None  # STATUS INFO -> progress?
+                rsec.lines.append(['', None, descr, extra, linkfile, None])
 
-            pdata = {
-                'title': self.title,
-                'subtitle': self.subtitle,
-                'host': self.host,
-                'date': self.date,
-                'location': self.document,
-                'pcp': self.pcp,
-                'organiser': self.organiser,
-                'events': {}
-            }
-            rsec = report.event_index('resultindex')
-            rsec.heading = 'Results'
-            sec = report.event_index('eventindex')
-            sec.heading = 'Index of Events'
-            #sec.subheading = Date?
-            for eh in self.edb:
-                if eh['result'] and eh[
-                        'type'] == 'classification':  # include in result?
-                    referno = eh['evid']
-                    linkfile = None
-                    if referno:
-                        linkfile = 'event_' + str(referno).translate(
+            if eh['inde']:  # include in index?
+                evno = eh['evid']
+                if eh['type'] in ['break', 'session']:
+                    evno = None
+                referno = evno
+                target = None
+                if eh['refe']:  # overwrite ref no, even on specials
+                    referno = eh['refe']
+                    if referno != evno:
+                        target = 'ev-' + str(evno).translate(
                             strops.WEBFILE_UTRANS)
-                    descr = ' '.join([eh['pref'], eh['info']]).strip()
-                    extra = None  # STATUS INFO -> progress?
-                    rsec.lines.append(['', None, descr, extra, linkfile, None])
+                linkfile = None
+                if referno:
+                    linkfile = 'event_' + str(referno).translate(
+                        strops.WEBFILE_UTRANS)
+                descr = ' '.join([eh['pref'], eh['info']]).strip()
+                extra = None  # STATUS INFO -> progress?
+                if eh['evov']:
+                    evno = eh['evov'].strip()
+                sec.lines.append([evno, None, descr, extra, linkfile, target])
+        if rsec.lines:
+            orep.add_section(rsec)
+        if sec.lines:
+            orep.add_section(sec)
+        basename = 'index'
+        ofile = os.path.join(EXPORTPATH, basename + '.html')
+        with metarace.savefile(ofile) as f:
+            orep.output_html(f, linkbase=lb, linktypes=lt)
+        jbase = basename + '.json'
+        ofile = os.path.join(EXPORTPATH, jbase)
+        with metarace.savefile(ofile) as f:
+            orep.output_json(f)
 
-                if eh['inde']:  # include in index?
-                    evno = eh['evid']
-                    if eh['type'] in ['break', 'session']:
-                        evno = None
-                    referno = evno
-                    target = None
-                    if eh['refe']:  # overwrite ref no, even on specials
-                        referno = eh['refe']
-                        if referno != evno:
-                            target = 'ev-' + str(evno).translate(
-                                strops.WEBFILE_UTRANS)
-                    linkfile = None
-                    if referno:
-                        linkfile = 'event_' + str(referno).translate(
-                            strops.WEBFILE_UTRANS)
-                    descr = ' '.join([eh['pref'], eh['info']]).strip()
-                    extra = None  # STATUS INFO -> progress?
-                    if eh['evov'] is not None and eh['evov'] != '':
-                        evno = eh['evov'].strip()
-                    sec.lines.append(
-                        [evno, None, descr, extra, linkfile, target])
-                    erec = {
-                        'no': referno,
-                        'prefix': eh['prefix'],
-                        'info': eh['info'],
-                        'laps': eh['laps'],
-                        'distance': eh['dist'],
-                        'progression': eh['prog'],
-                        'handler': eh['type'],
-                        'series': eh['seri'],
-                    }
-                    if eh['type'] and eh['type'] not in ['break']:
-                        erec['startlist'] = linkfile + '_startlist.json'
-                        erec['result'] = linkfile + '_result.json'
-                    pdata['events'][eh['evid']] = erec
-            if rsec.lines:
-                orep.add_section(rsec)
-            if sec.lines:
-                orep.add_section(sec)
-            basename = 'index'
-            ofile = os.path.join(EXPORTPATH, basename + '.html')
-            with metarace.savefile(ofile) as f:
-                orep.output_html(f, linkbase=lb, linktypes=lt)
-            jbase = basename + '.json'
-            ofile = os.path.join(EXPORTPATH, jbase)
-            with metarace.savefile(ofile) as f:
-                orep.output_json(f)
-
-            # dump out the json program
-            basename = 'program'
-            ofile = os.path.join(EXPORTPATH, basename + '.json')
-            with metarace.savefile(ofile) as f:
-                json.dump(pdata, f)
-
-            # also dump out json riders list
-            rdata = {}
-            for r in self.rdb:
-                rh = self.rdb[r]
-                key = rh.get_bibstr()
-                rdata[key] = {
-                    'no': rh['no'],
-                    'series': rh['series'],
-                    'first': rh['first'],
-                    'last': rh['last'],
-                    'org': rh['org'],
-                    'cat': rh['cat'],
-                    'name': rh.resname(),
-                    'uciid': rh['uciid'],
-                }
-            basename = 'riders'
-            ofile = os.path.join(EXPORTPATH, basename + '.json')
-            with metarace.savefile(ofile) as f:
-                json.dump(rdata, f)
-
-            GLib.idle_add(self.mirror_start)
+        GLib.idle_add(self.mirror_start)
 
     def mirror_completion(self, status, updates):
         """Send notifies for any changed files sent after export."""
@@ -1483,6 +1261,9 @@ class trackmeet:
             checks = set(checked)
         checks.add(evno)
 
+        if evno not in self.edb:
+            _log.debug('Dependency %r not in event model', evno)
+            return False
         ev = self.edb[evno]
 
         # scan dependencies
@@ -1578,14 +1359,14 @@ class trackmeet:
                     # TODO: startlist data [to be removed]
                     sdata = {
                         'id': e['evid'],
-                        'reference': e['refe'],
+                        'reference': e['reference'],
                         'event': e['evov'],
-                        'prefix': e['pref'],
+                        'prefix': e['prefix'],
                         'info': e['info'],
                         'laps': e['laps'],
-                        'diststr': e['dist'],
-                        'progression': e['prog'],
-                        'footer': e['reco'],
+                        'diststr': e['distance'],
+                        'progression': e['phase'],
+                        'footer': e['record'],
                         'startlist': []
                     }
                     if startsec is not None and startsec.lines:
@@ -1605,14 +1386,14 @@ class trackmeet:
                     # TODO: result data file [to be removed]
                     rdata = {
                         'id': e['evid'],
-                        'reference': e['refe'],
+                        'reference': e['reference'],
                         'event': e['evov'],
-                        'prefix': e['pref'],
+                        'prefix': e['prefix'],
                         'info': e['info'],
                         'laps': e['laps'],
-                        'diststr': e['dist'],
-                        'progression': e['prog'],
-                        'footer': e['reco'],
+                        'diststr': e['distance'],
+                        'progression': e['phase'],
+                        'footer': e['record'],
                         'status': r.standingstr(),
                         'result': []
                     }
@@ -1810,48 +1591,30 @@ class trackmeet:
         lstr = '{0:3} {1}'.format(bib[0:3], str(msg)[0:20])
         self.main_timer.printline(lstr)
 
-    def event_string(self, evno):
-        """Switch to suppress event no in delayed announce screens."""
-        ret = ''
-        if self.showevno:
-            ret = 'Event ' + str(evno)
-        else:
-            ret = ' '.join([self.title, self.subtitle]).strip()
-        return ret
-
     def infoline(self, event):
         """Format event information for display on event info label."""
-        evstr = event['pref'] + ' ' + event['info']
+        evstr = event.get_info()
         if len(evstr) > 44:
-            evstr = evstr[0:47] + '\u2026'
-        etype = event['type']
-        return ('Event {}: {} [{}]'.format(event['evid'], evstr, etype))
+            evstr = evstr[0:44] + '\u2026'
+        return ('Event\u2006{}: {} [{}]'.format(event['evid'], evstr,
+                                                event.get_type()))
 
     def racenamecat(self, event, slen=None, tail='', halign='c'):
         """Concatentate race info for display on scoreboard header line."""
         if slen is None:
             slen = self.scb.linelen
         evno = ''
-        srcev = event['evid']
-        if self.showevno and event['type'] not in ['break', 'session']:
+        srcev = event.get_evno()
+        if self.showevno and event['type'] != 'break':
             evno = 'Ev ' + srcev
         info = event['info']
         prefix = event['pref']
-        ret = ' '.join([evno, prefix, info, tail]).strip()
+        ret = ' '.join((evno, prefix, info, tail)).strip()
         if len(ret) > slen + 1:
-            ret = ' '.join([evno, info, tail]).strip()
+            ret = ' '.join((evno, info, tail)).strip()
             if len(ret) > slen + 1:
-                ret = ' '.join([evno, tail]).strip()
+                ret = ' '.join((evno, tail)).strip()
         return strops.truncpad(ret, slen, align=halign)
-
-    def racename(self, event):
-        """Return a full event identifier string."""
-        evno = ''
-        if self.showevno and event['type'] not in ['break', 'session']:
-            evno = 'Event ' + event['evid']
-        info = event['info']
-        prefix = event['pref']
-        return ' '.join([evno, prefix, info]).strip()
 
     ## Announcer methods
     def cmd_announce(self, command, msg):
@@ -1944,9 +1707,9 @@ class trackmeet:
     def shutdown(self, msg=''):
         """Cleanly shutdown threads and close application."""
         self.started = False
-        self.gemini.exit(msg)
         self.announce.exit(msg)
         self.scb.exit(msg)
+        self.gemini.exit(msg)
         self.main_timer.exit(msg)
         _log.info('Waiting for workers to exit')
         if self.exporter is not None:
@@ -1963,8 +1726,6 @@ class trackmeet:
         self.scb.join()
         _log.debug('Telegraph/announce')
         self.announce.join()
-        _log.debug('Main timer')
-        self.main_timer.join()
 
     def _timercb(self, evt, data=None):
         _log.debug('Timer: %r %r', evt, data)
@@ -2143,7 +1904,7 @@ class trackmeet:
                 # Patch the org value which is not visible, without notify
                 dbr.set_value('org', dbr['no'].upper())
             if res['rdb']['no'][0] or res['rdb']['series'][0]:
-                # change of number or series requires some care
+                # change of number or series
                 self._cur_rider_sel = None
                 newrider = self.rdb.add_rider(dbr,
                                               notify=False,
@@ -2158,32 +1919,9 @@ class trackmeet:
                         self.rdb.update_cats(res['rdb']['no'][1],
                                              res['rdb']['no'][2],
                                              notify=False)
-                        # and current event
-                        if self.curevent is not None:
-                            if res['rdb']['no'][1].upper(
-                            ) in self.curevent.cats:
-                                nc = []
-                                for c in self.curevent.cats:
-                                    if c == res['rdb']['no'][1].upper():
-                                        nc.append(res['rdb']['no'][2].upper())
-                                    else:
-                                        nc.append(c)
-                                self.curevent.loadcats(nc)
-                                doreopen = True
                 else:
-                    # update curevent
-                    if self.curevent is not None:
-                        if self.curevent.getrider(res['rdb']['no'][1],
-                                                  res['rdb']['series'][1]):
-                            # rider was in event, add new one
-                            self.curevent.addrider(dbr['no'], dbr['series'])
-                            if self.curevent.timerstat == 'idle':
-                                self.curevent.delrider(res['rdb']['no'][1],
-                                                       res['rdb']['series'][1])
-                            else:
-                                _log.warning(
-                                    'Changed rider number %r => %r, check data',
-                                    res['rdb']['no'][1], res['rdb']['no'][2])
+                    # TODO: update all events
+                    _log.info('Rider number change')
 
                 # del triggers a global notify
                 del (self.rdb[rider])
@@ -2243,11 +1981,10 @@ class trackmeet:
                 if self.curevent is not None:
                     if series == 'cat':
                         cat = dbr['no'].upper()
-                        if cat in self.curevent.cats:
-                            _log.warning('Deleted cat %s in open event', cat)
                     elif series not in ('ds', 'spare', 'team'):
-                        self.curevent.delrider(dbr['no'], series)
-                        _log.info('Remove rider %s from event', short)
+                        ## TODO: visit all events and remove rider
+                        _log.info('Remove rider %s from events', short)
+
                 del (self.rdb[self._cur_rider_sel])
                 _log.info('Deleted %s', short)
                 self._cur_rider_sel = None
@@ -2317,20 +2054,24 @@ class trackmeet:
     def eventcb(self, event):
         """Handle a change in the event model"""
         if event is not None:
-            e = self.edb[event]
-            for lr in self._elm:
-                if lr[0] == event:
-                    lr[0] = e['evid']
-                    lr[1] = e.event_info()
-                    lr[2] = e.event_type()
-                    lr[3] = e['evid']
-                    found = True
-                    break
-            _log.debug('Edit event %r', e)
+            if event in self.edb:
+                # update single entry in list
+                e = self.edb[event]
+                for lr in self._elm:
+                    if lr[3] == event:
+                        lr[0] = e.get_evno()
+                        lr[1] = e.get_info()
+                        lr[2] = e.get_type()
+                        lr[3] = e['evid']
+                        break
+                else:
+                    _log.debug('Notified event not found: %r', event)
+            else:
+                _log.debug('Notified event not in model: %r', event)
         else:
             self._elm.clear()
             for e in self.edb:
-                elr = [e['evid'], e.event_info(), e.event_type(), e['evid']]
+                elr = [e.get_evno(), e.get_info(), e.get_type(), e['evid']]
                 self._elm.append(elr)
             _log.debug('Re-load event view')
         if self.curevent is not None:
@@ -2380,8 +2121,7 @@ class trackmeet:
         GLib.idle_add(self.ridercb, rider)
 
     def _ecb(self, event):
-        if event is None:
-            GLib.idle_add(self.eventcb, event)
+        GLib.idle_add(self.eventcb, event)
 
     def _editcol_cb(self, cell, path, new_text, col):
         """Callback for editing a rider note"""
@@ -2403,7 +2143,7 @@ class trackmeet:
         ref = None
         model, plist = self._elv.get_selection().get_selected_rows()
         if len(plist) > 0:
-            evno = self._elm[plist[0]][0]
+            evno = self._elm[plist[0]][3]
             if evno in self.edb:
                 ref = self.edb[evno]
             else:
@@ -2416,7 +2156,7 @@ class trackmeet:
         ref = None
         model, plist = self._elv.get_selection().get_selected_rows()
         if len(plist) > 0:
-            evno = self._elm[plist[0]][0]
+            evno = self._elm[plist[0]][3]
             if evno in self.edb:
                 ref = self.edb[evno]
             else:
@@ -2435,10 +2175,10 @@ class trackmeet:
                                          'object': ref,
                                      },
                                  })
+        # TODO: handle event id change before triggering callbacks
         for k in res['edb']:
             if res['edb'][k][0]:
-                #self._ecb(evno)  # TODO: specific event update
-                self._ecb(None)  # TEMP: re-read all events
+                self._ecb(evno)
                 break
 
     def event_popup_result_cb(self, menuitem, data=None):
@@ -2451,8 +2191,8 @@ class trackmeet:
             return False
 
         # convert model iters into a list of event numbers
-        (model, iters) = sel.get_selected_rows()
-        elist = [model[i][0] for i in iters]
+        model, iters = sel.get_selected_rows()
+        elist = [model[i][3] for i in iters]
 
         # queue callback in main loop
         GLib.idle_add(self.eventdb_cb, elist, 'result')
@@ -2467,8 +2207,8 @@ class trackmeet:
             return False
 
         # convert model iters into a list of event numbers
-        (model, iters) = sel.get_selected_rows()
-        elist = [model[i][0] for i in iters]
+        model, iters = sel.get_selected_rows()
+        elist = [model[i][3] for i in iters]
 
         # queue callback in main loop
         GLib.idle_add(self.eventdb_cb, elist, 'startlist')
@@ -2483,8 +2223,8 @@ class trackmeet:
             return False
 
         # convert model iters into a list of event numbers
-        (model, iters) = sel.get_selected_rows()
-        elist = [model[i][0] for i in iters]
+        model, iters = sel.get_selected_rows()
+        elist = [model[i][3] for i in iters]
 
         # queue callback in main loop
         GLib.idle_add(self.eventdb_cb, elist, 'program')
@@ -2503,23 +2243,25 @@ class trackmeet:
             return False
 
         # convert model iters into a list of event numbers
-        (model, iters) = sel.get_selected_rows()
-        elist = [model[i][0] for i in iters]
+        model, iters = sel.get_selected_rows()
+        elist = [model[i][3] for i in iters]
 
         msg = 'Delete selected events?'
         if sel.count_selected_rows() == 1:
-            evt = self.edb[elist[0]]
-            sep = ''
-            ifstr = evt.event_info()
-            if ifstr:
-                sep = ': '
-            evno = evt['evid']
-            msg = ('Delete event ' + evno + sep + ifstr + '?')
+            if elist[0] in self.edb:
+                evt = self.edb[elist[0]]
+                sep = ''
+                ifstr = evt.get_info()
+                if ifstr:
+                    sep = ': '
+                evno = evt['evid']
+                msg = ('Delete event ' + evno + sep + ifstr + '?')
 
         if uiutil.questiondlg(self.window, 'Delete events?', msg):
             for evt in elist:
-                _log.debug('Deleting event %r', evt)
-                del (self.edb[evt])
+                if evt in self.edb:
+                    _log.debug('Deleting event %r', evt)
+                    del self.edb[evt]
             self._ecb(None)
 
     def _event_button_press(self, view, event):
@@ -2759,20 +2501,8 @@ class trackmeet:
 
         # get event db and pack into scrolled pane
         _log.debug('Add eventdb')
-        self.edb = eventdb.eventdb()
+        self.edb = eventdb()
         self.edb.set_notify(self._ecb)
-
-        #self.edb.set_startlist_cb(self.eventdb_cb, 'startlist')
-        #self.edb.set_result_cb(self.eventdb_cb, 'result')
-        #self.edb.set_program_cb(self.eventdb_cb, 'program')
-        #b.get_object('event_box').add(self.edb.mkview())
-        #self.edb.set_evno_change_cb(self.race_evno_change)
-        # connect each of the race menu types if present in builder
-        #for etype in self.edb.racetypes:
-        #lookup = 'mkrace_' + etype.replace(' ', '_')
-        #mi = b.get_object(lookup)
-        #if mi is not None:
-        #mi.connect('activate', self.menu_race_make_activate_cb, etype)
 
         # start timers
         _log.debug('Starting meet timers')

@@ -85,12 +85,34 @@ class sprnd:
     """Data handling for sprint rounds."""
 
     def ridercb(self, rider):
-        """Rider change notification function"""
-        pass
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    dbr = self.meet.rdb[rider]
+                    for cr in self.contests:
+                        if cr[COL_A_NO] == rno:
+                            cr[COL_A_STR] = dbr.fitname(self.meet.scb.linelen -
+                                                        8)
+                        elif cr[COL_B_NO] == rno:
+                            cr[COL_B_STR] = dbr.fitname(self.meet.scb.linelen -
+                                                        8)
+            else:
+                # riders db changed, handled by meet object
+                pass
 
     def eventcb(self, event):
         """Event change notification function"""
-        pass
+        if self.winopen:
+            if event is None or event == self.evno:
+                if self.prefix_ent.get_text() != self.event['pref']:
+                    self.prefix_ent.set_text(self.event['pref'])
+                if self.info_ent.get_text() != self.event['info']:
+                    self.info_ent.set_text(self.event['info'])
+                # re-draw summary line
+                self.update_expander_lbl_cb()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -186,6 +208,7 @@ class sprnd:
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
         qual = tod.mktod(info)
+        rname = self.fitname(bib)
         if self.event['type'] == 'sprint final':
             slot = None
             afound = False
@@ -199,7 +222,7 @@ class sprnd:
                         afound = True
                 if slot is not None and slot == cid:
                     cr[COL_A_NO] = bib
-                    cr[COL_A_STR] = self.rider_name(bib)
+                    cr[COL_A_STR] = rname
                     cr[COL_A_PLACE] = ''  # LOAD?
                     cr[COL_A_QUAL] = qual
                     ## special case the bye here
@@ -226,7 +249,7 @@ class sprnd:
                             bfound = True
                     if slot is not None and slot == cid:
                         cr[COL_B_NO] = bib
-                        cr[COL_B_STR] = self.rider_name(bib)
+                        cr[COL_B_STR] = rname
                         cr[COL_B_PLACE] = ''  # LOAD?
                         cr[COL_B_QUAL] = qual
                     elif bfound:
@@ -240,7 +263,7 @@ class sprnd:
                 # check for 'first' empty slot in A riders
                 if cr[COL_A_NO] == '':
                     cr[COL_A_NO] = bib
-                    cr[COL_A_STR] = self.rider_name(bib)
+                    cr[COL_A_STR] = rname
                     cr[COL_A_PLACE] = ''  # LOAD?
                     cr[COL_A_QUAL] = qual
                     ## special case the bye here
@@ -256,7 +279,7 @@ class sprnd:
                 # reverse contests for B riders
                 if cr[COL_B_NO] == '':
                     cr[COL_B_NO] = bib
-                    cr[COL_B_STR] = self.rider_name(bib)
+                    cr[COL_B_STR] = rname
                     cr[COL_B_PLACE] = ''  # LOAD?
                     cr[COL_B_QUAL] = qual
                     return
@@ -293,7 +316,6 @@ class sprnd:
                 'showinfo': True,
                 'otherstime': def_otherstime,
                 'decisions': [],
-                'autospec': ''
             },
             'contests': {}
         })
@@ -303,7 +325,6 @@ class sprnd:
             _log.info('%r not read, loading defaults', self.configfile)
 
         # event metas
-        self.autospec = cr.get('event', 'autospec')
         self.decisions = cr.get('event', 'decisions')
         self.otherstime = cr.get_bool('event', 'otherstime', def_otherstime)
         self.onestart = False
@@ -341,12 +362,8 @@ class sprnd:
                             curactive = oft
                     aqual = tod.mktod(res[7])
                     bqual = tod.mktod(res[8])
-                    astr = ''
-                    if res[0]:
-                        astr = self.rider_name(res[0])
-                    bstr = ''
-                    if res[2]:
-                        bstr = self.rider_name(res[2])
+                    astr = self.fitname(res[0])
+                    bstr = self.fitname(res[2])
                     nr = [
                         c, res[0], astr, res[1], res[2], bstr, res[3], ft,
                         res[5], res[6], aqual, bqual, bye
@@ -356,9 +373,9 @@ class sprnd:
                     self.add_contest(c, bye=bye)
                 oft += 1
 
-        if not self.onestart and self.autospec:
+        if not self.onestart and self.event['starters']:
             self.del_riders()
-            usespec = self.autospec.strip()
+            usespec = self.event['starters'].strip()
             evpart, tailpart = usespec.split(':', 1)
             if self.ismedalphase():
                 # special case: assignment is 3,1,2,4
@@ -382,15 +399,25 @@ class sprnd:
         if eid and eid != EVENT_ID:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
 
-    def rider_name(self, bib, width=20):
-        """Return a formated rider name string."""
+    def fitname(self, bib):
         ret = ''
-        dbr = self.meet.rdb.get_rider(bib, self.series)
-        if dbr is not None:
-            ret = dbr.fitname(width)
-            if len(dbr['org']) == 3:
-                ret += ' (' + dbr['org'] + ')'
+        if bib.strip():
+            ret = self.getrider(bib).fitname(self.meet.scb.linelen - 8)
         return ret
+
+    def listname(self, bib):
+        ret = ''
+        if bib.strip():
+            ret = self.getrider(bib).listname()
+        return ret
+
+    def getrider(self, bib):
+        """Fetch a riderdb handle for the bib in this event"""
+        dbr = self.meet.rdb.get_rider(bib, self.series)
+        if dbr is None:
+            self.meet.rdb.add_empty(bib, self.series)
+            dbr = self.meet.rdb.get_rider(bib, self.series)
+        return dbr
 
     def del_riders(self):
         """Remove all starters from model."""
@@ -442,16 +469,17 @@ class sprnd:
         else:
             sec = report.sprintround(secid)
         sec.nobreak = True
-        headvec = [
-            'Event', self.evno, ':', self.event['pref'], self.event['info']
-        ]
+        headvec = self.event.get_info(showevno=True).split()
         if not program:
             headvec.append('- Start List')
         sec.heading = ' '.join(headvec)
 
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join((
+            lapstring,
+            self.event['distance'],
+            self.event['phase'],
+        )).strip()
         if substr:
             sec.subheading = substr
 
@@ -461,8 +489,10 @@ class sprnd:
             if cid not in cidset:
                 cidset.add(cid)
                 byeflag = None
+                ano = cr[COL_A_NO]
+                aname = self.listname(ano)
                 bno = cr[COL_B_NO]
-                bname = cr[COL_B_STR]
+                bname = self.listname(bno)
                 aqual = None
                 if cr[COL_A_QUAL] is not None:
                     aqual = cr[COL_A_QUAL].rawtime(2)
@@ -481,15 +511,12 @@ class sprnd:
                 if self.event['type'] == 'sprint final':
                     sec.lines.append([
                         cid + ':',
-                        [
-                            None, cr[COL_A_NO], cr[COL_A_STR], aqual, None,
-                            None, None, None
-                        ], [None, bno, bname, bqual, None, None, None, None]
+                        [None, ano, aname, aqual, None, None, None, None],
+                        [None, bno, bname, bqual, None, None, None, None]
                     ])
                 else:
                     sec.lines.append([
-                        cr[COL_CONTEST] + ':',
-                        [None, cr[COL_A_NO], cr[COL_A_STR], aqual],
+                        cr[COL_CONTEST] + ':', [None, ano, aname, aqual],
                         [byeflag, bno, bname, bqual], timestr
                     ])
         ret.append(sec)
@@ -515,7 +542,6 @@ class sprnd:
         cw.set('event', 'showinfo', self.info_expand.get_expanded())
         cw.set('event', 'timerstat', self.timerstat)
         cw.set('event', 'decisions', self.decisions)
-        cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'otherstime', self.otherstime)
         contestset = set()
         contestlist = []
@@ -809,8 +835,7 @@ class sprnd:
 
     def update_expander_lbl_cb(self):
         """Update race info expander label."""
-        self.info_expand.set_label('Race Info : ' +
-                                   self.meet.racenamecat(self.event, 64))
+        self.info_expand.set_label(self.meet.infoline(self.event))
 
     def editent_cb(self, entry, col):
         """Shared event entry update callback."""
@@ -818,7 +843,6 @@ class sprnd:
             self.event['pref'] = entry.get_text()
         elif col == 'info':
             self.event['info'] = entry.get_text()
-        self.update_expander_lbl_cb()
 
     def starttrig(self, e, wallstart=None):
         """React to start trigger."""
@@ -1031,13 +1055,13 @@ class sprnd:
         """Initialise the announcer's screen after a delay."""
         if self.winopen:
             self.meet.txt_clear()
-            self.meet.txt_title(' '.join([
-                self.meet.event_string(self.evno), ':', self.event['pref'],
-                self.event['info']
-            ]))
+            self.meet.txt_title(self.event.get_info(showevno=True))
             lapstring = strops.lapstring(self.event['laps'])
-            substr = ' '.join(
-                [lapstring, self.event['dist'], self.event['prog']]).strip()
+            substr = ' '.join((
+                lapstring,
+                self.event['distance'],
+                self.event['phase'],
+            )).strip()
             if substr:
                 self.meet.txt_postxt(1, 0, substr.center(80))
             self.meet.txt_line(2, '_')
@@ -1181,8 +1205,8 @@ class sprnd:
             [self.event['pref'], self.event['info']]).strip()
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         shvec = []
         if substr:
             shvec.append(substr)
@@ -1195,12 +1219,14 @@ class sprnd:
         if self.event['type'] == 'sprint final':
             for cid in self._rescache:
                 cm = self._rescache[cid]
+                aname = self.listname(cm['ano'])
+                bname = self.listname(cm['bno'])
                 if cm['bye']:
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cm['ano'], cm['aname'], cm['aqual'], None,
-                            None, None, None
+                            None, cm['ano'], aname, cm['aqual'], None, None,
+                            None, None
                         ],
                         [None, ' ', ' ', None, None, None, None, None],
                     ])
@@ -1208,12 +1234,12 @@ class sprnd:
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cm['ano'], cm['aname'], cm['aqual'],
+                            None, cm['ano'], aname, cm['aqual'],
                             cm['ares']['1'], cm['ares']['2'], cm['ares']['3'],
                             None
                         ],
                         [
-                            None, cm['bno'], cm['bname'], cm['bqual'],
+                            None, cm['bno'], bname, cm['bqual'],
                             cm['bres']['1'], cm['bres']['2'], cm['bres']['3'],
                             None
                         ],
@@ -1228,14 +1254,12 @@ class sprnd:
                 bqual = None
                 if cr[COL_B_QUAL] is not None:
                     bqual = cr[COL_B_QUAL].rawtime(2)
+                aname = self.listname(cr[COL_A_NO])
+                bname = self.listname(cr[COL_B_NO])
                 cprompt = cr[COL_CONTEST] + ':'
                 if cr[COL_WINNER]:
-                    avec = [
-                        cr[COL_A_PLACE], cr[COL_A_NO], cr[COL_A_STR], aqual
-                    ]
-                    bvec = [
-                        cr[COL_B_PLACE], cr[COL_B_NO], cr[COL_B_STR], bqual
-                    ]
+                    avec = [cr[COL_A_PLACE], cr[COL_A_NO], aname, aqual]
+                    bvec = [cr[COL_B_PLACE], cr[COL_B_NO], bname, bqual]
                     ft = None
                     if cr[COL_200M] is not None:
                         ft = cr[COL_200M].rawtime(2)
@@ -1247,8 +1271,8 @@ class sprnd:
                         sec.lines.append([cprompt, bvec, avec, ft])
                 else:
                     sec.lines.append([
-                        cprompt, [None, cr[COL_A_NO], cr[COL_A_STR], aqual],
-                        [None, cr[COL_B_NO], cr[COL_B_STR], bqual], None
+                        cprompt, [None, cr[COL_A_NO], aname, aqual],
+                        [None, cr[COL_B_NO], bname, bqual], None
                     ])
 
         ret.append(sec)
@@ -1309,13 +1333,12 @@ class sprnd:
         self.curelap = None
         self.timerwin = False
         self.timerstat = 'idle'
-        self.autospec = ''  # automatic startlist
         self.inomnium = False
         self.startchan = 4
         self.finchan = 1
         self.otherstime = True  # Order places of "others" by qualifying time
         self.contestlist = []  # Configured list of contest labels
-        self.contests = []  # Expanded list of contest objects
+        self.contests = None
         self.decisions = []
         self._standingstat = ''
         self._rescache = {}

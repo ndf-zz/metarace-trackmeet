@@ -48,12 +48,33 @@ key_results = 'F4'
 class classification:
 
     def ridercb(self, rider):
-        """Rider change notification function"""
-        pass
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    dbr = self.meet.rdb[rider]
+                    rh = self.getrider(rno)
+                    if rh is not None:
+                        _log.debug('Rider change notify: %r', rider)
+                        rh[COL_FIRST] = dbr['first']
+                        rh[COL_LAST] = dbr['last']
+                        rh[COL_CLUB] = dbr['organisation']
+            else:
+                # riders db changed, handled by meet object
+                pass
 
     def eventcb(self, event):
         """Event change notification function"""
-        pass
+        if self.winopen:
+            if event is None or event == self.evno:
+                if self.prefix_ent.get_text() != self.event['pref']:
+                    self.prefix_ent.set_text(self.event['pref'])
+                if self.info_ent.get_text() != self.event['info']:
+                    self.info_ent.set_text(self.event['info'])
+                # re-draw summary line
+                self.update_expander_lbl_cb()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -115,6 +136,7 @@ class classification:
                         try:
                             # while here - visit event config
                             # and update omnium flag
+                            ev = self.meet.edb[sid]
                             config = self.meet.event_configfile(sid)
                             ecr = jsonconfig.config()
                             ecr.add_section('event')
@@ -125,13 +147,13 @@ class classification:
                             if stype == 'Points':
                                 startevid = sources['Scratch']
                                 if startevid is not None:
-                                    ecr.set('event', 'autospec',
-                                            '%s:1-24' % (startevid, ))
+                                    ev.set_value('starters',
+                                                 '%s:1-24' % (startevid, ))
                             elif stype in ('Tempo', 'Elimination'):
                                 startevid = sources['Points']
                                 if startevid is not None:
-                                    ecr.set('event', 'autospec',
-                                            '%s:1-24' % (startevid, ))
+                                    ev.set_value('starters',
+                                                 '%s:1-24' % (startevid, ))
                             _log.debug('Saving event %s config file %s', sid,
                                        config)
                             with metarace.savefile(config) as f:
@@ -173,8 +195,8 @@ class classification:
             headvec.append('- Start List')
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             sec.subheading = substr
         sec.lines = []
@@ -255,8 +277,8 @@ class classification:
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             subvec.append(substr)
         stat = self.standingstr()
@@ -513,9 +535,7 @@ class classification:
         if self.winopen:
             # clear page
             self.meet.txt_clear()
-            self.meet.txt_title(' '.join([
-                'Event', self.evno, ':', self.event['pref'], self.event['info']
-            ]))
+            self.meet.txt_title(self.event.get_info(showevno=True))
             self.meet.txt_line(1)
             self.meet.txt_line(19)
 
@@ -680,14 +700,25 @@ class classification:
             self.event['pref'] = entry.get_text()
         elif col == 'info':
             self.event['info'] = entry.get_text()
-        self.update_expander_lbl_cb()
 
     def editcol_db(self, cell, path, new_text, col):
         """Cell update with writeback to meet."""
         new_text = new_text.strip()
         self.riders[path][col] = new_text
-        GLib.idle_add(self.meet.rider_edit, self.riders[path][COL_BIB],
-                      self.series, col, new_text)
+        dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB], self.series)
+        if dbr is None:
+            self.meet.rdb.add_empty(self.riders[path][COL_BIB], self.series)
+            dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB],
+                                          self.series)
+        if dbr is not None:
+            if col == COL_FIRST:
+                dbr['first'] = new_text
+            elif col == COL_LAST:
+                dbr['last'] = new_text
+            elif col == COL_CLUB:
+                dbr['org'] = new_text
+            else:
+                _log.debug('Ignore update to unknown column')
 
     def __init__(self, meet, event, ui=True):
         """Constructor."""
@@ -699,7 +730,6 @@ class classification:
         self.configfile = meet.event_configfile(self.evno)
 
         # race run time attributes
-        self.autospec = ''  # automatic startlist - ignored
         self.onestart = True  # always true for autospec classification
         self.showcats = False  # show primary category on result
         self.readonly = not ui

@@ -83,12 +83,33 @@ def cmp(x, y):
 class ittt:
 
     def ridercb(self, rider):
-        """Rider change notification function"""
-        pass
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    dbr = self.meet.rdb[rider]
+                    rh = self.getrider(rno)
+                    if rh is not None:
+                        _log.debug('Rider change notify: %r', rider)
+                        rh[COL_FIRSTNAME] = dbr['first']
+                        rh[COL_LASTNAME] = dbr['last']
+                        rh[COL_CLUB] = dbr['organisation']
+            else:
+                # riders db changed, handled by meet object
+                pass
 
     def eventcb(self, event):
         """Event change notification function"""
-        pass
+        if self.winopen:
+            if event is None or event == self.evno:
+                if self.prefix_ent.get_text() != self.event['pref']:
+                    self.prefix_ent.set_text(self.event['pref'])
+                if self.info_ent.get_text() != self.event['info']:
+                    self.info_ent.set_text(self.event['info'])
+                # re-draw summary line
+                self.update_expander_lbl_cb()
 
     def standingstr(self):
         return self._standingstr
@@ -296,7 +317,6 @@ class ittt:
                 'chan_A': defchana,
                 'chan_B': defchanb,
                 'autotime': defautotime,
-                'autospec': '',
                 'inomnium': False,
                 'timetype': deftimetype,
             }
@@ -312,7 +332,6 @@ class ittt:
         self.chan_A = strops.confopt_chan(cr.get('event', 'chan_A'), defchana)
         self.chan_B = strops.confopt_chan(cr.get('event', 'chan_B'), defchanb)
         self.decisions = cr.get('event', 'decisions')
-        self.autospec = cr.get('event', 'autospec')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
         # override event configuration from program entry
@@ -379,9 +398,10 @@ class ittt:
                 self.precision = 2
         self.placexfer()
 
-        if not self.onestart and self.autospec:
+        if not self.onestart and self.event['starters']:
+            self.riders.clear()
             self.meet.autostart_riders(self,
-                                       self.autospec,
+                                       self.event['starters'],
                                        infocol=self.seedsrc)
 
         if self.winopen:
@@ -438,7 +458,6 @@ class ittt:
         cw.set('event', 'chan_S', self.chan_S)
         cw.set('event', 'chan_A', self.chan_A)
         cw.set('event', 'chan_B', self.chan_B)
-        cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'timetype', self.timetype)
         cw.set('event', 'autotime', self.autotime)
         cw.set('event', 'startlist', self.get_startlist())
@@ -507,16 +526,17 @@ class ittt:
                 # TMSL is for madison support events
                 sec.showheats = True
 
-        headvec = [
-            'Event', self.evno, ':', self.event['pref'], self.event['info']
-        ]
+        headvec = self.event.get_info(showevno=True).split()
         if not program:
             headvec.append('- Start List')
         sec.heading = ' '.join(headvec)
 
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join((
+            lapstring,
+            self.event['distance'],
+            self.event['phase'],
+        )).strip()
         if substr:
             sec.subheading = substr
         if self.event['reco']:
@@ -699,9 +719,7 @@ class ittt:
         if self.winopen:
             # clear page
             self.meet.txt_clear()
-            self.meet.txt_title(' '.join([
-                'Event', self.evno, ':', self.event['pref'], self.event['info']
-            ]))
+            self.meet.txt_title(self.event.get_info(showevno=True))
             self.meet.txt_line(1)
             self.meet.txt_line(7)
 
@@ -844,7 +862,7 @@ class ittt:
         se = b.get_object('race_series_entry')
         se.set_text(self.series)
         as_e = b.get_object('auto_starters_entry')
-        as_e.set_text(self.autospec)
+        as_e.set_text(self.event['starters'])
         olddistance = self.meet.get_distance(self.distance, self.units)
 
         response = dlg.run()
@@ -888,12 +906,14 @@ class ittt:
 
             # update auto startlist spec
             nspec = as_e.get_text()
-            if nspec != self.autospec:
-                self.autospec = nspec
-                if self.autospec:
-                    self.meet.autostart_riders(self,
-                                               self.autospec,
-                                               infocol=self.seedsrc)
+            if nspec != self.event['starters']:
+                self.event.set_value('starters', nspec)
+                if not self.onestart:
+                    self.riders.clear()
+                    if nspec:
+                        self.meet.autostart_riders(self,
+                                                   nspec,
+                                                   infocol=self.seedsrc)
 
             # xfer starters if not empty
             slist = strops.riderlist_split(
@@ -950,11 +970,13 @@ class ittt:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-            [self.event['pref'], self.event['info']]).strip()
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join((
+            lapstring,
+            self.event['distance'],
+            self.event['phase'],
+        )).strip()
         sec.lines = []
         ftime = None
         downprec = min(self.precision, 2)
@@ -1068,7 +1090,6 @@ class ittt:
             self.event['pref'] = entry.get_text()
         elif col == 'info':
             self.event['info'] = entry.get_text()
-        self.update_expander_lbl_cb()
 
     def update_expander_lbl_cb(self):
         """Update race info expander label."""
@@ -1333,7 +1354,20 @@ class ittt:
         """Cell update with writeback to meet."""
         new_text = new_text.strip()
         self.riders[path][col] = new_text
-        rno = self.riders[path][COL_BIB]
+        dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB], self.series)
+        if dbr is None:
+            self.meet.rdb.add_empty(self.riders[path][COL_BIB], self.series)
+            dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB],
+                                          self.series)
+        if dbr is not None:
+            if col == COL_FIRSTNAME:
+                dbr['first'] = new_text
+            elif col == COL_LASTNAME:
+                dbr['last'] = new_text
+            elif col == COL_CLUB:
+                dbr['org'] = new_text
+            else:
+                _log.debug('Ignore update to unknown column')
 
     def placexfer(self):
         """Transfer places into model."""
@@ -2023,7 +2057,6 @@ class ittt:
         # race run time attributes
         self._standingstr = ''
         self.finished = False
-        self.autospec = ''
         self.inomnium = False
         self.seedsrc = 1  # default seeding is by rank in last round
         self.onestart = False

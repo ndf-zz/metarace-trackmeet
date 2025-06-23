@@ -70,12 +70,33 @@ class race:
     """Data handling for scratch, handicap, keirin, derby, etc races."""
 
     def ridercb(self, rider):
-        """Rider change notification function"""
-        pass
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    dbr = self.meet.rdb[rider]
+                    rh = self.getrider(rno)
+                    if rh is not None:
+                        _log.debug('Rider change notify: %r', rider)
+                        rh[COL_FIRSTNAME] = dbr['first']
+                        rh[COL_LASTNAME] = dbr['last']
+                        rh[COL_CLUB] = dbr['organisation']
+            else:
+                # riders db changed, handled by meet object
+                pass
 
     def eventcb(self, event):
         """Event change notification function"""
-        pass
+        if self.winopen:
+            if event is None or event == self.evno:
+                if self.prefix_ent.get_text() != self.event['pref']:
+                    self.prefix_ent.set_text(self.event['pref'])
+                if self.info_ent.get_text() != self.event['info']:
+                    self.info_ent.set_text(self.event['info'])
+                # re-draw summary line
+                self.update_expander_lbl_cb()
 
     def clearplaces(self):
         """Clear places from data model."""
@@ -275,7 +296,6 @@ class race:
                 'distunits': defdistunits,
                 'showinfo': True,
                 'inomnium': False,
-                'autospec': '',
                 'timetype': deftimetype
             },
             'riders': {}
@@ -290,7 +310,6 @@ class race:
             self.seedsrc = 1  # fetch start list seeding from omnium
         self.showcats = cr.get_bool('event', 'showcats')
 
-        self.autospec = cr.get('event', 'autospec')
         rlist = cr.get('event', 'startlist').split()
         for r in rlist:
             nr = [r, '', '', '', '', False, '']
@@ -334,11 +353,12 @@ class race:
             self.doscbplaces = False  # only show places on board if not set
             self.setfinished()
         else:
-            if self.autospec:
+            if not self.onestart and self.event['starters']:
+                self.riders.clear()
                 self.meet.autostart_riders(self,
-                                           self.autospec,
+                                           self.event['starters'],
                                            infocol=self.seedsrc)
-            if self.evtype in ['handicap', 'keirin'] or self.inomnium:
+            if self.evtype in ('handicap', 'keirin') or self.inomnium:
                 self.reorder_handicap()
 
         # After load complete - check config and report.
@@ -437,9 +457,7 @@ class race:
         if self.winopen:
             # clear page
             self.meet.txt_clear()
-            self.meet.txt_title(' '.join([
-                'Event', self.evno, ':', self.event['pref'], self.event['info']
-            ]))
+            self.meet.txt_title(self.event.get_info(showevno=True))
             self.meet.txt_line(1)
             self.meet.txt_line(19)
 
@@ -508,19 +526,15 @@ class race:
             sec = report.twocol_startlist(secid)
 
         sec.nobreak = True
-        headvec = []
-        if etype != 'break':
-            headvec.extend(['Event', self.evno, ':'])
-        headvec.append(self.event['pref'])
-        headvec.append(self.event['info'])
+        headvec = self.event.get_info(showevno=True).split()
         if not program:
             headvec.append('- Start List')
         else:
             rankcol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             sec.subheading = substr
 
@@ -626,7 +640,6 @@ class race:
         cw.set('event', 'distance', self.distance)
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'timetype', self.timetype)
-        cw.set('event', 'autospec', self.autospec)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'decisions', self.decisions)
@@ -673,7 +686,7 @@ class race:
         se = b.get_object('race_series_entry')
         se.set_text(self.series)
         as_e = b.get_object('auto_starters_entry')
-        as_e.set_text(self.autospec)
+        as_e.set_text(self.event['starters'])
         response = dlg.run()
         if response == 1:  # id 1 set in glade for "Apply"
             _log.debug('Updating event properties')
@@ -697,14 +710,14 @@ class race:
                 self.series = ns
                 self.event['seri'] = ns
 
-            # update auto startlist spec
+            # update auto startlist spec in event db
             nspec = as_e.get_text()
-            if nspec != self.autospec:
-                self.autospec = nspec
+            if nspec != self.event['starters']:
+                self.event.set_value('starters', nspec)
                 if not self.ctrl_places.get_text():
-                    if self.autospec:
-                        self.meet.autostart_riders(self, self.autospec,
-                                                   self.seedsrc)
+                    self.riders.clear()
+                    if nspec:
+                        self.meet.autostart_riders(self, nspec, self.seedsrc)
                     if self.evtype == 'handicap':
                         self.reorder_handicap()
 
@@ -877,10 +890,6 @@ class race:
         self.meet.scbwin = None
         self.timerwin = False
         startlist = []
-        ##self.meet.announce.gfx_overlay(1)
-        ##self.meet.announce.gfx_set_title(u'Startlist: '
-        ##+ self.event[u'pref'] + u' '
-        ##+ self.event[u'info'])
         name_w = self.meet.scb.linelen - 8
         for r in self.riders:
             if not r[COL_DNF]:
@@ -1077,7 +1086,6 @@ class race:
             self.event['pref'] = entry.get_text()
         elif col == 'info':
             self.event['info'] = entry.get_text()
-        self.update_expander_lbl_cb()
 
     def editcol_cb(self, cell, path, new_text, col):
         """Startlist cell update callback."""
@@ -1271,12 +1279,11 @@ class race:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-            [self.event['pref'], self.event['info']]).strip()
+        sec.heading = self.event.get_info(showevno=True)
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join([lapstring, self.event['dist'],
-                           self.event['prog']]).strip()
+        substr = ' '.join(
+            (lapstring, self.event['distance'], self.event['phase'])).strip()
         first = True
         fs = ''
         if self.finish is not None and self.start is not None:
@@ -1406,7 +1413,6 @@ class race:
         self.distance = None
         self.units = 'laps'
         self.timetype = 'start/finish'
-        self.autospec = ''  # automatic startlist
         self.inomnium = False
         self.showcats = False
         self.seedsrc = None
