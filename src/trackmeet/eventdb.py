@@ -64,6 +64,21 @@ _ALT_COLUMNS = {
     'evoverri': 'evov',  # legacy "EVOverride"
 }
 
+
+# Transition pre 1.13.3 event db to new format
+def _clean_autofield(starters):
+    ret = starters.lower()
+    if ret:
+        if ':' in ret:
+            if ret.startswith('auto'):
+                ret = ret[4:].strip()
+                _log.debug('Updated old-style autospec to %r', ret)
+        else:
+            ret = ''
+            _log.debug('Removed old-style starters %r from eventdb', starters)
+    return ret
+
+
 # for any non-strings, types as listed
 _EVENT_COLUMN_CONVERTERS = {
     'resu': strops.confopt_bool,
@@ -73,6 +88,7 @@ _EVENT_COLUMN_CONVERTERS = {
     'plac': strops.confopt_posint,
     'laps': strops.confopt_posint,
     'topn': strops.confopt_posint,
+    'auto': _clean_autofield,
 }
 
 _DEFAULT_COLUMN_ORDER = (
