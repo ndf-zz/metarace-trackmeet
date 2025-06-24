@@ -3,8 +3,8 @@
   <requires lib="gtk+" version="3.0"/>
   <object class="GtkWindow" id="meet">
     <property name="title" translatable="yes">Trackmeet</property>
-    <property name="default_width">800</property>
-    <property name="default_height">600</property>
+    <property name="default_width">1200</property>
+    <property name="default_height">680</property>
     <signal name="destroy" handler="meet_destroy_cb"/>
     <child>
       <object class="GtkBox" id="vbox1">
@@ -89,103 +89,149 @@
                               <object class="GtkMenu" id="menu_race_new_types">
                                 <property name="visible">True</property>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_race">
+                                  <object class="GtkMenuItem" id="mkrace_f200">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Generic Race</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Flying 200</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkSeparatorMenuItem" id="mkrace_sep">
+                                  <object class="GtkMenuItem" id="mkrace_flap">
                                     <property name="visible">True</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuItem" id="mkrace_handicap">
-                                    <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Handicap</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Flying Lap</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_keirin">
+                                  <object class="GtkMenuItem" id="mkrace_itt">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Keirin</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Time Trial</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_elimination">
+                                  <object class="GtkMenuItem" id="mkrace_ip">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Elimination</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Pursuit</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_pr">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Pursuit Race</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
                                   <object class="GtkMenuItem" id="mkrace_points">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Points</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Points</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
                                   <object class="GtkMenuItem" id="mkrace_madison">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Madison</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Madison</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
                                   <object class="GtkMenuItem" id="mkrace_omnium">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Omnium</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Omnium</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_flying_200">
+                                  <object class="GtkMenuItem" id="mkrace_tempo">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Flying 200</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Tempo</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_flying_lap">
+                                  <object class="GtkMenuItem" id="mkrace_progressive">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Flying Lap</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Progressive</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_indiv_tt">
+                                  <object class="GtkMenuItem" id="mkrace_classification">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Indiv TT</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Classification</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_indiv_pursuit">
+                                  <object class="GtkMenuItem" id="mkrace_break">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Indiv Pursuit</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Break</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="mkrace_pursuit_race">
+                                  <object class="GtkMenuItem" id="mkrace_sprnd">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Pursuit Race</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Sprint Round</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_sprf">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Sprint Best of 3</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_spd">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Sprint Derby</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_keirin">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Keirin</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_scratch">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Scratch</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_motorpace">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Motorpace</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_hcp">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Wheelrace</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_elm">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Elimination</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_race">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Bunch Race</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
@@ -193,16 +239,7 @@
                                   <object class="GtkMenuItem" id="mkrace_hour">
                                     <property name="sensitive">False</property>
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Hour Record</property>
-                                    <property name="use_underline">True</property>
-                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuItem" id="mkrace_classification">
-                                    <property name="visible">True</property>
-                                    <property name="label" translatable="yes">_Classification</property>
-                                    <property name="use_underline">True</property>
+                                    <property name="label" translatable="yes">Hour</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
@@ -759,7 +796,7 @@
       <object class="GtkMenuItem" id="event_insert">
         <property name="label">Add new</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_insert_cb"/>
+        <signal name="activate" handler="menu_race_make_activate_cb"/>
       </object>
     </child>
     <child>
@@ -791,6 +828,13 @@
     <child>
       <object class="GtkSeparatorMenuItem" id="event_sep">
         <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_reset">
+        <property name="label">Reset</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_reset_cb"/>
       </object>
     </child>
     <child>

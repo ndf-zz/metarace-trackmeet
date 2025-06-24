@@ -116,6 +116,15 @@ _DEFAULT_COLUMN_ORDER = (
     'dirt',
 )
 
+_EVENT_ALIASES = {
+    'time trial': 'indiv tt',
+    'pursuit': 'indiv pursuit',
+    'sprint derby': 'sprint',
+    'bunch race': 'race',
+    'sprint best of 3': 'sprint final',
+    'wheelrace': 'handicap',
+}
+
 _EVENT_TYPES = {
     'flying 200': 'Flying 200m',
     'flying lap': 'Flying Lap',
@@ -138,7 +147,7 @@ _EVENT_TYPES = {
     'handicap': 'Wheelrace',
     'elimination': 'Elimination',
     'race': 'Bunch Race',
-    #'hour': 'Hour Record',
+    'hour': 'Hour Record',
     #'competition': 'Competition',
     #'aggregate': 'Points Aggregate',
 }
@@ -153,7 +162,7 @@ _CONFIG_SCHEMA = {
         'hint': 'Session on schedule of events',
     },
     'evid': {
-        'prompt': 'Event No:',
+        'prompt': 'Event ID:',
         'control': 'short',
         'attr': 'evid',
         'defer': True,
@@ -322,6 +331,16 @@ _CONFIG_SCHEMA = {
 }
 
 
+def event_type(name):
+    """Return the event type for the name given"""
+    name = name.lower().replace('_', '').strip()
+    if name in _EVENT_ALIASES:
+        name = _EVENT_ALIASES[name]
+    if name not in _EVENT_TYPES:
+        name = 'race'
+    return name
+
+
 def colkey(colstr=''):
     """Convert a column header string to a colkey."""
     col = colstr[0:8].strip().lower()
@@ -338,8 +357,51 @@ def get_header(cols=_DEFAULT_COLUMN_ORDER):
     return (_EVENT_COLUMNS[colkey(c)] for c in cols)
 
 
+def sub_depend(depend, oldevno, newevno):
+    """Alter any instance of oldevno in depend to newevno"""
+    alter = False
+    nv = []
+    for dep in depend.split():
+        evno = dep.strip()
+        if evno == oldevno:
+            evno = newevno
+            alter = True
+        nv.append(evno)
+    if alter:
+        depend = ' '.join(nv)
+    return depend
+
+
+def sub_autospec(autospec, oldevno, newevno):
+    """Alter any instance of oldevno in autospec to newevno"""
+    alter = False
+    nv = []
+    for spec in autospec.split(';'):
+        if ':' in spec:
+            evno, rule = spec.split(':', 1)
+            evno = evno.strip()
+            rule = rule.strip()
+            if evno == oldevno:
+                evno = newevno
+                alter = True
+            nv.append(':'.join((evno, rule)))
+    if alter:
+        autospec = '; '.join(nv)
+    return autospec
+
+
 class event:
     """CSV-backed event listing."""
+
+    def update_autospec(self, oldevno, newevno):
+        newspec = sub_autospec(self['auto'], oldevno, newevno)
+        if newspec != self['auto']:
+            self.set_value('auto', newspec)
+
+    def update_depend(self, oldevno, newevno):
+        newdepend = sub_depend(self['depend'], oldevno, newevno)
+        if newdepend != self['depend']:
+            self.set_value('depend', newdepend)
 
     def get_row(self, coldump=_DEFAULT_COLUMN_ORDER):
         """Return a row ready to export."""
@@ -429,14 +491,15 @@ class event:
 class eventdb:
     """Event database."""
 
-    def add_empty(self, evno=None):
+    def add_empty(self, evno=None, notify=True):
         """Add a new empty row to the event model."""
         if evno is None:
             evno = self.nextevno()
         ev = event(evid=evno, notify=self._notify)
         self._store[evno] = ev
         self._index.append(evno)
-        self._notify(None)
+        if notify:
+            self._notify(None)
         _log.debug('Added empty event %r', evno)
         return ev
 
@@ -447,28 +510,29 @@ class eventdb:
         self._notify(None)
         _log.debug('Event model cleared')
 
-    def change_evno(self, oldevent, newevent):
-        """Attempt to change the event id."""
-        if oldevent not in self:
-            _log.error('Change event %r not found', oldevent)
+    def change_evno(self, oldevno, newevno, notify=True):
+        """Alter an event id."""
+        if oldevno not in self:
+            _log.error('Change event %r not found', oldevno)
             return False
 
-        if newevent in self:
-            _log.error('New event %r already exists', newevent)
+        if newevno in self:
+            _log.error('New event %r already exists', newevno)
             return False
 
         oktochg = True
         if self._evno_change_cb is not None:
-            oktochg = self._evno_change_cb(oldevent, newevent)
+            oktochg = self._evno_change_cb(oldevno, newevno)
         if oktochg:
-            ref = self._store[oldevent]
-            ref.set_value('evid', newevent)
-            cnt = 0
-            idx = self._index.index(oldevent)
-            self._store[newevent] = ref
-            self._index[idx] = newevent
-            del self._store[oldevent]
-            _log.info('Updated event %r to %r', oldevent, newevent)
+            ref = self._store[oldevno]
+            ref.set_value('evid', newevno)  # may already be set
+            idx = self._index.index(oldevno)
+            self._store[newevno] = ref
+            self._index[idx] = newevno
+            del self._store[oldevno]
+            _log.debug('Updated event %r to %r', oldevno, newevno)
+            if notify:
+                self._notify(None)
             return True
         return False
 
@@ -481,8 +545,15 @@ class eventdb:
             _log.debug('Converted %r to event id: %r', eid, str(eid))
             eid = str(eid)
         evno = eid
-        while evno in self._index:
-            evno = u'-'.join((eid, strops.randstr()))
+        if evno in self._index:
+            baseno = evno.rsplit('.', 1)[0]
+            count = 0
+            while evno in self._index:
+                count += 1
+                evno = '%s.%d' % (
+                    baseno,
+                    count,
+                )
             _log.info('Duplicate evid %r changed to %r', eid, evno)
         newevent.set_value('evid', evno)
         _log.debug('Add new event with id=%r', evno)
@@ -556,6 +627,10 @@ class eventdb:
         """Set the event no change callback."""
         self._evno_change_cb = cb
 
+    def index(self, evno):
+        """Return index of event no"""
+        return self._index.index(evno)
+
     def getfirst(self):
         """Return the first event in the db."""
         ret = None
@@ -583,11 +658,20 @@ class eventdb:
 
     def reindex(self, newindex):
         """Re-order index, and notify"""
-        if len(newindex) == len(self._index):
-            for idx, evno in enumerate(newindex):
-                self._index[idx] = evno
-        else:
-            raise RuntimeError('Index length mismatch')
+        viewevs = set()
+        self._index.clear()
+        for evno in newindex:
+            if evno in self._store:
+                self._index.append(evno)
+                viewevs.add(evno)
+            else:
+                _log.warning('Ignore invalid event id from view: %r', evno)
+        for evno in self._store:
+            if evno not in viewevs:
+                _log.debug('Appending orphaned event to index: %r', evno)
+                self._index.append(evno)
+        if len(self._index) != len(self._store):
+            _log.error('Event index corrupt, reload required')
 
     def __len__(self):
         return len(self._store)

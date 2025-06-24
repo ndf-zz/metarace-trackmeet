@@ -236,10 +236,10 @@ class ps:
             self.units = 'laps'
             self.distance = strops.confopt_posint(self.event['laps'],
                                                   self.distance)
-            slt = cr.get('event', 'sprintlaps')
 
             # only make changes if sprint points not yet defined
-            if not slt:
+            sp0 = cr.get_value('sprintpoints', '0')
+            if sp0 is None:
                 # adjust points when distance >= 15km (!! Note: AU Only)
                 racelen = self.meet.get_distance(self.distance, 'laps')
                 _log.debug('Checking new event with length: %dm', racelen)

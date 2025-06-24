@@ -29,10 +29,10 @@ from metarace import report
 from metarace import unt4
 from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
-from metarace.timy import timy, _CONFIG_SCHEMA as _TIMY_SCHEMA
+from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
-from .eventdb import eventdb, _CONFIG_SCHEMA as _EVENT_SCHEMA
+from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
 from . import uiutil
 from . import scbwin
 from . import race
@@ -667,11 +667,17 @@ class trackmeet:
 
     def menu_race_make_activate_cb(self, menuitem, data=None):
         """Create and open a new race of the chosen type."""
-        etype = menuitem.get_label().lower().replace('_', '')
-        if data is not None:
-            etype = data
-        event = self.edb.add_empty()
-        event['type'] = etype
+        label = menuitem.get_label()
+        etype = None
+        if label != 'Add new':
+            etype = event_type(label)
+            if data is not None:
+                etype = data
+        event = self.edb.add_empty(notify=False)
+        if etype is not None:
+            event.set_value('type', etype)
+        self.eventcb(None)
+        self.select_event(event)
 
         # Backup an existing config
         oldconf = self.event_configfile(event['evid'])
@@ -679,9 +685,9 @@ class trackmeet:
             # There is already a config file for this event id
             bakfile = oldconf + '.old'
             _log.info('Existing config saved to %r', bakfile)
-            os.rename(oldconf, bakfile)  ## TODO: replace with shutil
-        self.open_event(event)
-        self.menu_race_properties.activate()
+            os.rename(oldconf, bakfile)
+
+        self.event_popup_edit_cb(menuitem=None)
 
     def menu_race_recover_activate_cb(self, menuitem, data=None):
         """Attempt to recover missed start impulse."""
@@ -773,6 +779,12 @@ class trackmeet:
         if self.curevent is not None:
             self.curevent.readonly = True
         self.close_event()
+
+    def open_evno(self, evno):
+        """Open provided event by number, if it exists"""
+        if evno in self.edb:
+            self.open_event(self.edb[evno])
+        return False
 
     def open_event(self, eventhdl=None):
         """Open provided event handle."""
@@ -1596,7 +1608,7 @@ class trackmeet:
         evstr = event.get_info()
         if len(evstr) > 44:
             evstr = evstr[0:44] + '\u2026'
-        return ('Event\u2006{}: {} [{}]'.format(event['evid'], evstr,
+        return ('Event\u2006{}: {} [{}]'.format(event.get_evno(), evstr,
                                                 event.get_type()))
 
     def racenamecat(self, event, slen=None, tail='', halign='c'):
@@ -2059,7 +2071,10 @@ class trackmeet:
                 e = self.edb[event]
                 for lr in self._elm:
                     if lr[3] == event:
-                        lr[0] = e.get_evno()
+                        eno = e.get_evno()
+                        if eno == e['evid']:
+                            eno = ''
+                        lr[0] = eno
                         lr[1] = e.get_info()
                         lr[2] = e.get_type()
                         lr[3] = e['evid']
@@ -2071,7 +2086,10 @@ class trackmeet:
         else:
             self._elm.clear()
             for e in self.edb:
-                elr = [e.get_evno(), e.get_info(), e.get_type(), e['evid']]
+                eno = e.get_evno()
+                if eno == e['evid']:
+                    eno = ''
+                elr = [eno, e.get_info(), e.get_type(), e['evid']]
                 self._elm.append(elr)
             _log.debug('Re-load event view')
         if self.curevent is not None:
@@ -2175,11 +2193,129 @@ class trackmeet:
                                          'object': ref,
                                      },
                                  })
-        # TODO: handle event id change before triggering callbacks
-        for k in res['edb']:
-            if res['edb'][k][0]:
-                self._ecb(evno)
-                break
+        if res['edb']['evid'][0]:
+            # event number was changed
+            oldevno = res['edb']['evid'][1]
+            newevno = res['edb']['evid'][2]
+
+            wasOpen = None
+            if self.curevent is not None:
+                wasOpen = self.curevent.evno
+                if wasOpen == oldevno:
+                    wasOpen = newevno
+                self.close_event()
+
+            if newevno in self.edb:
+                tmpevno = newevno
+                baseno = newevno.rsplit('.', 1)[0]
+                count = 0
+                while tmpevno in self.edb:
+                    count += 1
+                    tmpevno = '%s.%d' % (
+                        baseno,
+                        count,
+                    )
+                _log.info('Backup existing event %s to %s', newevno, tmpevno)
+                self.eventno_change(oldevno=newevno,
+                                    newevno=tmpevno,
+                                    backup=True)
+            _log.info('Update event %s to %s', oldevno, newevno)
+            self.eventno_change(oldevno=oldevno, newevno=newevno, backup=False)
+
+            # force event view re-index
+            self.eventcb(None)
+
+            if wasOpen is not None:
+                # re-open the new event after notification and reindex
+                GLib.idle_add(self.open_evno, wasOpen),
+        else:
+            for k in res['edb']:
+                if res['edb'][k][0]:
+                    self._ecb(evno)
+                    break
+
+    def eventno_change(self, oldevno, newevno, backup=False):
+        """Handle a request to change an event number
+
+        If backup is True, update evov, result, index and program flags
+        in destination event
+
+        """
+        # first update the event db and index
+        self.edb.change_evno(oldevno=oldevno, newevno=newevno, notify=False)
+
+        # move configuration to new filename
+        oldconf = self.event_configfile(oldevno)
+        if os.path.isfile(oldconf):
+            newconf = self.event_configfile(newevno)
+            _log.debug('Moved event config from %r to %r', oldconf, newconf)
+            os.rename(oldconf, newconf)
+
+        # scan events for references
+        for ev in self.edb:
+            if ev['evid'] != newevno:
+                if ev['auto']:
+                    ev.update_autospec(oldevno, newevno)
+                if ev['depend']:
+                    ev.update_depend(oldevno, newevno)
+                if ev['reference'] == oldevno:
+                    ev.set_value('reference', newevno)
+                # update evno references in event configs
+                if ev['type'] == 'classification':
+                    # TODO: update via schema
+                    # showevents: list of evnos to include with result export
+                    #  - same as depends in edb
+                    # placesrc: autospec places for result
+                    #  - same as auto starters in edb
+                    dosave = False
+                    config = self.event_configfile(ev['evid'])
+                    ecr = jsonconfig.config()
+                    ecr.add_section('event')
+                    ecr.load(config)
+                    oldshow = ecr.get_value('event', 'showevents')
+                    if oldshow:
+                        newshow = sub_depend(oldshow, oldevno, newevno)
+                        if newshow != oldshow:
+                            ecr.set('event', 'showevents', newshow)
+                            dosave = True
+                    oldplac = ecr.get_value('event', 'placesrc')
+                    if oldplac:
+                        newplac = sub_autospec(oldplac, oldevno, newevno)
+                        if newplac != oldplac:
+                            ecr.set('event', 'placesrc', newplac)
+                            dosave = True
+                    if dosave:
+                        with metarace.savefile(config) as f:
+                            ecr.write(f)
+                elif ev['type'] in ('tempo', 'progressive', 'points', 'omnium',
+                                    'madison'):
+                    # TODO: update via schema
+                    # sprintsource: { sid: autospec, ... }
+                    #    - same as autospec
+                    dosave = False
+                    config = self.event_configfile(ev['evid'])
+                    ecr = jsonconfig.config()
+                    ecr.add_section('sprintsource')
+                    ecr.load(config)
+                    for sid in ecr.options('sprintsource'):
+                        oldplac = ecr.get_value('sprintsource', sid)
+                        if oldplac:
+                            newplac = sub_autospec(oldplac, oldevno, newevno)
+                            if newplac != oldplac:
+                                ecr.set('sprintsource', sid, newplac)
+                                dosave = True
+                    if dosave:
+                        with metarace.savefile(config) as f:
+                            ecr.write(f)
+        if backup:
+            # update event fields for a backup
+            ev = self.edb[newevno]
+            for key in ('index', 'result', 'program'):
+                ev.set_value(key, False)
+            ev.set_value('evov', oldevno)
+        else:
+            # assume edits to evov provided by operator
+            pass
 
     def event_popup_result_cb(self, menuitem, data=None):
         """Print event results."""
@@ -2229,9 +2365,48 @@ class trackmeet:
         # queue callback in main loop
         GLib.idle_add(self.eventdb_cb, elist, 'program')
 
-    def event_popup_insert_cb(self, menuitem, data=None):
-        """Add new empty row."""
-        self.edb.add_empty()
+    def event_popup_reset_cb(self, menuitem, data=None):
+        """Reset selected events"""
+        sel = self._elv.get_selection()
+        cnt = sel.count_selected_rows()
+        # check for one selected
+        if cnt == 0:
+            _log.debug('No rows selected for reset')
+            return False
+
+        # convert model iters into a list of event numbers
+        model, iters = sel.get_selected_rows()
+        elist = [model[i][3] for i in iters]
+        msg = ''
+        if cnt == 1:
+            if elist[0] in self.edb:
+                evt = self.edb[elist[0]]
+                msgv = ['Reset event']
+                evno = evt['evid']
+                msgv.append(evno)
+                evov = evt.get_evno()
+                if evov != evno:
+                    msgv.append('(%s)' % (evov, ))
+                ifstr = evt.get_info()
+                if ifstr:
+                    msgv.append(':')
+                    msgv.append(ifstr)
+                msgv.append(' to idle?')
+                msg = ' '.join(msgv)
+        else:
+            msg = 'Reset %d selected events to idle?' % (cnt, )
+
+        if uiutil.questiondlg(self.window, 'Reset events?', msg):
+            for evt in elist:
+                if evt in self.edb:
+                    if self.curevent is not None and self.curevent.evno == evt:
+                        self.close_event()
+                    # Backup config
+                    conf = self.event_configfile(evt)
+                    if os.path.isfile(conf):
+                        bakfile = conf + '.old'
+                        os.rename(conf, bakfile)
+                    _log.debug('Reset event %r', evt)
 
     def event_popup_delete_cb(self, menuitem, data=None):
         """Delete selected events"""
@@ -2245,24 +2420,46 @@ class trackmeet:
         # convert model iters into a list of event numbers
         model, iters = sel.get_selected_rows()
         elist = [model[i][3] for i in iters]
-
-        msg = 'Delete selected events?'
-        if sel.count_selected_rows() == 1:
+        msg = ''
+        if cnt == 1:
             if elist[0] in self.edb:
                 evt = self.edb[elist[0]]
-                sep = ''
+                msgv = ['Delete event']
+                evno = evt['evid']
+                msgv.append(evno)
+                evov = evt.get_evno()
+                if evov != evno:
+                    msgv.append('(%s)' % (evov, ))
                 ifstr = evt.get_info()
                 if ifstr:
-                    sep = ': '
-                evno = evt['evid']
-                msg = ('Delete event ' + evno + sep + ifstr + '?')
+                    msgv.append(':')
+                    msgv.append(ifstr)
+                msgv.append(' permanently from meet?')
+                msg = ' '.join(msgv)
+        else:
+            msg = 'Delete %d selected events permanently from meet?' % (cnt, )
 
         if uiutil.questiondlg(self.window, 'Delete events?', msg):
             for evt in elist:
                 if evt in self.edb:
+                    if self.curevent is not None and self.curevent.evno == evt:
+                        self.close_event()
                     _log.debug('Deleting event %r', evt)
                     del self.edb[evt]
             self._ecb(None)
+
+    def _event_inserted(self, elv, path, i, data=None):
+        """Handle reorder by dnd - first half"""
+        if len(elv) > len(self.edb):
+            self._eld = path.get_indices()
+            _log.debug('DND Start: %s', path)
+
+    def _event_deleted(self, elv, path, data=None):
+        """Handle reorder by dnd - second half"""
+        if self._eld and len(elv) == len(self.edb):
+            _log.debug('DND Finish: %s, %r', path, self._eld)
+            self._eld = None
+            self.edb.reindex((e[3] for e in self._elm))
 
     def _event_button_press(self, view, event):
         """Handle mouse button event on event tree view"""
@@ -2443,7 +2640,7 @@ class trackmeet:
         f = logging.Formatter(metarace.LOGFORMAT)
         self.sh = uiutil.statusHandler(self.status, self.context)
         self.sh.setFormatter(f)
-        self.sh.setLevel(logging.INFO)  # show info+ on status bar
+        self.sh.setLevel(_TIMER_LOG_LEVEL)  # show timer+ on status bar
         rootlogger.addHandler(self.sh)
         self.lh = uiutil.textViewHandler(self.log_buffer, self.log_view,
                                          self.log_scroll)
@@ -2477,16 +2674,20 @@ class trackmeet:
 
         # create an event view
         self._elm = Gtk.ListStore(
-            str,  # event id
+            str,  # event no
             str,  # info
             str,  # type
-            object,  # data ref
+            str,  # event id
         )
+        self._elm.connect('row-inserted', self._event_inserted)
+        self._elm.connect('row-deleted', self._event_deleted)
+        self._eld = None  # drag reordering flag
         t = Gtk.TreeView(self._elm)
-        #t.set_reorderable(True)
+        t.set_reorderable(True)
         t.set_rules_hint(True)
         t.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
-        uiutil.mkviewcoltxt(t, 'No.', 0)
+        uiutil.mkviewcoltxt(t, 'ID', 3)
+        uiutil.mkviewcoltxt(t, 'No', 0)
         uiutil.mkviewcoltxt(t, 'Info', 1, expand=True, maxwidth=100)
         uiutil.mkviewcoltxt(t, 'Type', 2)
         t.show()
