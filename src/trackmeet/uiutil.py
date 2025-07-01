@@ -107,7 +107,7 @@ class statButton(Gtk.Box):
         self.__curbg = 'idle'
         self.__image = Gtk.Image.new_from_pixbuf(srcbuf)
         self.__image.show()
-        self.__label = Gtk.Label.new(u'--')
+        self.__label = Gtk.Label.new('--')
         self.__label.set_width_chars(12)
         self.__label.set_single_line_mode(True)
         self.__label.show()
@@ -223,7 +223,7 @@ class timerpane:
     def setrider(self, bib=None, ser=None):
         """Set bib for timer."""
         if bib is not None:
-            self.bibent.set_text(bib)
+            self.bibent.set_text(bib.upper())
             if ser is not None:
                 self.serent.set_text(ser)
             self.bibent.activate()  # and chain events
@@ -235,7 +235,7 @@ class timerpane:
 
     def getrider(self):
         """Return bib loaded into timer."""
-        return self.bibent.get_text()
+        return self.bibent.get_text().upper()
 
     def getstatus(self):
         """Return timer status.
@@ -780,7 +780,8 @@ def mkviewcoltod(view=None,
                  cb=None,
                  width=120,
                  editcb=None,
-                 colno=None):
+                 colno=None,
+                 style=None):
     """Return a Time of Day view column."""
     i = Gtk.CellRendererText()
     i.set_property('xalign', 1.0)
@@ -790,6 +791,8 @@ def mkviewcoltod(view=None,
         i.set_property('editable', True)
         i.connect('edited', editcb, colno)
     j.set_min_width(width)
+    if style is not None:
+        j.add_attribute(i, 'style', style)
     view.append_column(j)
     return j
 
@@ -807,6 +810,7 @@ def mkviewcoltxt(view=None,
                  minwidth=None,
                  charwidth=None,
                  bgcol=None,
+                 style=None,
                  fontdesc=None,
                  wrap=None,
                  fixed=False,
@@ -836,6 +840,8 @@ def mkviewcoltxt(view=None,
     j = Gtk.TreeViewColumn(header, i, text=colno)
     if bgcol is not None:
         j.add_attribute(i, 'background', bgcol)
+    if style is not None:
+        j.add_attribute(i, 'style', style)
     if halign is not None:
         j.set_alignment(halign)
     if fixed:
@@ -1400,7 +1406,7 @@ def get_monitor_height(widget=None):
     return monitor.get_geometry().height
 
 
-def options_dlg(window=None, title='Options', sections={}):
+def options_dlg(window=None, title='Options', sections={}, action=False):
     """Build and display an option editor for the provided sections
 
       sections={
@@ -1444,6 +1450,8 @@ def options_dlg(window=None, title='Options', sections={}):
     Return value is a dict of dicts with one tuple per key:
 
         "section": {"key": (changed, oldval, newval), ...}, ...
+
+    If action is True, OK/Cancel status is returned in res['action']
 
     Note: section controls return (False, None, None)
     """
@@ -1533,8 +1541,8 @@ def options_dlg(window=None, title='Options', sections={}):
 
     # change report
     res = {}
-    if retval == 2:
-        # on cancel, reset all values and report no changes
+    if retval != 0:  # escape/cancel
+        # reset all values and report no changes
         for section in omap:
             res[section] = {}
             sec = omap[section]['options']
@@ -1552,6 +1560,8 @@ def options_dlg(window=None, title='Options', sections={}):
                 if not o.validate():
                     _log.warning('Invalid value for option %r ignored', key)
                 res[section][key] = (o.changed(), o.get_prev(), o.get_value())
+    if action:
+        res['action'] = retval
 
     dlg.destroy()
     return res
