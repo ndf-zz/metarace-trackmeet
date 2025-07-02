@@ -62,8 +62,10 @@ key_walk_b = 'F10'
 key_rel_a = 'F11'  # + ctrl for relegation
 key_rel_b = 'F12'
 
-# Pre-defined "standard" contests
+# Pre-defined "standard" power of 2 contests
 _STD_CONTESTS = {
+    1: ('bye', ),
+    2: ('1v2', ),
     3: ('bye', '2v3'),
     4: ('1v4', '2v3'),
     5: ('bye', 'bye', 'bye', '4v5'),
@@ -78,6 +80,30 @@ _STD_CONTESTS = {
     14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     15: ('bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     16: ('1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    # [3.2.050]
+    28: ('bye', 'bye', 'bye', 'bye', '5v28', '6v27', '7v26', '8v25', '9v24',
+         '10v23', '11v22', '12v21', '13v20', '14v19', '15v18', '16v17'),
+}
+
+_CONFIG_SCHEMA = {
+    'etype': {
+        'prompt': 'Sprint Round/Final',
+        'control': 'section',
+    },
+    'contests': {
+        'prompt': 'Contests:',
+        'hint': 'List of contests and byes',
+        'default': '',
+        'defer': True,
+    },
+    'otherstime': {
+        'prompt': 'Losers:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Rank by 200m time?',
+        'hint': 'Rank losers by qualifying time [3.2.050]',
+        'defer': True,
+    },
 }
 
 
@@ -94,11 +120,9 @@ class sprnd:
                     dbr = self.meet.rdb[rider]
                     for cr in self.contests:
                         if cr[COL_A_NO] == rno:
-                            cr[COL_A_STR] = dbr.fitname(self.meet.scb.linelen -
-                                                        8)
+                            cr[COL_A_STR] = dbr._listname()
                         elif cr[COL_B_NO] == rno:
-                            cr[COL_B_STR] = dbr.fitname(self.meet.scb.linelen -
-                                                        8)
+                            cr[COL_B_STR] = dbr._listname()
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -207,8 +231,9 @@ class sprnd:
 
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
+        bib = bib.upper()
         qual = tod.mktod(info)
-        rname = self.fitname(bib)
+        rname = self._listname(bib)
         if self.event['type'] == 'sprint final':
             slot = None
             afound = False
@@ -285,8 +310,35 @@ class sprnd:
                     return
         _log.warning('Not enough heats for the specified starters: %r', bib)
 
+    def inevent(self, bib):
+        """Return true if rider appears in model."""
+        inEvent = False
+        for c in self.contests:
+            if c[COL_A_NO] == bib or c[COL_B_NO] == bib:
+                inEvent = True
+                break
+        return inEvent
+
+    def changerider(self, oldNo, newNo):
+        """Update rider no in event"""
+        oldNo = oldNo.upper()
+        newNo = newNo.upper()
+        if self.inevent(oldNo):
+            rname = self._listname(newNo)
+            for c in self.contests:
+                if c[COL_A_NO] == oldNo:
+                    c[COL_A_NO] = newNo
+                    c[COL_A_STR] = rname
+                elif c[COL_B_NO] == oldNo:
+                    c[COL_B_NO] = newNo
+                    c[COL_B_STR] = rname
+            return True
+        return False
+
     def delrider(self, bib):
         """Remove specified rider from the model."""
+        bib = bib.upper()
+        inRes = False
         for c in self.contests:
             if c[COL_A_NO] == bib:
                 c[COL_A_NO] = ''
@@ -299,6 +351,11 @@ class sprnd:
             if c[COL_WINNER] == bib:
                 c[COL_200M] = None
                 c[COL_WINNER] = ''
+                inRes = True
+
+        if inRes:
+            _log.warning('Removed rider %r was in event %r result', bib,
+                         self.evno)
 
     def loadconfig(self):
         """Load race config from disk."""
@@ -313,7 +370,7 @@ class sprnd:
                 'id': EVENT_ID,
                 'contests': [],
                 'timerstat': None,
-                'showinfo': True,
+                'showinfo': False,
                 'otherstime': def_otherstime,
                 'decisions': [],
             },
@@ -362,8 +419,8 @@ class sprnd:
                             curactive = oft
                     aqual = tod.mktod(res[7])
                     bqual = tod.mktod(res[8])
-                    astr = self.fitname(res[0])
-                    bstr = self.fitname(res[2])
+                    astr = self._listname(res[0])
+                    bstr = self._listname(res[2])
                     nr = [
                         c, res[0], astr, res[1], res[2], bstr, res[3], ft,
                         res[5], res[6], aqual, bqual, bye
@@ -373,9 +430,9 @@ class sprnd:
                     self.add_contest(c, bye=bye)
                 oft += 1
 
-        if not self.onestart and self.event['starters']:
+        if not self.onestart and self.event['auto']:
             self.del_riders()
-            usespec = self.event['starters'].strip()
+            usespec = self.event['auto'].strip()
             evpart, tailpart = usespec.split(':', 1)
             if self.ismedalphase():
                 # special case: assignment is 3,1,2,4
@@ -393,26 +450,29 @@ class sprnd:
             self.info_expand.set_expanded(
                 strops.confopt_bool(cr.get('event', 'showinfo')))
             self.current_contest_combo.set_active(curactive)
+        else:
+            self._winState['showinfo'] = cr.get('event', 'showinfo')
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
         if eid and eid != EVENT_ID:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
 
-    def fitname(self, bib):
+    def _resname(self, bib):
         ret = ''
         if bib.strip():
-            ret = self.getrider(bib).fitname(self.meet.scb.linelen - 8)
+            ret = self._get_rider(bib).resname()
         return ret
 
-    def listname(self, bib):
+    def _listname(self, bib):
         ret = ''
         if bib.strip():
-            ret = self.getrider(bib).listname()
+            ret = self._get_rider(bib).fitname(32)
         return ret
 
-    def getrider(self, bib):
-        """Fetch a riderdb handle for the bib in this event"""
+    def _get_rider(self, bib):
+        """Return rdb for the provided bib, or create a new empty one"""
+        bib = bib.upper()
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is None:
             self.meet.rdb.add_empty(bib, self.series)
@@ -490,9 +550,9 @@ class sprnd:
                 cidset.add(cid)
                 byeflag = None
                 ano = cr[COL_A_NO]
-                aname = self.listname(ano)
+                aname = self._resname(ano)
                 bno = cr[COL_B_NO]
-                bname = self.listname(bno)
+                bname = self._resname(bno)
                 aqual = None
                 if cr[COL_A_QUAL] is not None:
                     aqual = cr[COL_A_QUAL].rawtime(2)
@@ -538,8 +598,10 @@ class sprnd:
         cw = jsonconfig.config()
         cw.add_section('event')
         cw.add_section('contests')
-
-        cw.set('event', 'showinfo', self.info_expand.get_expanded())
+        if self.winopen:
+            cw.set('event', 'showinfo', self.info_expand.get_expanded())
+        else:
+            cw.set('event', 'showinfo', self._winState['showinfo'])
         cw.set('event', 'timerstat', self.timerstat)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'otherstime', self.otherstime)
@@ -563,25 +625,39 @@ class sprnd:
                 c[COL_200M], c[COL_WINNER], c[COL_COMMENT], c[COL_A_QUAL],
                 c[COL_B_QUAL]
             ])
-        cw.set('event', 'contests', contestlist)
+        # TODO: Handle mismatch of list and map
+        cw.set('event', 'contests', self.contestlist)
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
             cw.write(f)
 
-    def shutdown(self, win=None, msg='Exiting'):
-        """Terminate race object."""
-        rstr = ''
-        if self.readonly:
-            rstr = 'readonly '
-        _log.debug('Shutdown %sevent %s: %s', rstr, self.evno, msg)
-        if not self.readonly:
-            self.saveconfig()
-        self.winopen = False
-
     def do_properties(self):
         """Run race properties dialog."""
-        _log.warning('sprnd properties not available')
+        _CONFIG_SCHEMA['contests']['value'] = ' '.join(self.contestlist)
+        _CONFIG_SCHEMA['otherstime']['value'] = self.otherstime
+        res = uiutil.options_dlg(
+            window=self.meet.window,
+            title='Sprint Properties',
+            sections={
+                'sprnd': {
+                    'title': 'Sprint',
+                    'schema': _CONFIG_SCHEMA,
+                    'object': None,
+                }
+            },
+            action=True,
+        )
+        if res['action'] == 0:  # OK
+            self.otherstime = res['sprnd']['otherstime'][2]
+            if res['sprnd']['contests'][0]:
+                self.contestlist = res['sprnd']['contests'][2].split()
+                _log.debug('Contests altered, reload required')
+                GLib.idle_add(self.meet.open_event,
+                              self.event,
+                              priority=GLib.PRIORITY_LOW)
+        else:
+            _log.debug('Edit propertied cancelled')
         return False
 
     def resettimer(self):
@@ -718,10 +794,8 @@ class sprnd:
             if prevwin:  # warn override
                 _log.info('Overwriting contest winner: %r', prevwin)
             wno = ''
-            wstr = ''
             lno = ''
-            lstr = ''
-            fstr = ''
+            fstr = None
             ft = self.contests.get_value(i, COL_200M)
             if ft is not None:
                 fstr = ft.rawtime(2)
@@ -729,22 +803,19 @@ class sprnd:
                 self.contests.set_value(i, COL_A_PLACE, wplace)
                 self.contests.set_value(i, COL_B_PLACE, lplace)
                 wno = self.contests.get_value(i, COL_A_NO)
-                wstr = self.contests.get_value(i, COL_A_STR)
                 lno = self.contests.get_value(i, COL_B_NO)
-                lstr = self.contests.get_value(i, COL_B_STR)
                 self.contests.set_value(i, COL_WINNER, wno)
             else:
                 self.contests.set_value(i, COL_B_PLACE, wplace)
                 self.contests.set_value(i, COL_A_PLACE, lplace)
                 wno = self.contests.get_value(i, COL_B_NO)
-                wstr = self.contests.get_value(i, COL_B_STR)
                 lno = self.contests.get_value(i, COL_A_NO)
-                lstr = self.contests.get_value(i, COL_A_STR)
                 self.contests.set_value(i, COL_WINNER, wno)
             if not prevwin:
-                self.do_places(cid, wno, wstr, wplace, lno, lstr, lplace, fstr)
+                self.do_places(cid, wno, wplace, lno, lplace, fstr)
                 self.meet.gemini.set_bib(wno)
-                self.meet.gemini.set_time(fstr.strip().rjust(4) + ' ')
+                if fstr is not None:
+                    self.meet.gemini.set_time(fstr.strip().rjust(4) + ' ')
                 self.meet.gemini.show_brt()
         self.standingstr()
         if self.winopen:
@@ -757,11 +828,9 @@ class sprnd:
             win = self.contests.get_value(i, COL_WINNER)
             ano = self.contests.get_value(i, COL_A_NO)
             wno = ''
-            wstr = ''
             wplace = ''
             lno = ''
-            lstr = ''
-            fstr = ''
+            fstr = None
             ft = self.contests.get_value(i, COL_200M)
             if ft is not None:
                 fstr = ft.rawtime(2)
@@ -769,34 +838,47 @@ class sprnd:
                 wplace = self.contests.get_value(i, COL_A_PLACE)
                 lplace = self.contests.get_value(i, COL_B_PLACE)
                 wno = self.contests.get_value(i, COL_A_NO)
-                wstr = self.contests.get_value(i, COL_A_STR)
                 lno = self.contests.get_value(i, COL_B_NO)
-                lstr = self.contests.get_value(i, COL_B_STR)
             else:
                 wplace = self.contests.get_value(i, COL_B_PLACE)
                 lplace = self.contests.get_value(i, COL_A_PLACE)
                 wno = self.contests.get_value(i, COL_B_NO)
-                wstr = self.contests.get_value(i, COL_B_STR)
                 lno = self.contests.get_value(i, COL_A_NO)
-                lstr = self.contests.get_value(i, COL_A_STR)
-            self.do_places(cid, wno, wstr, wplace, lno, lstr, lplace, fstr)
+            self.do_places(cid, wno, wplace, lno, lplace, fstr)
 
-    def do_places(self, contest, winno, winner, winpl, loseno, loser, losepl,
-                  ftime):
+    def do_places(self, contest, winno, winpl, loseno, losepl, ftime):
         """Show contest result on scoreboard."""
         self.meet.scbwin = None
         self.timerwin = False
-        startlist = [['1.', winno, winner], ['2.', loseno, loser]]
-        if ftime:
-            startlist.append(['', '', ''])
-            startlist.append(['', '', '200m: ' + ftime])
-        name_w = self.meet.scb.linelen - 8
-        fmt = [(3, 'l'), (4, 'r'), ' ', (name_w, 'l')]
-        self.meet.scbwin = scbwin.scbintsprint(
-            self.meet.scb, self.meet.racenamecat(self.event), contest, fmt,
-            startlist)
-
+        name_w = self.meet.scb.linelen - 12
+        winname, winclub = self._getname(winno, width=name_w)
+        if len(winclub) != 3:
+            winclub = ''
+        losename, loseclub = self._getname(loseno, width=name_w)
+        if len(loseclub) != 3:
+            loseclub = ''
+        result = (('', '', '', ''), (winpl, winno, winname, winclub),
+                  (losepl, loseno, losename, loseclub))
+        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
+        self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
+                                           head=self.meet.racenamecat(
+                                               self.event),
+                                           subhead=contest,
+                                           coldesc=fmt,
+                                           rows=result,
+                                           timepfx='200m:',
+                                           timestr=ftime)
         self.meet.scbwin.reset()
+
+    def _getname(self, bib, width=32):
+        """Return a name and club for the rider if known"""
+        name = ''
+        club = ''
+        dbr = self.meet.rdb.get_rider(bib, self.series)
+        if dbr is not None:
+            name = dbr.fitname(width)
+            club = dbr['organisation']
+        return name, club
 
     def do_startlist(self):
         """Show start list on scoreboard."""
@@ -808,6 +890,7 @@ class sprnd:
         cid = ''
         startlist = []
         i = self.current_contest_combo.get_active_iter()
+        name_w = self.meet.scb.linelen - 10
         if i is not None:  # contest selected ok
             cid = self.contests.get_value(i, COL_CONTEST)
             asm = ''
@@ -818,16 +901,20 @@ class sprnd:
                     asm = '*'
                 if self._rescache[ckey]['b']:
                     bsm = '*'
-            an = self.contests.get_value(i, COL_A_NO)
-            ar = self.contests.get_value(i, COL_A_STR)
-            startlist.append([asm, an, ar])
-            bn = self.contests.get_value(i, COL_B_NO)
-            br = self.contests.get_value(i, COL_B_STR)
-            startlist.append([bsm, bn, br])
+            # TODO: is there a case for "info"
+            ano = self.contests.get_value(i, COL_A_NO)
+            name, club = self._getname(ano, width=name_w)
+            if len(club) != 3:
+                club = ''
+            startlist.append((asm, ano, name, club))
+            bno = self.contests.get_value(i, COL_B_NO)
+            name, club = self._getname(bno, width=name_w)
+            if len(club) != 3:
+                club = ''
+            startlist.append((bsm, bno, name, club))
         self.meet.scbwin = None
         self.timerwin = False
-        name_w = self.meet.scb.linelen - 5
-        fmt = [(1, 'l'), (3, 'r'), ' ', (name_w, 'l')]
+        fmt = ((1, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         self.meet.scbwin = scbwin.scbintsprint(
             self.meet.scb, self.meet.racenamecat(self.event), cid, fmt,
             startlist)
@@ -1219,8 +1306,8 @@ class sprnd:
         if self.event['type'] == 'sprint final':
             for cid in self._rescache:
                 cm = self._rescache[cid]
-                aname = self.listname(cm['ano'])
-                bname = self.listname(cm['bno'])
+                aname = self._resname(cm['ano'])
+                bname = self._resname(cm['bno'])
                 if cm['bye']:
                     sec.lines.append([
                         cid + ':',
@@ -1254,8 +1341,8 @@ class sprnd:
                 bqual = None
                 if cr[COL_B_QUAL] is not None:
                     bqual = cr[COL_B_QUAL].rawtime(2)
-                aname = self.listname(cr[COL_A_NO])
-                bname = self.listname(cr[COL_B_NO])
+                aname = self._resname(cr[COL_A_NO])
+                bname = self._resname(cr[COL_B_NO])
                 cprompt = cr[COL_CONTEST] + ':'
                 if cr[COL_WINNER]:
                     avec = [cr[COL_A_PLACE], cr[COL_A_NO], aname, aqual]
@@ -1289,10 +1376,6 @@ class sprnd:
             cr.set_property('text', ft.rawtime(2))
         else:
             cr.set_property('text', '')
-
-    def destroy(self):
-        """Signal race shutdown."""
-        self.frame.destroy()
 
     def show(self):
         """Show race window."""
@@ -1343,6 +1426,7 @@ class sprnd:
         self._standingstat = ''
         self._rescache = {}
         self.finished = False
+        self._winState = {}  # cache ui settings for headless load/save
 
         self.contests = Gtk.ListStore(
             str,  # COL_CONTEST = 0
@@ -1364,7 +1448,6 @@ class sprnd:
         if ui:
             b = uiutil.builder('sprnd.ui')
             self.frame = b.get_object('race_vbox')
-            self.frame.connect('destroy', self.shutdown)
 
             # info pane
             self.info_expand = b.get_object('info_expand')
