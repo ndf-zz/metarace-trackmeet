@@ -36,10 +36,8 @@ _log.setLevel(logging.DEBUG)
 EVENT_ID = 'f200-2.1'
 
 # race model columns
-COL_BIB = 0
-COL_FIRSTNAME = 1
-COL_LASTNAME = 2
-COL_CLUB = 3
+COL_NO = 0
+COL_NAME = 1
 COL_COMMENT = 4
 COL_SEED = 5
 COL_PLACE = 6
@@ -85,12 +83,10 @@ class f200:
                 series = rider[1]
                 if series == self.series:
                     dbr = self.meet.rdb[rider]
-                    rh = self.getrider(rno)
+                    rh = self._getrider(rno)
                     if rh is not None:
                         _log.debug('Rider change notify: %r', rider)
-                        rh[COL_FIRSTNAME] = dbr['first']
-                        rh[COL_LASTNAME] = dbr['last']
-                        rh[COL_CLUB] = dbr['organisation']
+                        rh[COL_NAME] = dbr.listname()
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -154,7 +150,7 @@ class f200:
         self.meet.scbwin = None
         self.timerwin = False
         fmtplaces = []
-        name_w = self.meet.scb.linelen - 11
+        name_w = self.meet.scb.linelen - 12
         pcount = 0
         rcount = 0
         for r in self.riders:
@@ -164,17 +160,12 @@ class f200:
                 plstr = r[COL_PLACE]
                 if plstr.isdigit():
                     plstr += '.'
-                first = r[COL_FIRSTNAME]
-                last = r[COL_LASTNAME]
-                club = ''
-                if len(r[COL_CLUB]) == 3:
-                    club = r[COL_CLUB]
-
-                bib = r[COL_BIB]
-                fmtplaces.append(
-                    [plstr, bib,
-                     strops.fitname(first, last, name_w), club])
-        FMT = [(3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (4, 'r')]
+                name, club = self._getname(r[COL_NO], width=name_w)
+                if len(club) != 3:
+                    club = ''
+                bib = r[COL_NO]
+                fmtplaces.append((plstr, bib, name, club))
+        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
 
         evtstatus = 'Standings'
         if rcount > 0 and pcount == rcount:
@@ -184,7 +175,7 @@ class f200:
                                            head=self.meet.racenamecat(
                                                self.event),
                                            subhead=evtstatus.upper(),
-                                           coldesc=FMT,
+                                           coldesc=fmt,
                                            rows=fmtplaces)
         self.meet.scbwin.reset()
 
@@ -234,7 +225,7 @@ class f200:
                 'lstart': None,
                 'fsbib': None,
                 'fsstat': 'idle',
-                'showinfo': True,
+                'showinfo': False,
                 'decisions': [],
                 'chan_S': defchans,
                 'chan_I': defchani,
@@ -265,7 +256,7 @@ class f200:
 
         # re-load starters/results and traces
         self.onestart = False
-        rlist = cr.get('event', 'startlist').split()
+        rlist = cr.get('event', 'startlist').upper().split()
         for r in rlist:
             nr = [r, '', '', '', '', '', '', None, None, None]
             co = ''
@@ -288,9 +279,7 @@ class f200:
                     sp = tod.mktod(ril[5])
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
-                nr[1] = dbr['first']
-                nr[2] = dbr['last']
-                nr[3] = dbr['org']
+                nr[COL_NAME] = dbr.listname()
             nri = self.riders.append(nr)
             self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
             if not self.readonly:
@@ -298,10 +287,10 @@ class f200:
                     self.traces[r] = cr.get('traces', r)
         self.placexfer()
 
-        if not self.onestart and self.event['starters']:
+        if not self.onestart and self.event['auto']:
             self.riders.clear()
             self.meet.autostart_riders(self,
-                                       self.event['starters'],
+                                       self.event['auto'],
                                        infocol=self.seedsrc)
 
         if self.winopen:
@@ -326,6 +315,16 @@ class f200:
                 self.torunning(curstart, lstart)
             elif self.timerstat == 'idle':
                 GLib.idle_add(self.fs.grab_focus)
+        else:
+            # cache showinfo, start, lstart, fsstat and fsbib
+            for key in (
+                    'lstart',
+                    'start',
+                    'fsstat',
+                    'fsbib',
+                    'showinfo',
+            ):
+                self._winState[key] = cr.get('event', key)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -349,25 +348,30 @@ class f200:
         cw.set('event', 'autoarm', self.autoarm)
         cw.set('event', 'startlist', self.get_startlist())
         cw.set('event', 'inomnium', self.inomnium)
-        cw.set('event', 'showinfo', self.info_expand.get_expanded())
+
+        if self.winopen:
+            cw.set('event', 'showinfo', self.info_expand.get_expanded())
+            cw.set('event', 'fsstat', self.fs.getstatus())
+            cw.set('event', 'fsbib', self.fs.getrider())
+            cw.set('event', 'start', self.curstart)
+            cw.set('event', 'lstart', self.lstart)
+        else:
+            for key in (
+                    'lstart',
+                    'start',
+                    'fsstat',
+                    'fsbib',
+                    'showinfo',
+            ):
+                cw.set('event', key, self._winState[key])
         cw.set('event', 'decisions', self.decisions)
 
-        # extract and save timerpane config for interrupted run
-        if self.curstart is not None:
-            cw.set('event', 'start', self.curstart.rawtime())
-        if self.lstart is not None:
-            cw.set('event', 'lstart', self.lstart.rawtime())
-        cw.set('event', 'fsstat', self.fs.getstatus())
-        cw.set('event', 'fsbib', self.fs.getrider())
-
-        cw.add_section('traces')
-        for rider in self.traces:
-            cw.set('traces', rider, self.traces[rider])
-
         cw.add_section('riders')
+        cw.add_section('traces')
 
         # save out all starters
         for r in self.riders:
+            rno = r[COL_NO]
             # place is saved for info only
             slice = [r[COL_COMMENT], r[COL_SEED], r[COL_PLACE]]
             tl = [r[COL_START], r[COL_FINISH], r[COL_100]]
@@ -376,7 +380,12 @@ class f200:
                     slice.append(t.rawtime())
                 else:
                     slice.append(None)
-            cw.set('riders', r[COL_BIB], slice)
+            cw.set('riders', rno, slice)
+
+            # save timing traces
+            if rno in self.traces:
+                cw.set('traces', rno, self.traces[rno])
+
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
@@ -407,7 +416,7 @@ class f200:
                 auxmap.append([
                     cnt,
                     strops.riderno_key(r[COL_SEED]),
-                    strops.riderno_key(r[COL_BIB])
+                    strops.riderno_key(r[COL_NO])
                 ])
                 cnt += 1
             auxmap.sort(key=cmp_to_key(self.sort_startlist))
@@ -427,7 +436,7 @@ class f200:
             count = placeholders
         if placeholders == 0:
             for r in self.riders:
-                rno = r[COL_BIB]
+                rno = r[COL_NO]
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 info = None
                 rname = ''
@@ -478,10 +487,7 @@ class f200:
         sec = report.dual_ittt_startlist(secid)
         sec.nobreak = True
         sec.set_single()  # 200s are one-up
-
-        headvec = [
-            'Event', self.evno, ':', self.event['pref'], self.event['info']
-        ]
+        headvec = self.event.get_info(showevno=True).split()
         if not program:
             headvec.append('- Start List')
         sec.heading = ' '.join(headvec)
@@ -500,7 +506,7 @@ class f200:
         """Return a list of bibs in the rider model."""
         ret = []
         for r in self.riders:
-            ret.append(r[COL_BIB])
+            ret.append(r[COL_NO])
         return ' '.join(ret)
 
     def delayed_announce(self):
@@ -515,20 +521,13 @@ class f200:
             # fill in front straight (only one?)
             fbib = self.fs.getrider()
             if fbib:
-                r = self.getrider(fbib)
+                r = self._getrider(fbib)
                 if r is not None:
-                    clubstr = ''
-                    tcs = r[COL_CLUB]
-                    if tcs and len(tcs) == 3:
-                        clubstr = '(' + tcs + ')'
-                    namestr = strops.fitname(r[COL_FIRSTNAME],
-                                             r[COL_LASTNAME],
-                                             24,
-                                             trunc=True)
+                    namestr = strops.truncpad(r[COL_NAME], 24)
                     placestr = '   '  # 3 ch
                     if r[COL_PLACE]:
                         placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                    bibstr = strops.truncpad(r[COL_BIB], 3, 'r')
+                    bibstr = strops.truncpad(r[COL_NO], 3, 'r')
                     tmstr = ''
                     et = None
                     if r[COL_START] is not None and r[COL_FINISH] is not None:
@@ -542,8 +541,8 @@ class f200:
                         cmtstr = strops.truncpad(
                             '[' + r[COL_COMMENT].strip() + ']', 38, 'r')
                     self.meet.txt_postxt(3, 0, '        Current Rider')
-                    self.meet.txt_postxt(
-                        4, 0, ' '.join([placestr, bibstr, namestr, clubstr]))
+                    self.meet.txt_postxt(4, 0, ' '.join(
+                        (placestr, bibstr, namestr)))
                     self.meet.txt_postxt(5, 0, strops.truncpad(tmstr, 38, 'r'))
                     self.meet.txt_postxt(6, 0, cmtstr)
 
@@ -556,21 +555,11 @@ class f200:
                 if count == 19:
                     curline = 9
                     posoft += 42
-
-                clubstr = ''
-                tcs = r[COL_CLUB]
-                if tcs and len(tcs) == 3:
-                    clubstr = ' (' + tcs + ')'
-
-                namestr = strops.truncpad(
-                    strops.fitname(r[COL_FIRSTNAME],
-                                   r[COL_LASTNAME],
-                                   22 - len(clubstr),
-                                   trunc=True) + clubstr, 22)
+                namestr = strops.truncpad(r[COL_NAME], 22)
                 placestr = '   '  # 3 ch
                 if r[COL_PLACE]:
                     placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                bibstr = strops.truncpad(r[COL_BIB], 3, 'r')
+                bibstr = strops.truncpad(r[COL_NO], 3, 'r')
                 tmstr = '       '  # 7 ch
                 if r[COL_START] is not None and r[COL_FINISH] is not None:
                     tmstr = strops.truncpad(
@@ -579,16 +568,6 @@ class f200:
                     curline, posoft,
                     ' '.join([placestr, bibstr, namestr, tmstr]))
                 curline += 1
-
-    def shutdown(self, win=None, msg='Exiting'):
-        """Terminate event object."""
-        rstr = ''
-        if self.readonly:
-            rstr = 'readonly '
-        _log.debug('Shutdown %sevent %s: %s', rstr, self.evno, msg)
-        if not self.readonly:
-            self.saveconfig()
-        self.winopen = False
 
     def do_properties(self):
         """Run event properties dialog."""
@@ -694,7 +673,7 @@ class f200:
     def result_gen(self):
         """Generator function to export rankings."""
         for r in self.riders:
-            bib = r[COL_BIB]
+            bib = r[COL_NO]
             rank = None
             time = None
             info = None
@@ -722,8 +701,7 @@ class f200:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-            [self.event['pref'], self.event['info']]).strip()
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join(
             (lapstring, self.event['distance'], self.event['phase'])).strip()
@@ -733,13 +711,13 @@ class f200:
         pcount = 0
         for r in self.riders:
             rcount += 1
-            rno = r[COL_BIB]
+            rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             if rh is None:
-                _log.warning('Rider not found %r', rno)
-                continue
+                self.meet.rdb.add_empty(bib, self.series)
+                rh = self.meet.rdb.get_rider(bib, self.series)
 
-            rcat = None  # should check ev[u'cate']
+            rcat = None
             plink = ''
             rank = None
 
@@ -837,24 +815,26 @@ class f200:
         self.log_split(sp.getrider(), self.curstart, t)
         sp.intermed(t, 2)  # show split... delay ~2 sec
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
-            intstr = ' at 100m'
+            sid = '100m'
             if self.evtype == 'flying lap':
-                intstr = ' at 200 start'
-            lapstr = strops.rank2ord(str(rank + 1)) + intstr
-            self.meet.scbwin.setr1('(' + str(rank + 1) + ')')
+                sid = '200m'
+            if rank is not None:
+                rlbl = '({}) {}:'.format(rank + 1, sid)
+            else:
+                rlbl = '{}:'.format(sid)
+            self.meet.scbwin.setr1(rlbl)
             GLib.timeout_add_seconds(2, self.clear_rank,
                                      self.meet.scbwin.setr1)
-            # announce lap and rank to txt announcer
             self.meet.txt_postxt(
                 5, 8,
-                strops.truncpad(lapstr, 17) + ' ' + sp.get_time())
+                strops.truncpad(rlbl, 17) + ' ' + sp.get_time())
         if self.autoarm:
             self.armfinish(sp)
 
     def fin_trig(self, sp, t):
         """Register finish trigger."""
         sp.finish(t)
-        ri = self.getiter(sp.getrider())
+        ri = self._getiter(sp.getrider())
         split = sp.getsplit(0)
         if ri is not None:
             self.settimes(ri, self.curstart, t, split)
@@ -966,7 +946,7 @@ class f200:
         self.onestart = True
         if self.autoarm:
             self.armsplit(self.fs)
-        if walltime is not None and self.timerwin and type(
+        if walltime is None and self.timerwin and type(
                 self.meet.scbwin) is scbwin.scbtt:
             GLib.timeout_add_seconds(3, self.show_200_ttb, self.meet.scbwin)
 
@@ -975,51 +955,104 @@ class f200:
         for r in self.riders:
             r[COL_PLACE] = ''
 
-    def getrider(self, bib):
+    def inevent(self, bib):
+        """Return true if rider appears in model."""
+        return self._getrider(bib) is not None
+
+    def _getrider(self, bib):
         """Return temporary reference to model row."""
+        bib = bib.upper()
         ret = None
         for r in self.riders:
-            if r[COL_BIB] == bib:
+            if r[COL_NO] == bib:
                 ret = r
                 break
         return ret
 
+    def _getiter(self, bib):
+        """Return temporary iterator to model row."""
+        bib = bib.upper()
+        i = self.riders.get_iter_first()
+        while i is not None:
+            if self.riders.get_value(i, COL_NO) == bib:
+                break
+            i = self.riders.iter_next(i)
+        return i
+
+    def delrider(self, bib):
+        # Issue warning if removed rider in result
+        bib = bib.upper()
+        if self.results.rank(bib) is not None:
+            _log.warning('Removed rider %r was in event %r result', bib,
+                         self.evno)
+            self.splits.remove(bib)
+            self.results.remove(bib)
+        if 'fsbib' in self._winState and self._winState['fsbib'].upper(
+        ) == bib:
+            _log.warning('Removed rider %r in event %r timer', bib, self.evno)
+
+        i = self._getiter(bib)
+        if i is not None:
+            self.riders.remove(i)
+
+    def changerider(self, oldNo, newNo):
+        """Update rider no in event"""
+        oldNo = oldNo.upper()
+        newNo = newNo.upper()
+        if self.inevent(oldNo):
+            if oldNo != newNo and not self.inevent(newNo):
+                name = ''
+                dbr = self.meet.rdb.get_rider(newNo, self.series)
+                if dbr is not None:
+                    name = dbr.listname()
+                for r in self.riders:
+                    if r[COL_NO] == oldNo:
+                        _log.debug('Updating number %s -> %s in event %s',
+                                   oldNo, newNo, self.evno)
+                        r[COL_NO] = newNo
+                        r[COL_NAME] = name
+                        break
+                self.splits.changeno(oldNo, newNo)
+                self.results.changeno(oldNo, newNo)
+                return True
+        return False
+
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
+        bib = bib.upper()
         istr = ''
         if info is not None:
             istr = str(info)
-        nr = [bib, '', '', '', '', istr, '', None, None, None]
-        ri = self.getrider(bib)
+        ri = self._getrider(bib)
         if ri is None:  # adding a new record
+            nr = [bib, '', '', '', '', istr, '', None, None, None]
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
-                nr[1] = dbr['first']
-                nr[2] = dbr['last']
-                nr[3] = dbr['org']
+                nr[COL_NAME] = dbr.listname()
             self.riders.append(nr)
         else:
-            # rider exists in model, just update the seed value
+            # rider exists in model, update the seed value
             ri[COL_SEED] = istr
 
-    def editcol_db(self, cell, path, new_text, col):
-        """Cell update with writeback to meet."""
-        new_text = new_text.strip()
-        self.riders[path][col] = new_text
-        dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB], self.series)
-        if dbr is None:
-            self.meet.rdb.add_empty(self.riders[path][COL_BIB], self.series)
-            dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB],
-                                          self.series)
-        if dbr is not None:
-            if col == COL_FIRSTNAME:
-                dbr['first'] = new_text
-            elif col == COL_LASTNAME:
-                dbr['last'] = new_text
-            elif col == COL_CLUB:
-                dbr['org'] = new_text
-            else:
-                _log.debug('Ignore update to unknown column')
+    def _editseed_cb(self, cell, path, new_text, col):
+        """Edit the rider seeding."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            self.riders[path][col] = new_text
+
+    def _editname_cb(self, cell, path, new_text, col):
+        """Edit the rider name if possible."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            self.riders[path][col] = new_text
+            rNo = self.riders[path][COL_NO]
+            dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is None:
+                # Assume one is required
+                self.meet.rdb.add_empty(rNo, self.series)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
+            dbr.rename(new_text)
 
     def placexfer(self):
         """Transfer places into model."""
@@ -1042,7 +1075,7 @@ class f200:
                     place = 'dnf'
             else:
                 place = self.results.rank(bib) + 1
-            i = self.getiter(bib)
+            i = self._getiter(bib)
             if i is not None:
                 if place == 'comment':  # superfluous but ok
                     place = self.riders.get_value(i, COL_COMMENT)
@@ -1060,15 +1093,6 @@ class f200:
             else:
                 self._standingstr = 'Virtual Standing'
 
-    def getiter(self, bib):
-        """Return temporary iterator to model row."""
-        i = self.riders.get_iter_first()
-        while i is not None:
-            if self.riders.get_value(i, COL_BIB) == bib:
-                break
-            i = self.riders.iter_next(i)
-        return i
-
     def settimes(self,
                  iter,
                  st=None,
@@ -1077,7 +1101,7 @@ class f200:
                  doplaces=True,
                  comment=None):
         """Transfer race times into rider model."""
-        bib = self.riders.get_value(iter, COL_BIB)
+        bib = self.riders.get_value(iter, COL_NO)
         # clear result for this bib
         self.results.remove(bib)
         self.splits.remove(bib)
@@ -1129,7 +1153,7 @@ class f200:
         """Abort the current heat."""
         if sp.getstatus() not in ['idle', 'finish']:
             bib = sp.getrider()
-            ri = self.getiter(bib)
+            ri = self._getiter(bib)
             if ri is not None:
                 self.settimes(ri, st=self.curstart, comment='dnf')
             sp.tofinish()
@@ -1177,25 +1201,31 @@ class f200:
             self.fs.toload()
         self.toidle(idletimers=False)
 
+    def _getname(self, bib, width=32):
+        """Return a name and club for the rider if known"""
+        name = ''
+        club = ''
+        dbr = self.meet.rdb.get_rider(bib, self.series)
+        if dbr is not None:
+            name = dbr.fitname(width)
+            club = dbr['organisation']
+        return name, club
+
     def fmtridername(self, tp):
         """Prepare rider name for display on scoreboard."""
         name_w = self.meet.scb.linelen - 9
         bib = tp.getrider().strip()
         if bib != '':
-            name = '[New Rider]'
-            r = self.getrider(bib)
-            if r is not None and r[COL_BIB]:
-                first = r[COL_FIRSTNAME]
-                last = r[COL_LASTNAME]
-                club = ''
-                if len(r[COL_CLUB]) == 3:
-                    club = r[COL_CLUB]
-                name = strops.fitname(first, last, name_w)
-            return ' '.join([
-                strops.truncpad(r[COL_BIB], 3, 'r'),
-                strops.truncpad(name, name_w),
-                strops.truncpad(club, 4, 'r')
-            ])
+            name = ''
+            club = ''
+            r = self._getrider(bib)
+            if r is not None and r[COL_NO]:
+                name, club = self._getname(r[COL_NO], width=name_w)
+                if len(club) != 3:
+                    club = ''
+            coldesc = ((3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
+            row = (r[COL_NO], name, club)
+            return scbwin.fmt_row(coldesc, row)
         else:
             return ''
 
@@ -1256,26 +1286,23 @@ class f200:
 
     def lanelookup(self, bib=None):
         """Prepare name string for timer lane."""
-        r = self.getrider(bib)
+        r = self._getrider(bib)
         if r is None:
             if self.meet.get_clubmode():  # fill in starters
                 _log.warning('Adding non-starter %r', bib)
                 self.addrider(bib)
-                r = self.getrider(bib)
+                r = self._getrider(bib)
             else:
                 _log.warning('Rider %r not in event', bib)
                 return None
         rtxt = '[New Rider]'
         if r is not None:
-            club = ''
-            if len(r[COL_CLUB]) == 3:
-                club = r[COL_CLUB]
-            rtxt = strops.listname(r[COL_FIRSTNAME], r[COL_LASTNAME], club)
+            rtxt = r[COL_NAME]
         return rtxt
 
     def bibent_cb(self, entry, tp):
         """Bib entry callback."""
-        bib = entry.get_text().strip()
+        bib = entry.get_text().strip().upper()
         if bib and bib.isalnum():
             nstr = self.lanelookup(bib)
             if nstr is not None:
@@ -1307,7 +1334,7 @@ class f200:
         sel = self.view.get_selection().get_selected()
         if sel is not None:
             self.settimes(sel[1])
-            self.log_clear(self.riders.get_value(sel[1], COL_BIB))
+            self.log_clear(self.riders.get_value(sel[1], COL_NO))
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_rel_activate_cb(self, menuitem, data=None):
@@ -1349,7 +1376,7 @@ class f200:
         """Print Rider trace"""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            bib = self.riders.get_value(sel[1], COL_BIB)
+            bib = self.riders.get_value(sel[1], COL_NO)
             if bib in self.traces:
                 secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
                 sec = report.preformat_text(secid)
@@ -1370,8 +1397,8 @@ class f200:
 
         i = sel[1]
         lr = Gtk.TreeModelRow(self.riders, i)
-        namestr = lr[COL_BIB]
-        dbr = self.meet.rdb.get_rider(lr[COL_BIB], self.series)
+        namestr = lr[COL_NO]
+        dbr = self.meet.rdb.get_rider(lr[COL_NO], self.series)
         if dbr is not None:
             namestr = dbr.resname_bib()
         placestr = ''
@@ -1450,7 +1477,7 @@ class f200:
                 else:
                     _log.debug('Unknown option %r changed', option)
         if dotimes:
-            bib = lr[COL_BIB]
+            bib = lr[COL_NO]
             stod = lr[COL_START]
             ftod = lr[COL_FINISH]
             if stod is not None and ftod is not None:
@@ -1493,12 +1520,6 @@ class f200:
                 slbl = 'L200'
             self.meet.timer_log_straight(bib, slbl, finish - split, 3)
         self.meet.timer_log_straight(bib, 'TIME', finish - start, 3)
-
-    def destroy(self):
-        """Signal race shutdown."""
-        if self.context_menu is not None:
-            self.context_menu.destroy()
-        self.frame.destroy()
 
     def show(self):
         """Show race window."""
@@ -1546,12 +1567,14 @@ class f200:
         self.finished = False
         self._standingstr = ''
         self.context_menu = None
+        self.traces = {}
+        self._winState = {}  # cache ui settings for headless load/save
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
-            str,  # 1 firstname
-            str,  # 2 lastname
-            str,  # 3 club
+            str,  # 1 name
+            str,  # 2 reserved
+            str,  # 3 reserved
             str,  # 4 Comment
             str,  # 5 seed
             str,  # 6 place
@@ -1563,7 +1586,6 @@ class f200:
         if ui:
             b = uiutil.builder('ittt.ui')
             self.frame = b.get_object('race_vbox')
-            self.frame.connect('destroy', self.shutdown)
 
             # info pane
             self.info_expand = b.get_object('info_expand')
@@ -1575,7 +1597,6 @@ class f200:
             self.info_ent = b.get_object('race_info_title')
             self.info_ent.connect('changed', self.editent_cb, 'info')
             self.info_ent.set_text(self.event['info'])
-            self.traces = {}
 
             # Timer Pane
             mf = b.get_object('race_timer_pane')
@@ -1594,23 +1615,16 @@ class f200:
             t.set_rules_hint(True)
             t.connect('button_press_event', self.treeview_button_press)
 
-            # TODO: show team name & club but pop up for rider list
             tmlbl = '200m/L100m'
             if self.evtype == 'flying lap':
                 tmlbl = 'Time/L200m'
-            uiutil.mkviewcoltxt(t, 'No.', COL_BIB, calign=1.0)
+            uiutil.mkviewcoltxt(t, 'No.', COL_NO, calign=1.0)
             uiutil.mkviewcoltxt(t,
-                                'First Name',
-                                COL_FIRSTNAME,
-                                self.editcol_db,
+                                'Name',
+                                COL_NAME,
+                                self._editname_cb,
                                 expand=True)
-            uiutil.mkviewcoltxt(t,
-                                'Last Name',
-                                COL_LASTNAME,
-                                self.editcol_db,
-                                expand=True)
-            uiutil.mkviewcoltxt(t, 'Club', COL_CLUB, self.editcol_db)
-            uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self.editcol_db)
+            uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self._editseed_cb)
             uiutil.mkviewcoltod(t, tmlbl, cb=self.todstr)
             uiutil.mkviewcoltxt(t, 'Rank', COL_PLACE, halign=0.5, calign=0.5)
             t.show()
