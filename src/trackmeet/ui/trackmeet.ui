@@ -258,6 +258,7 @@
                             <property name="visible">True</property>
                             <property name="sensitive">False</property>
                             <property name="use_underline">True</property>
+                            <accelerator key="Escape" signal="activate" modifiers="GDK_CONTROL_MASK"/>
                             <signal name="activate" handler="menu_race_recover_activate_cb"/>
                           </object>
                         </child>
@@ -584,18 +585,21 @@
 
         <!-- Race/Menu Box -->
         <child>
-          <object class="GtkVPaned" id="log_pane">
+          <object class="GtkPaned" id="log_pane">
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="border_width">2</property>
             <property name="orientation">vertical</property>
             <child>
-              <object class="GtkHPaned" id="meet_pane">
+              <object class="GtkPaned" id="meet_pane">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="border_width">1</property>
                 <property name="position">370</property>
                 <property name="position_set">True</property>
+                <property name="orientation">horizontal</property>
+
+                <!-- event/rider nb -->
                 <child>
                   <object class="GtkNotebook" id="meet_nb">
                     <property name="visible">True</property>
@@ -647,18 +651,14 @@
                         <property name="tab_fill">False</property>
                       </packing>
                     </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child type="tab">
-                      <placeholder/>
-                    </child>
                   </object>
                   <packing>
                     <property name="resize">False</property>
                     <property name="shrink">False</property>
                   </packing>
                 </child>
+
+                <!-- event handler frame -->
                 <child>
                   <object class="GtkFrame" id="race_box">
                     <property name="visible">True</property>
@@ -754,6 +754,14 @@
       </object>
     </child>
     <child>
+      <object class="GtkMenuItem" id="rider_copy">
+        <property name="label">Copy</property>
+        <property name="visible">True</property>
+        <property name="sensitive">False</property>
+        <signal name="activate" handler="rider_add_cb"/>
+      </object>
+    </child>
+    <child>
       <object class="GtkMenuItem" id="rider_del">
         <property name="label">Delete</property>
         <property name="visible">True</property>
@@ -774,10 +782,43 @@
       </object>
     </child>
     <child>
+      <object class="GtkMenuItem" id="rider_addseries">
+        <property name="label">Add Series</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="rider_add_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_addcat">
+        <property name="label">Add Category</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="rider_add_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_addteam">
+        <property name="label">Add Team</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="rider_add_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="rider_sep2">
+        <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
       <object class="GtkMenuItem" id="rider_import">
         <property name="label">Import CSV</property>
         <property name="visible">True</property>
         <signal name="activate" handler="menu_import_riders_activate_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="rider_chipfil">
+        <property name="label">Load Chipfile</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="menu_import_chipfile_activate_cb"/>
       </object>
     </child>
   </object>
@@ -790,6 +831,13 @@
         <property name="label">Edit</property>
         <property name="visible">True</property>
         <signal name="activate" handler="event_popup_edit_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_copy">
+        <property name="label">Duplicate</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_duplicate_cb"/>
       </object>
     </child>
     <child>
@@ -808,26 +856,33 @@
       <object class="GtkMenuItem" id="event_program">
         <property name="label">Program</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_program_cb"/>
+        <signal name="activate" handler="event_popup_report_cb"/>
       </object>
     </child>
     <child>
       <object class="GtkMenuItem" id="event_startlist">
         <property name="label">Startlist</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_startlist_cb"/>
+        <signal name="activate" handler="event_popup_report_cb"/>
       </object>
     </child>
     <child>
       <object class="GtkMenuItem" id="event_result">
         <property name="label">Result</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_result_cb"/>
+        <signal name="activate" handler="event_popup_report_cb"/>
       </object>
     </child>
     <child>
       <object class="GtkSeparatorMenuItem" id="event_sep">
         <property name="visible">True</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_starters">
+        <property name="label">Add Starters</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_starters_cb"/>
       </object>
     </child>
     <child>
