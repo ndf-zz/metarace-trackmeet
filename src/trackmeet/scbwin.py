@@ -53,6 +53,35 @@ def get_dateline(width=32):
     return ret
 
 
+def fmt_row(coldesc, row):
+    """Format data row according to coldesc.
+
+    coldesc: ordered list of column tuples, each containing a field width
+             as integer and the string 'l' or 'r' for left
+             or right space padded, or a string constant
+
+               ((fieldwidth, l|r)|'str' ...)
+
+    Example:  ((3,'r'), ' ', '(20,'l'))
+                   Three columns:
+                           1: 3 character str padded to right
+                           2: constant string ' '
+                           3: 20 character str padded to left
+    """
+    nr = []
+    oft = 0
+    for col in coldesc:
+        if type(col) is str:
+            nr.append(col)
+        else:
+            if len(row) > oft:  # space pad 'short' rows
+                nr.append(strops.truncpad(row[oft], col[0], col[1]))
+            else:
+                nr.append(' ' * col[0])  # space pad missing columns
+            oft += 1
+    return ''.join(nr)
+
+
 class scbwin:
     """Base class for all scoreboard windows.
 
@@ -394,18 +423,8 @@ class scbintsprint(scbwin):
         self.rows = []
         if coldesc is not None and rows is not None:
             for row in rows:
-                nr = ''
-                oft = 0
-                for col in coldesc:
-                    if type(col) in [str, str]:
-                        nr += col
-                    else:
-                        if len(row) > oft:  # space pad 'short' rows
-                            nr += strops.truncpad(row[oft], col[0], col[1])
-                        else:
-                            nr += ' ' * col[0]
-                        oft += 1
-                self.rows.append(nr[0:32])
+                nr = fmt_row(coldesc, row)
+                self.rows.append(nr)
         self.nrpages = len(self.rows) // self.pagesz + 1
         if self.nrpages > 1 and len(self.rows) % self.pagesz == 0:
             self.nrpages -= 1
@@ -465,40 +484,15 @@ class scbintsprint(scbwin):
 class scbtable(scbwin):
     """A self-looping info table.
 
-    Displays 'pages' of rows formatted to coldesc:
-   
-    Coldesc: set of column tuples, each containing a field width
-             as integer and the string 'l' or 'r' for left
-             or right space padded, or a string constant
-   
-	       [(fieldwidth, l|r)|'str' ...]
-   
-    Example:  [(3,'r'), ' ', '(20,'l')]
- 		   Three columns:
-			   1: 3 character str padded to right
-			   2: constant string ' '
-			   3: 20 character str padded to left
-
-    ADDED: timepfx and timestr for appending a time field to results
-
+    Displays 'pages' of rows formatted to a coldesc
     """
 
     def loadrows(self, coldesc=None, rows=None):
         self.rows = []
         if coldesc is not None and rows is not None:
             for row in rows:
-                nr = ''
-                oft = 0
-                for col in coldesc:
-                    if type(col) in [str, str]:  # HACK py<3.0
-                        nr += col
-                    else:
-                        if len(row) > oft:  # space pad 'short' rows
-                            nr += strops.truncpad(row[oft], col[0], col[1])
-                        else:
-                            nr += ' ' * col[0]
-                        oft += 1
-                self.rows.append(nr)  # truncation in sender ok
+                nr = fmt_row(coldesc, row)
+                self.rows.append(nr)
         self.nrpages = len(self.rows) // self.pagesz + 1
         if self.nrpages > 1 and len(self.rows) % self.pagesz == 0:
             self.nrpages -= 1
