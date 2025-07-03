@@ -185,14 +185,6 @@ _CONFIG_SCHEMA = {
         'default': '',
         'hint': 'Override displayed event number on reports',
     },
-    'type': {
-        'prompt': 'Type Handler:',
-        'control': 'choice',
-        'options': _EVENT_TYPES,
-        'attr': 'type',
-        'defer': True,
-        'default': '',
-    },
     'seri': {
         'prompt': 'Series:',
         'control': 'short',
@@ -200,6 +192,14 @@ _CONFIG_SCHEMA = {
         'defer': True,
         'default': '',
         'hint': 'Competitor number series',
+    },
+    'type': {
+        'prompt': 'Type Handler:',
+        'control': 'choice',
+        'options': _EVENT_TYPES,
+        'attr': 'type',
+        'defer': True,
+        'default': '',
     },
     'pref': {
         'prompt': 'Prefix:',
@@ -393,6 +393,15 @@ def sub_autospec(autospec, oldevno, newevno):
 class event:
     """CSV-backed event listing."""
 
+    def copy(self):
+        """Return copy of this event with a blank ID"""
+        nev = event(evid=None)
+        for k, v in self._store.items():
+            if k != 'evid':
+                nev._store[k] = v
+        nev._notify = self._notify
+        return nev
+
     def update_autospec(self, oldevno, newevno):
         newspec = sub_autospec(self['auto'], oldevno, newevno)
         if newspec != self['auto']:
@@ -556,7 +565,6 @@ class eventdb:
                 )
             _log.info('Duplicate evid %r changed to %r', eid, evno)
         newevent.set_value('evid', evno)
-        _log.debug('Add new event with id=%r', evno)
         newevent.set_notify(self._notify)
         self._store[evno] = newevent
         self._index.append(evno)
@@ -581,7 +589,7 @@ class eventdb:
         if not os.path.isfile(csvfile):
             _log.debug('Events file %r not found', csvfile)
             return
-        _log.debug('Loading events from %r', csvfile)
+        _log.debug('Loading from %r', csvfile)
         with open(csvfile, encoding='utf-8', errors='replace') as f:
             cr = csv.reader(f)
             incols = None  # no header
