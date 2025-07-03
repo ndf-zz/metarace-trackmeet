@@ -324,15 +324,16 @@ class sprnd:
         oldNo = oldNo.upper()
         newNo = newNo.upper()
         if self.inevent(oldNo):
-            rname = self._listname(newNo)
-            for c in self.contests:
-                if c[COL_A_NO] == oldNo:
-                    c[COL_A_NO] = newNo
-                    c[COL_A_STR] = rname
-                elif c[COL_B_NO] == oldNo:
-                    c[COL_B_NO] = newNo
-                    c[COL_B_STR] = rname
-            return True
+            if oldNo != newNo and not self.inevent(newNo):
+                rname = self._listname(newNo)
+                for c in self.contests:
+                    if c[COL_A_NO] == oldNo:
+                        c[COL_A_NO] = newNo
+                        c[COL_A_STR] = rname
+                    elif c[COL_B_NO] == oldNo:
+                        c[COL_B_NO] = newNo
+                        c[COL_B_STR] = rname
+                return True
         return False
 
     def delrider(self, bib):
@@ -360,10 +361,9 @@ class sprnd:
     def loadconfig(self):
         """Load race config from disk."""
         self.contests.clear()
-        def_otherstime = True
-        if self.event['info'] == 'Final':
-            # for the medal round, order others by ranking
-            def_otherstime = False
+        def_otherstime = False
+        if self.event['plac'] and self.event['plac'] > 4:
+            def_otherstime = True
 
         cr = jsonconfig.config({
             'event': {

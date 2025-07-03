@@ -244,7 +244,7 @@ class gemini(threading.Thread):
             self._queue.task_done()
             try:
                 if m[0] == 'MSG' and not self._ignore and self._port:
-                    #_log.debug(u'Send: %r', m[1])
+                    #_log.debug('Send: %r', m[1])
                     self._port.write(m[1].encode(_ENCODING, 'ignore'))
                 elif m[0] == 'EXIT':
                     _log.debug('Request to close: %s', m[1])
