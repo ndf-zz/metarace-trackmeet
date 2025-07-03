@@ -30,10 +30,6 @@
         <col id="0" translatable="yes">Del Starters</col>
         <col id="1" translatable="yes">del</col>
       </row>
-      <row>
-        <col id="0" translatable="yes">Set Lap</col>
-        <col id="1" translatable="yes">lap</col>
-      </row>
     </data>
   </object>
   <object class="GtkBox" id="ps_vbox">
