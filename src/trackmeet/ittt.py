@@ -37,10 +37,9 @@ _log.setLevel(logging.DEBUG)
 EVENT_ID = 'ittt-2.1'
 
 # event model columns
-COL_BIB = 0
-COL_FIRSTNAME = 1
-COL_LASTNAME = 2
-COL_CLUB = 3
+COL_NO = 0
+COL_NAME = 1
+#COL_MEMBERS = 3
 COL_COMMENT = 4
 COL_SEED = 5
 COL_PLACE = 6
@@ -90,12 +89,10 @@ class ittt:
                 series = rider[1]
                 if series == self.series:
                     dbr = self.meet.rdb[rider]
-                    rh = self.getrider(rno)
+                    rh = self._getrider(rno)
                     if rh is not None:
                         _log.debug('Rider change notify: %r', rider)
-                        rh[COL_FIRSTNAME] = dbr['first']
-                        rh[COL_LASTNAME] = dbr['last']
-                        rh[COL_CLUB] = dbr['organisation']
+                        rh[COL_NAME] = dbr.listname()
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -169,11 +166,11 @@ class ittt:
         self.meet.scbwin = None
         self.timerwin = False  # TODO: bib width enhancement
         fmtplaces = []
-        name_w = self.meet.scb.linelen - 11
-        fmt = [(3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (4, 'r')]
+        name_w = self.meet.scb.linelen - 12
+        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         if self.teamnames:
-            name_w = self.meet.scb.linelen - 8
-            fmt = [(3, 'l'), ' ', (name_w, 'l'), (4, 'r')]
+            name_w = self.meet.scb.linelen - 9
+            fmt = ((3, 'l'), ' ', (name_w, 'l'), (5, 'r'))
         rcount = 0
         pcount = 0
         for r in self.riders:
@@ -183,20 +180,14 @@ class ittt:
                 plstr = r[COL_PLACE]
                 if plstr.isdigit():
                     plstr = plstr + '.'
-                club = ''
-                if len(r[COL_CLUB]) == 3:
-                    club = r[COL_CLUB]
+                name, club = self._getname(r[COL_NO], width=name_w)
+                if len(club) != 3:
+                    club = ''
                 if not self.teamnames:
-                    name_w = self.meet.scb.linelen - 11
-                    name = strops.fitname(r[COL_FIRSTNAME],
-                                          r[COL_LASTNAME],
-                                          name_w,
-                                          trunc=True)
-                    bib = r[COL_BIB]
-                    fmtplaces.append([plstr, bib, name, club])
+                    bib = r[COL_NO]
+                    fmtplaces.append((plstr, bib, name, club))
                 else:
-                    name = r[COL_FIRSTNAME]
-                    fmtplaces.append([plstr, name, club])
+                    fmtplaces.append((plstr, name, club))
         evtstatus = 'Standings'
         if rcount > 0 and pcount == rcount:
             evtstatus = 'Result'
@@ -288,14 +279,15 @@ class ittt:
         self.seedsrc = 1  # fetch seed from the rank col
 
         # type specific overrides
-        if self.evtype in ('pursuit race', 'team pursuit race'):
-            self.difftime = True  # NOT CONFIGURABLE
+        if 'race' in self.evtype:
+            self.difftime = True
 
-        if self.evtype in ('team pursuit', 'team pursuit race'):
-            self.teampursuit = True
-            defprecision = 2
-        else:
-            self.teampursuit = False
+        self.teampursuit = False
+        if 'team' in self.evtype or self.series.startswith('t'):
+            self.teamnames = True
+            if 'pursuit' in self.evtype:
+                self.teampursuit = True
+                defprecision = 2
 
         cr = jsonconfig.config({
             'event': {
@@ -307,7 +299,7 @@ class ittt:
                 'fsstat': 'idle',
                 'bsbib': None,
                 'bsstat': 'idle',
-                'showinfo': True,
+                'showinfo': False,
                 'showcats': False,
                 'decisions': [],
                 'distance': defdistance,
@@ -355,7 +347,8 @@ class ittt:
 
         # re-load starters and results
         self.onestart = False
-        for r in cr.get('event', 'startlist').split():
+        rlist = cr.get('event', 'startlist').upper().split()
+        for r in rlist:
             nr = [r, '', '', '', '', '', '', None, None, None, None]
             co = ''
             st = None
@@ -378,9 +371,7 @@ class ittt:
                     lt = tod.mktod(ril[5])
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
-                nr[1] = dbr['first']
-                nr[2] = dbr['last']
-                nr[3] = dbr['org']
+                nr[COL_NAME] = dbr.listname()
             nri = self.riders.append(nr)
             if not self.readonly:
                 # skip fetching traces and split if opened readonly
@@ -391,20 +382,17 @@ class ittt:
                     for sid, split in rsplit.items():
                         sp[sid] = tod.mktod(split)
             self.settimes(nri, st, ft, lt, sp, doplaces=False, comment=co)
-        if self.series and 't' in self.series:
-            self.teamnames = True
-            if 'pursuit' in self.evtype:
-                _log.debug('Forced precision 2 for team pursuit')
-                self.precision = 2
         self.placexfer()
 
-        if not self.onestart and self.event['starters']:
+        if not self.onestart and self.event['auto']:
             self.riders.clear()
             self.meet.autostart_riders(self,
-                                       self.event['starters'],
+                                       self.event['auto'],
                                        infocol=self.seedsrc)
 
         if self.winopen:
+            self.fs.precision = self.precision
+            self.bs.precision = self.precision
             self.update_expander_lbl_cb()
             self.info_expand.set_expanded(
                 strops.confopt_bool(cr.get('event', 'showinfo')))
@@ -438,6 +426,18 @@ class ittt:
                 self.torunning(curstart, lstart)
             elif self.timerstat == 'idle':
                 GLib.idle_add(self.fs.grab_focus)
+        else:
+            # cache showinfo, start, lstart, Xsstat and Xsbib
+            for key in (
+                    'lstart',
+                    'start',
+                    'fsstat',
+                    'fsbib',
+                    'bsstat',
+                    'bsbib',
+                    'showinfo',
+            ):
+                self._winState[key] = cr.get('event', key)
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
@@ -462,20 +462,29 @@ class ittt:
         cw.set('event', 'autotime', self.autotime)
         cw.set('event', 'startlist', self.get_startlist())
         cw.set('event', 'inomnium', self.inomnium)
-        cw.set('event', 'showinfo', self.info_expand.get_expanded())
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'precision', self.precision)
         cw.set('event', 'decisions', self.decisions)
 
-        # extract and save timerpane config for interrupted run
-        if self.curstart is not None:
-            cw.set('event', 'start', self.curstart.rawtime())
-        if self.lstart is not None:
-            cw.set('event', 'lstart', self.lstart.rawtime())
-        cw.set('event', 'fsstat', self.fs.getstatus())
-        cw.set('event', 'fsbib', self.fs.getrider())
-        cw.set('event', 'bsstat', self.bs.getstatus())
-        cw.set('event', 'bsbib', self.bs.getrider())
+        if self.winopen:
+            cw.set('event', 'showinfo', self.info_expand.get_expanded())
+            cw.set('event', 'fsstat', self.fs.getstatus())
+            cw.set('event', 'fsbib', self.fs.getrider())
+            cw.set('event', 'bsstat', self.bs.getstatus())
+            cw.set('event', 'bsbib', self.bs.getrider())
+            cw.set('event', 'start', self.curstart)
+            cw.set('event', 'lstart', self.lstart)
+        else:
+            for key in (
+                    'lstart',
+                    'start',
+                    'fsstat',
+                    'fsbib',
+                    'bsstat',
+                    'bsbib',
+                    'showinfo',
+            ):
+                cw.set('event', key, self._winState[key])
 
         cw.add_section('riders')
         cw.add_section('traces')
@@ -483,7 +492,7 @@ class ittt:
 
         # save out all starters
         for r in self.riders:
-            rno = r[COL_BIB]
+            rno = r[COL_NO]
             # place is saved for info only
             slice = [r[COL_COMMENT], r[COL_SEED], r[COL_PLACE]]
             tl = [r[COL_START], r[COL_FINISH], r[COL_LASTLAP]]
@@ -573,7 +582,7 @@ class ittt:
                 auxmap.append([
                     cnt,
                     strops.riderno_key(r[COL_SEED]),
-                    strops.riderno_key(r[COL_BIB])
+                    strops.riderno_key(r[COL_NO])
                 ])
                 cnt += 1
             auxmap.sort(key=cmp_to_key(self.sort_startlist))
@@ -604,7 +613,7 @@ class ittt:
             blanknames = True
         if self.timetype == 'single':
             for r in self.riders:
-                rno = r[COL_BIB]
+                rno = r[COL_NO]
                 info = None
                 if cats and rno in cats:
                     info = cats[rno]
@@ -643,7 +652,7 @@ class ittt:
             hno = int(ceil(0.5 * count))
             lane = 1
             for r in self.riders:
-                rno = r[COL_BIB]
+                rno = r[COL_NO]
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 rname = ''
                 heat = str(hno) + '.' + str(lane)
@@ -711,7 +720,7 @@ class ittt:
         """Return a list of bibs in the rider model."""
         ret = []
         for r in self.riders:
-            ret.append(r[COL_BIB])
+            ret.append(r[COL_NO])
         return ' '.join(ret)
 
     def delayed_announce(self):
@@ -726,30 +735,24 @@ class ittt:
             # fill in front straight
             fbib = self.fs.getrider()
             if fbib:
-                r = self.getrider(fbib)
+                r = self._getrider(fbib)
                 if r is not None:
-                    clubstr = ''
-                    tcs = r[COL_CLUB]
-                    if tcs and len(tcs) == 3:
-                        clubstr = '(' + tcs + ')'
-                    namestr = strops.fitname(r[COL_FIRSTNAME],
-                                             r[COL_LASTNAME],
-                                             24,
-                                             trunc=True)
+                    namestr = strops.truncpad(r[COL_NAME], 24)
                     placestr = '   '  # 3 ch
                     if r[COL_PLACE]:
                         placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                    bibstr = strops.truncpad(r[COL_BIB], 3, 'r')
+                    bibstr = strops.truncpad(r[COL_NO], 3, 'r')
                     tmstr = ''
                     if r[COL_START] is not None and r[COL_FINISH] is not None:
-                        tmstr = (r[COL_FINISH] - r[COL_START]).rawtime(3)
+                        tmstr = (r[COL_FINISH] - r[COL_START]).rawtime(
+                            self.precision)
                     cmtstr = ''
                     if r[COL_COMMENT]:
                         cmtstr = strops.truncpad(
                             '[' + r[COL_COMMENT].strip() + ']', 38, 'r')
                     self.meet.txt_postxt(3, 0, '        Front Straight')
-                    self.meet.txt_postxt(
-                        4, 0, ' '.join([placestr, bibstr, namestr, clubstr]))
+                    self.meet.txt_postxt(4, 0, ' '.join(
+                        (placestr, bibstr, namestr)))
                     self.meet.txt_postxt(5, 26,
                                          strops.truncpad(tmstr, 12, 'r'))
                     self.meet.txt_postxt(6, 0, cmtstr)
@@ -757,30 +760,24 @@ class ittt:
             # fill in back straight
             bbib = self.bs.getrider()
             if bbib:
-                r = self.getrider(bbib)
+                r = self._getrider(bbib)
                 if r is not None:
-                    clubstr = ''
-                    tcs = r[COL_CLUB]
-                    if tcs and len(tcs) == 3:
-                        clubstr = '(' + tcs + ')'
-                    namestr = strops.fitname(r[COL_FIRSTNAME],
-                                             r[COL_LASTNAME],
-                                             24,
-                                             trunc=True)
+                    namestr = strops.truncpad(r[COL_NAME], 24)
                     placestr = '   '  # 3 ch
                     if r[COL_PLACE]:
                         placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                    bibstr = strops.truncpad(r[COL_BIB], 3, 'r')
+                    bibstr = strops.truncpad(r[COL_NO], 3, 'r')
                     tmstr = ''
                     if r[COL_START] is not None and r[COL_FINISH] is not None:
-                        tmstr = (r[COL_FINISH] - r[COL_START]).rawtime(3)
+                        tmstr = (r[COL_FINISH] - r[COL_START]).rawtime(
+                            self.precision)
                     cmtstr = ''
                     if r[COL_COMMENT]:
                         cmtstr = strops.truncpad(
                             '[' + r[COL_COMMENT].strip() + ']', 38, 'r')
                     self.meet.txt_postxt(3, 42, '        Back Straight')
-                    self.meet.txt_postxt(
-                        4, 42, ' '.join([placestr, bibstr, namestr, clubstr]))
+                    self.meet.txt_postxt(4, 42, ' '.join(
+                        (placestr, bibstr, namestr)))
                     self.meet.txt_postxt(5, 68,
                                          strops.truncpad(tmstr, 12, 'r'))
                     self.meet.txt_postxt(6, 42, cmtstr)
@@ -794,41 +791,20 @@ class ittt:
                 if count == 19:
                     curline = 9
                     posoft = 42
-
-                clubstr = ''
-                tcs = r[COL_CLUB]
-                if tcs and len(tcs) == 3:
-                    clubstr = ' (' + tcs + ')'
-
-                namestr = ''
-                if not self.teamnames:
-                    namestr = strops.truncpad(
-                        strops.fitname(r[COL_FIRSTNAME], r[COL_LASTNAME],
-                                       20 - len(clubstr)) + clubstr, 20)
-                else:
-                    namestr = strops.truncpad(r[COL_FIRSTNAME], 20)
+                namestr = strops.truncpad(r[COL_NAME], 22)
                 placestr = '   '  # 3 ch
                 if r[COL_PLACE]:
                     placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                bibstr = strops.truncpad(r[COL_BIB], 3, 'r')
+                bibstr = strops.truncpad(r[COL_NO], 3, 'r')
                 tmstr = '         '  # 9 ch
                 if r[COL_START] is not None and r[COL_FINISH] is not None:
                     tmstr = strops.truncpad(
-                        (r[COL_FINISH] - r[COL_START]).rawtime(3), 9, 'r')
+                        (r[COL_FINISH] - r[COL_START]).rawtime(self.precision),
+                        9, 'r')
                 self.meet.txt_postxt(
-                    curline, posoft,
-                    ' '.join([placestr, bibstr, namestr, tmstr]))
+                    curline, posoft, ' '.join(
+                        (placestr, bibstr, namestr, tmstr)))
                 curline += 1
-
-    def shutdown(self, win=None, msg='Exiting'):
-        """Terminate race object."""
-        rstr = ''
-        if self.readonly:
-            rstr = 'readonly '
-        _log.debug('Shutdown %sevent %s: %s', rstr, self.evno, msg)
-        if not self.readonly:
-            self.saveconfig()
-        self.winopen = False
 
     def do_properties(self):
         """Run race properties dialog."""
@@ -941,7 +917,7 @@ class ittt:
     def result_gen(self):
         """Generator function to export rankings."""
         for r in self.riders:
-            bib = r[COL_BIB]
+            bib = r[COL_NO]
             rank = None
             time = None
             info = None
@@ -984,22 +960,19 @@ class ittt:
         pcount = 0
         for r in self.riders:
             rcount += 1
-            rno = r[COL_BIB]
+            rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             if rh is None:
-                _log.warning('Rider info not found %r', rno)
-                continue
+                self.meet.rdb.add_empty(bib, self.series)
+                rh = self.meet.rdb.get_rider(bib, self.series)
 
-            rank = None
-            rname = ''
-            plink = ''
-            if not self.teamnames:
-                rname = rh.resname()
-            else:  # Team no hack
-                rno = ' '  # force name
-                rname = rh['first']
-            rtime = None
             rcat = None
+            plink = ''
+            rank = None
+            rname = rh.resname()
+            if self.teamnames:
+                rno = ' '  # force name
+            rtime = None
             # consider partners here
             if rh.in_cat('tandem') and rh['note']:
                 ph = self.meet.rdb.get_rider(rh['note'], self.series)
@@ -1008,11 +981,6 @@ class ittt:
                         '', '',
                         ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
                     ]
-            if self.event['cate']:
-                if rh['cat']:
-                    rcat = rh['cat']
-            if rh['uciid']:
-                rcat = rh['uciid']  # overwrite by force
             if self.showcats:
                 rcat = rh.primary_cat()
             info = None
@@ -1176,7 +1144,7 @@ class ittt:
             _log.warning('Last lap data not available for %r', sp.getrider())
 
         # update model with result
-        ri = self.getiter(sp.getrider())
+        ri = self._getiter(sp.getrider())
         if ri is not None:
             self.settimes(ri, self.curstart, t, prev, sp.splits)
         else:
@@ -1323,51 +1291,123 @@ class ittt:
         for r in self.riders:
             r[COL_PLACE] = ''
 
-    def getrider(self, bib):
+    def inevent(self, bib):
+        """Return true if rider appears in model."""
+        return self._getrider(bib) is not None
+
+    def _getrider(self, bib):
         """Return temporary reference to model row."""
+        bib = bib.upper()
         ret = None
         for r in self.riders:
-            if r[COL_BIB] == bib:
+            if r[COL_NO] == bib:
                 ret = r
                 break
         return ret
 
+    def _getiter(self, bib):
+        """Return temporary iterator to model row."""
+        bib = bib.upper()
+        i = self.riders.get_iter_first()
+        while i is not None:
+            if self.riders.get_value(i, COL_NO) == bib:
+                break
+            i = self.riders.iter_next(i)
+        return i
+
+    def delrider(self, bib):
+        # Issue warning if removed rider in result
+        bib = bib.upper()
+        if self.results.rank(bib) is not None:
+            _log.warning('Removed rider %r was in event %r result', bib,
+                         self.evno)
+            self.results.remove(bib)
+            for split in self.splitap.values():
+                split['data'].remove(bib)
+            if bib in self.traces:
+                del self.traces[bib]
+        elif 'fsbib' in self._winState and self._winState['fsbib'].upper(
+        ) == bib:
+            _log.warning('Removed rider %r in event %r front timer', bib,
+                         self.evno)
+        elif 'bsbib' in self._winState and self._winState['bsbib'].upper(
+        ) == bib:
+            _log.warning('Removed rider %r in event %r back timer', bib,
+                         self.evno)
+
+        i = self._getiter(bib)
+        if i is not None:
+            self.riders.remove(i)
+
+    def changerider(self, oldNo, newNo):
+        """Update rider no in event"""
+        oldNo = oldNo.upper()
+        newNo = newNo.upper()
+        if self.inevent(oldNo):
+            if oldNo != newNo and not self.inevent(newNo):
+                name = ''
+                dbr = self.meet.rdb.get_rider(newNo, self.series)
+                if dbr is not None:
+                    name = dbr.listname()
+                for r in self.riders:
+                    if r[COL_NO] == oldNo:
+                        _log.debug('Updating number %s -> %s in event %s',
+                                   oldNo, newNo, self.evno)
+                        r[COL_NO] = newNo
+                        r[COL_NAME] = name
+                        break
+                for split in self.splitmap.values():
+                    split['data'].changeno(oldNo, newNo)
+                self.results.changeno(oldNo, newNo)
+                if oldNo in self.traces:
+                    self.traces[newNo] = self.traces[oldNo]
+                    del self.traces[oldNo]
+                return True
+        return False
+
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
+        bib = bib.upper()
         istr = ''
         if info is not None:
             istr = str(info)
-        nr = [bib, '', '', '', '', istr, '', None, None, None, None]
-        ri = self.getrider(bib)
+        ri = self._getrider(bib)
         if ri is None:  # adding a new record
+            nr = [bib, '', '', '', '', istr, '', None, None, None, None]
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
-                nr[1] = dbr['first']
-                nr[2] = dbr['last']
-                nr[3] = dbr['org']
+                nr[COL_NAME] = dbr.listname()
             self.riders.append(nr)
         else:
             # rider exists in model, just update the seed value
             ri[COL_SEED] = istr
 
-    def editcol_db(self, cell, path, new_text, col):
-        """Cell update with writeback to meet."""
-        new_text = new_text.strip()
-        self.riders[path][col] = new_text
-        dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB], self.series)
-        if dbr is None:
-            self.meet.rdb.add_empty(self.riders[path][COL_BIB], self.series)
-            dbr = self.meet.rdb.get_rider(self.riders[path][COL_BIB],
-                                          self.series)
-        if dbr is not None:
-            if col == COL_FIRSTNAME:
-                dbr['first'] = new_text
-            elif col == COL_LASTNAME:
-                dbr['last'] = new_text
-            elif col == COL_CLUB:
-                dbr['org'] = new_text
-            else:
-                _log.debug('Ignore update to unknown column')
+    def _editseed_cb(self, cell, path, new_text, col):
+        """Edit the rider seeding."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            self.riders[path][col] = new_text
+
+    def _editmembers_cb(self, cell, path, new_text, col):
+        """Edit the team members list."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            # TODO: parse and verify team members
+            self.riders[path][col] = new_text
+
+    def _editname_cb(self, cell, path, new_text, col):
+        """Edit the rider name if possible."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            self.riders[path][col] = new_text
+            rNo = self.riders[path][COL_NO]
+            dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is None:
+                # Assume one is required
+                self.meet.rdb.add_empty(rNo, self.series)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
+            dbr.rename(new_text)
 
     def placexfer(self):
         """Transfer places into model."""
@@ -1391,7 +1431,7 @@ class ittt:
             else:
                 place = self.results.rank(bib) + 1
                 self.onestart = True
-            i = self.getiter(bib)
+            i = self._getiter(bib)
             if i is not None:
                 if place == 'comment':  # superfluous but ok
                     place = self.riders.get_value(i, COL_COMMENT)
@@ -1409,15 +1449,6 @@ class ittt:
             else:
                 self._standingstr = 'Virtual Standing'
 
-    def getiter(self, bib):
-        """Return temporary iterator to model row."""
-        i = self.riders.get_iter_first()
-        while i is not None:
-            if self.riders.get_value(i, COL_BIB) == bib:
-                break
-            i = self.riders.iter_next(i)
-        return i
-
     def settimes(self,
                  iter,
                  st=None,
@@ -1427,7 +1458,7 @@ class ittt:
                  doplaces=True,
                  comment=None):
         """Transfer race times into rider model."""
-        bib = self.riders.get_value(iter, COL_BIB)
+        bib = self.riders.get_value(iter, COL_NO)
         # clear result for this bib
         self.results.remove(bib)
         # assign tods
@@ -1521,7 +1552,7 @@ class ittt:
         """Abort the selected lane."""
         if sp.getstatus() not in ['idle', 'caught', 'finish']:
             bib = sp.getrider()
-            ri = self.getiter(bib)
+            ri = self._getiter(bib)
             if ri is not None:
                 self.settimes(ri,
                               st=self.curstart,
@@ -1540,7 +1571,7 @@ class ittt:
             op = self.t_other(sp)
             if op.getstatus() not in ['idle', 'finish']:
                 bib = op.getrider()
-                ri = self.getiter(bib)
+                ri = self._getiter(bib)
 
                 if ri is not None:
                     self.settimes(ri,
@@ -1558,7 +1589,7 @@ class ittt:
                         self.meet.gemini.set_time('    -:--.-  ', 1)
             if sp.getstatus() not in ['idle', 'finish']:
                 bib = sp.getrider()
-                ri = self.getiter(bib)
+                ri = self._getiter(bib)
                 if ri is not None:
                     self.settimes(ri,
                                   st=self.curstart,
@@ -1620,39 +1651,42 @@ class ittt:
             self.bs.toload()
         self.toidle(idletimers=False)
 
+    def _getname(self, bib, width=32):
+        """Return a name and club for the rider if known"""
+        name = ''
+        club = ''
+        dbr = self.meet.rdb.get_rider(bib, self.series)
+        if dbr is not None:
+            name = dbr.fitname(width)
+            club = dbr['organisation']
+        return name, club
+
     def fmtridername(self, tp):
         """Prepare rider name for display on scoreboard."""
         bib = tp.getrider().strip()
         if bib != '':
-            name = '[New Rider]'
-            r = self.getrider(bib)
-            ret = name
-            if r is not None and r[COL_BIB] != '':
-                club = ''
-                if len(r[COL_CLUB]) == 3:
-                    club = r[COL_CLUB]
+            ret = ''
+            name = ''
+            club = ''
+            r = self._getrider(bib)
+            if r is not None and r[COL_NO]:
                 if self.teamnames:
-                    name = r[COL_FIRSTNAME]
-                    name_w = self.meet.scb.linelen - 5  # w=4 + space
-                    ret = ' '.join([
-                        strops.truncpad(name, name_w, 'l'),
-                        strops.truncpad(club, 4, 'r')
-                    ])
-                    tp.namevec = [bib, ret, club]
+                    name_w = self.meet.scb.linelen - 5
                 else:
                     name_w = self.meet.scb.linelen - 9
-                    first = r[COL_FIRSTNAME]
-                    last = r[COL_LASTNAME]
-                    name = strops.fitname(first, last, name_w)
-                    tp.namevec = [bib, strops.resname(first, last, club), '']
-                    ret = ' '.join([
-                        strops.truncpad(r[COL_BIB], 3, 'r'),
-                        strops.truncpad(name, name_w),
-                        strops.truncpad(club, 4, 'r')
-                    ])
+                name, club = self._getname(r[COL_NO], width=name_w)
+                if len(club) != 3:
+                    club = ''
+                if self.teamnames:
+                    fmt = ((name_w, 'l'), (5, 'r'))
+                    row = (name, club)
+                    ret = scbwin.fmt_row(fmt, row)
+                else:
+                    fmt = ((3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
+                    row = (r[COL_NO], name, club)
+                    ret = scbwin.fmt_row(fmt, row)
             return ret
         else:
-            tp.namevec = None
             return ''
 
     def showtimerwin(self):
@@ -1743,25 +1777,23 @@ class ittt:
 
     def lanelookup(self, bib=None):
         """Prepare name string for timer lane."""
-        r = self.getrider(bib)
+        r = self._getrider(bib)
         if r is None:
             if self.meet.get_clubmode():
-                _log.info('Adding non-starter: %r', bib)
+                _log.warning('Adding non-starter %r', bib)
                 self.addrider(bib)
-                r = self.getrider(bib)
-            else:  # 'champs' mode
+                r = self._getrider(bib)
+            else:
+                _log.warning('Rider %r not in event', bib)
                 return None
         rtxt = '[New Rider]'
         if r is not None:
-            club = ''
-            if len(r[COL_CLUB]) == 3:
-                club = r[COL_CLUB]
-            rtxt = strops.listname(r[COL_FIRSTNAME], r[COL_LASTNAME], club)
+            rtxt = r[COL_NAME]
         return rtxt
 
     def bibent_cb(self, entry, tp):
         """Bib entry callback."""
-        bib = entry.get_text().strip()
+        bib = entry.get_text().strip().upper()
         if bib != '' and bib.isalnum():
             nstr = self.lanelookup(bib)
             if nstr is not None:
@@ -1798,7 +1830,7 @@ class ittt:
         sel = self.view.get_selection().get_selected()
         if sel is not None:
             self.settimes(sel[1])
-            self.log_clear(self.riders.get_value(sel[1], COL_BIB))
+            self.log_clear(self.riders.get_value(sel[1], COL_NO))
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_rel_activate_cb(self, menuitem, data=None):
@@ -1840,7 +1872,7 @@ class ittt:
         """Print Rider trace"""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            bib = self.riders.get_value(sel[1], COL_BIB)
+            bib = self.riders.get_value(sel[1], COL_NO)
             if bib in self.traces:
                 secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
                 sec = report.preformat_text(secid)
@@ -1861,8 +1893,8 @@ class ittt:
 
         i = sel[1]
         lr = Gtk.TreeModelRow(self.riders, i)
-        namestr = lr[COL_BIB]
-        dbr = self.meet.rdb.get_rider(lr[COL_BIB], self.series)
+        namestr = lr[COL_NO]
+        dbr = self.meet.rdb.get_rider(lr[COL_NO], self.series)
         if dbr is not None:
             namestr = dbr.resname_bib()
         placestr = ''
@@ -1941,7 +1973,7 @@ class ittt:
                 else:
                     _log.debug('Unknown option %r changed', option)
         if dotimes:
-            bib = lr[COL_BIB]
+            bib = lr[COL_NO]
             stod = lr[COL_START]
             ftod = lr[COL_FINISH]
             if stod is not None and ftod is not None:
@@ -2006,12 +2038,6 @@ class ittt:
                 self.fs.frame.set_label('Front Straight')
                 self.fs.show_splits()
 
-    def destroy(self):
-        """Signal race shutdown."""
-        if self.context_menu is not None:
-            self.context_menu.destroy()
-        self.frame.destroy()
-
     def show(self):
         """Show race window."""
         self.frame.show()
@@ -2052,7 +2078,7 @@ class ittt:
         self.bsvec = None
         self.fslog = None
         self.bslog = None
-        self.traces = {}
+        self._winState = {}
 
         # race run time attributes
         self._standingstr = ''
@@ -2070,14 +2096,16 @@ class ittt:
         self.difflane = None  # for diff time in pursuit race
         self.splitlist = []  # ordered list of split ids
         self.splitmap = {}  # map of split ids and rank data
-        self.results = tod.todlist('FIN')  # FIX FOR LAST LAP
+        self.results = tod.todlist('FIN')
         self.context_menu = None
+        self.traces = {}
+        self._winState = {}  # cache ui settings for headless load/save
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
-            str,  # 1 firstname
-            str,  # 2 lastname
-            str,  # 3 club
+            str,  # 1 name
+            str,  # 2 reserved
+            str,  # 3 reserved
             str,  # 4 Comment
             str,  # 5 seeding
             str,  # 6 place
@@ -2089,7 +2117,6 @@ class ittt:
         if ui:
             b = uiutil.builder('ittt.ui')
             self.frame = b.get_object('race_vbox')
-            self.frame.connect('destroy', self.shutdown)
 
             # meta info pane
             self.info_expand = b.get_object('info_expand')
@@ -2121,20 +2148,14 @@ class ittt:
             t.set_rules_hint(True)
             t.connect('button_press_event', self.treeview_button_press)
 
-            # TODO: show team name & club but pop up for rider list
-            uiutil.mkviewcoltxt(t, 'No.', COL_BIB, calign=1.0)
+            uiutil.mkviewcoltxt(t, 'No.', COL_NO, calign=1.0)
             uiutil.mkviewcoltxt(t,
-                                'First Name',
-                                COL_FIRSTNAME,
-                                self.editcol_db,
+                                'Name',
+                                COL_NAME,
+                                self._editname_cb,
                                 expand=True)
-            uiutil.mkviewcoltxt(t,
-                                'Last Name',
-                                COL_LASTNAME,
-                                self.editcol_db,
-                                expand=True)
-            uiutil.mkviewcoltxt(t, 'Club', COL_CLUB, self.editcol_db)
-            uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self.editcol_db)
+            #uiutil.mkviewcoltxt(t, 'Members', COL_MEMBERS, self._editmembers_cb)
+            uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self._editseed_cb)
             uiutil.mkviewcoltod(t, 'Time/Last Lap', cb=self.todstr)
             uiutil.mkviewcoltxt(t, 'Rank', COL_PLACE, halign=0.5, calign=0.5)
 

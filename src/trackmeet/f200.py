@@ -151,6 +151,7 @@ class f200:
         self.timerwin = False
         fmtplaces = []
         name_w = self.meet.scb.linelen - 12
+        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         pcount = 0
         rcount = 0
         for r in self.riders:
@@ -165,7 +166,6 @@ class f200:
                     club = ''
                 bib = r[COL_NO]
                 fmtplaces.append((plstr, bib, name, club))
-        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
 
         evtstatus = 'Standings'
         if rcount > 0 and pcount == rcount:
@@ -281,10 +281,10 @@ class f200:
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
             nri = self.riders.append(nr)
-            self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
             if not self.readonly:
                 if cr.has_option('traces', r):
                     self.traces[r] = cr.get('traces', r)
+            self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
         self.placexfer()
 
         if not self.onestart and self.event['auto']:
@@ -565,8 +565,8 @@ class f200:
                     tmstr = strops.truncpad(
                         (r[COL_FINISH] - r[COL_START]).rawtime(3), 7, 'r')
                 self.meet.txt_postxt(
-                    curline, posoft,
-                    ' '.join([placestr, bibstr, namestr, tmstr]))
+                    curline, posoft, ' '.join(
+                        (placestr, bibstr, namestr, tmstr)))
                 curline += 1
 
     def do_properties(self):
@@ -720,7 +720,6 @@ class f200:
             rcat = None
             plink = ''
             rank = None
-
             rname = rh.resname()
             # consider partners here
             if rh.in_cat('tandem') and rh['note']:
@@ -987,6 +986,8 @@ class f200:
                          self.evno)
             self.splits.remove(bib)
             self.results.remove(bib)
+            if bib in self.traces:
+                del self.traces[bib]
         if 'fsbib' in self._winState and self._winState['fsbib'].upper(
         ) == bib:
             _log.warning('Removed rider %r in event %r timer', bib, self.evno)
@@ -1014,6 +1015,9 @@ class f200:
                         break
                 self.splits.changeno(oldNo, newNo)
                 self.results.changeno(oldNo, newNo)
+                if oldNo in self.traces:
+                    self.traces[newNo] = self.traces[oldNo]
+                    del self.traces[oldNo]
                 return True
         return False
 

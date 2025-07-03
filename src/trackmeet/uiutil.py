@@ -339,7 +339,7 @@ class timerpane:
             # reduce recover time on half laps
             recov = 2
         self.recovtod.timeval = nt.timeval + recov
-        self.set_time(nt.timestr(3))
+        self.set_time(nt.timestr(self.precision))
         self.torunning()
 
         # store intermedate split in local split cache
@@ -366,7 +366,7 @@ class timerpane:
         #       a dummy sid for event distance
         self.finishtod = fintod
         self.ls.set_text('Finish')
-        self.set_time((self.finishtod - self.starttod).timestr(3))
+        self.set_time((self.finishtod - self.starttod).timestr(self.precision))
         self.tofinish()
 
     def tofinish(self, status='finish'):
@@ -459,6 +459,7 @@ class timerpane:
         s.set_shadow_type(Gtk.ShadowType.IN)
         s.show()
         self.doser = doser
+        self.precision = 3
 
         #v = Gtk.VBox(False, 5)
         v = Gtk.Box.new(Gtk.Orientation.VERTICAL, 5)
