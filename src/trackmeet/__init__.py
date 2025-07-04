@@ -294,7 +294,7 @@ def mkrace(meet, event, ui=True):
     ):
         ret = ittt.ittt(meet=meet, event=event, ui=ui)
     elif etype in (
-            'scratch',
+            # 'scratch',  # requires some work
             'points',
             'madison',
             'omnium',
@@ -867,8 +867,10 @@ class trackmeet:
                 race.addrider(st)
 
     def autoplace_riders(self, race, autospec='', infocol=None, final=False):
-        """Fetch a flat list of places from the autospec."""
-        # TODO: Consider an alternative since this is only used by ps
+        """Fetch a flat list of places from the autospec.
+
+        If final not set, return standings from incomplete event
+        """
         places = {}
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
@@ -883,8 +885,6 @@ class trackmeet:
                         h = mkrace(self, e, False)
                         h.loadconfig()
                         isFinal = h.standingstr() == 'Result'
-                        _log.debug('Event %r status: %r, final=%r', evno,
-                                   h.standingstr(), isFinal)
                         if not final or isFinal:
                             for ri in h.result_gen():
                                 if isinstance(ri[1],
@@ -901,10 +901,11 @@ class trackmeet:
                     _log.debug('Ignoring loop in auto placelist: %r', evno)
             else:
                 _log.warning('Ignoring erroneous autospec group: %r', egroup)
+        ## TODO: insert placeholders 'X' for missing ranks and return
+        ##       entries for all ranks 1-max
         ret = ''
         for place in sorted(places):
             ret += ' ' + '-'.join(places[place])
-        ## TODO: append to [] then join
         _log.debug('Place set: %r', ret)
         return ret
 
@@ -915,7 +916,7 @@ class trackmeet:
         #                   1 -> rank (ps/omnium, pursuit)
         #                   2 -> time (sprint)
         #                   3 -> info (handicap)
-        # TODO: IMPORTANT cache result gens for fast recall
+        # TODO: cache result gens
         if len(self.autorecurse) > MAX_AUTORECURSE:
             _log.debug('Recursion limit exceeded %s=%s', race.event['evid'],
                        autospec)
@@ -1193,7 +1194,7 @@ class trackmeet:
         self.report_strings(orep)
         orep.strings['docstr'] = ''
         orep.strings['subtitle'] = self.subtitle
-        orep.set_provisional(self.provisional)  # ! TODO
+        orep.set_provisional(self.provisional)
         orep.shortname = self.shortname
         if self.indexlink:
             orep.indexlink = self.indexlink
@@ -1385,7 +1386,7 @@ class trackmeet:
                     orep.strings['docstr'] = evstr
                     if etype in ['classification']:
                         orep.strings['docstr'] += ' Classification'
-                    orep.set_provisional(self.provisional)  # ! TODO
+                    orep.set_provisional(self.provisional)
                     if self.provisional:
                         orep.reportstatus = 'provisional'
                     else:
@@ -1426,62 +1427,6 @@ class trackmeet:
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
 
-                    # TODO: startlist data [to be removed]
-                    sdata = {
-                        'id': e['evid'],
-                        'reference': e['reference'],
-                        'event': e['evov'],
-                        'prefix': e['prefix'],
-                        'info': e['info'],
-                        'laps': e['laps'],
-                        'diststr': e['distance'],
-                        'progression': e['phase'],
-                        'footer': e['record'],
-                        'startlist': []
-                    }
-                    if startsec is not None and startsec.lines:
-                        for l in startsec.lines:
-                            if l[1]:
-                                startdat = {
-                                    'no': l[1],
-                                    'rider': l[2],
-                                    'info': l[3]
-                                }
-                                sdata['startlist'].append(startdat)
-                    ofile = os.path.join(EXPORTPATH,
-                                         basename + '_startlist.json')
-                    with metarace.savefile(ofile) as f:
-                        json.dump(sdata, f)
-
-                    # TODO: result data file [to be removed]
-                    rdata = {
-                        'id': e['evid'],
-                        'reference': e['reference'],
-                        'event': e['evov'],
-                        'prefix': e['prefix'],
-                        'info': e['info'],
-                        'laps': e['laps'],
-                        'diststr': e['distance'],
-                        'progression': e['phase'],
-                        'footer': e['record'],
-                        'status': r.standingstr(),
-                        'result': []
-                    }
-                    if ressec is not None and ressec.lines:
-                        for l in ressec.lines:
-                            if l[0]:
-                                resdat = {
-                                    'rank': l[0],
-                                    'no': l[1],
-                                    'rider': l[2],
-                                    'info': l[3],
-                                    'time': l[4],
-                                    'points': l[5]
-                                }
-                                rdata['result'].append(resdat)
-                    ofile = os.path.join(EXPORTPATH, basename + '_result.json')
-                    with metarace.savefile(ofile) as f:
-                        json.dump(rdata, f)
                 # release handle provided by mkrace
                 r = None
             if self.mirrorpath:
@@ -2622,11 +2567,86 @@ class trackmeet:
             _log.debug('No rows selected for starters')
             return False
 
+        # check action
+        action = 'add'
+        if menuitem is not None and menuitem.get_label() == 'Del Starters':
+            action = 'del'
+
         # convert model iters into a list of event numbers
         model, iters = sel.get_selected_rows()
         elist = [model[i][3] for i in iters]
+        cnt = len(elist)
+        msgv = []
+        if action == 'add':
+            msgv.append('Add to')
+        else:
+            msgv.append('Remove from')
+        if cnt == 1:
+            if elist[0] in self.edb:
+                evt = self.edb[elist[0]]
+                msgv.append('Event')
+                evno = evt['evid']
+                msgv.append(evno)
+                evov = evt.get_evno()
+                if evov != evno:
+                    msgv.append('(%s)' % (evov, ))
+                ifstr = evt.get_info()
+                if ifstr:
+                    msgv.append(':')
+                    msgv.append(ifstr)
+        else:
+            msgv.append('%d selected events' % (cnt, ))
+        msg = ' '.join(msgv)
 
-        _log.info('TODO: starter entry dialog')
+        sections = {
+            'starters': {
+                'object': None,
+                'title': 'Edit Starters',
+                'schema': {
+                    'title': {
+                        'control': 'section',
+                        'prompt': msg,
+                    },
+                    'adds': {
+                        'prompt': 'Starters:',
+                        'hint': 'Rider no list, range or category code',
+                    }
+                }
+            }
+        }
+        res = uiutil.options_dlg(window=self.window,
+                                 action=True,
+                                 title='Add Starters',
+                                 sections=sections)
+        if res['action'] == 0:  # OK
+            adds = res['starters']['adds'][2]
+            for evid in elist:
+                if evid in self.edb:
+                    ev = self.edb[evid]
+                    series = ev['series']
+                    slist = strops.riderlist_split(adds, self.rdb, series)
+                    if ev['type'] not in ('classification', ):
+                        _log.debug('%s %r %r to %s', action, adds, slist,
+                                   ev['evid'])
+                        if self.curevent is not None and self.curevent.evno == evid:
+                            for rno in slist:
+                                if action == 'add':
+                                    self.curevent.addrider(rno)
+                                else:
+                                    self.curevent.delrider(rno)
+                            self.curevent.event.set_value('dirty', True)
+                        else:
+                            r = mkrace(meet=self, event=ev, ui=False)
+                            r.readonly = False
+                            r.loadconfig()
+                            for rno in slist:
+                                if action == 'add':
+                                    r.addrider(rno)
+                                else:
+                                    r.delrider(rno)
+                            r.saveconfig()
+                            r = None
+                        ev.set_value('dirty', True)
 
     def event_popup_duplicate_cb(self, menuitem, data=None):
         """Duplicate selected event program entries"""

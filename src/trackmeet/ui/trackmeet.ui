@@ -81,8 +81,16 @@
                       <object class="GtkMenu" id="menu6">
                         <property name="visible">True</property>
                         <child>
+                          <object class="GtkMenuItem" id="menu_race_addnew">
+                            <property name="label">Add new</property>
+                            <property name="visible">True</property>
+                            <accelerator key="n" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                            <signal name="activate" handler="menu_race_make_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkMenuItem" id="menu_race_new">
-                            <property name="label">_New</property>
+                            <property name="label">New</property>
                             <property name="visible">True</property>
                             <property name="use_underline">True</property>
                             <child type="submenu">
@@ -879,8 +887,15 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="event_starters">
+      <object class="GtkMenuItem" id="event_astarters">
         <property name="label">Add Starters</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_starters_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_dstarters">
+        <property name="label">Del Starters</property>
         <property name="visible">True</property>
         <signal name="activate" handler="event_popup_starters_cb"/>
       </object>
