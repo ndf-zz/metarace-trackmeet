@@ -39,7 +39,7 @@ EVENT_ID = 'ittt-2.1'
 # event model columns
 COL_NO = 0
 COL_NAME = 1
-#COL_MEMBERS = 3
+COL_MEMBERS = 3
 COL_COMMENT = 4
 COL_SEED = 5
 COL_PLACE = 6
@@ -47,6 +47,7 @@ COL_START = 7
 COL_FINISH = 8
 COL_LASTLAP = 9
 COL_SPLITS = 10
+_VIEWCOL_MEMBERS = 2  # Team member list col
 
 # scb function key mappings
 key_reannounce = 'F4'  # (+CTRL) calls into delayed announce
@@ -93,6 +94,8 @@ class ittt:
                     if rh is not None:
                         _log.debug('Rider change notify: %r', rider)
                         rh[COL_NAME] = dbr.listname()
+                        if not rh[COL_MEMBERS]:
+                            rh[COL_MEMBERS] = dbr['members']
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -361,6 +364,8 @@ class ittt:
                     co = ril[0]
                 if len(ril) >= 2:  # write heat into rec
                     nr[COL_SEED] = ril[1]
+                if len(ril) >= 3:  # write heat into rec
+                    nr[COL_MEMBERS] = ril[2]
                 if len(ril) >= 4:  # Start ToD and others
                     st = tod.mktod(ril[3])
                     if st is not None:
@@ -372,6 +377,9 @@ class ittt:
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
+                if not nr[COL_MEMBERS]:
+                    # pull in members from riderdb if not yet defined
+                    nr[COL_MEMBERS] = dbr['members']
             nri = self.riders.append(nr)
             if not self.readonly:
                 # skip fetching traces and split if opened readonly
@@ -391,6 +399,8 @@ class ittt:
                                        infocol=self.seedsrc)
 
         if self.winopen:
+            if self.teamnames:
+                self.view.get_column(_VIEWCOL_MEMBERS).set_visible(True)
             self.fs.precision = self.precision
             self.bs.precision = self.precision
             self.update_expander_lbl_cb()
@@ -406,8 +416,8 @@ class ittt:
 
             # Front straight
             fsstat = cr.get('event', 'fsstat')
-            if fsstat in ['running',
-                          'load']:  # running with no start gets load
+            if fsstat in ('running',
+                          'load'):  # running with no start gets load
                 self.fs.setrider(cr.get('event', 'fsbib'))  # will set 'load'
                 if fsstat == 'running' and curstart is not None:
                     self.fs.start(curstart)  # overrides to 'running'
@@ -415,8 +425,8 @@ class ittt:
 
             # Back straight
             bsstat = cr.get('event', 'bsstat')
-            if bsstat in ['running',
-                          'load']:  # running with no start gets load
+            if bsstat in ('running',
+                          'load'):  # running with no start gets load
                 self.bs.setrider(cr.get('event', 'bsbib'))  # will set 'load'
                 if bsstat == 'running' and curstart is not None:
                     self.bs.start(curstart)  # overrides to 'running'
@@ -493,8 +503,7 @@ class ittt:
         # save out all starters
         for r in self.riders:
             rno = r[COL_NO]
-            # place is saved for info only
-            slice = [r[COL_COMMENT], r[COL_SEED], r[COL_PLACE]]
+            slice = [r[COL_COMMENT], r[COL_SEED], r[COL_MEMBERS]]
             tl = [r[COL_START], r[COL_FINISH], r[COL_LASTLAP]]
             for t in tl:
                 if t is not None:
@@ -531,7 +540,7 @@ class ittt:
         sec.showheats = True
         if self.timetype == 'single':
             sec.set_single()
-            if 't' in self.series and self.series != 'tmsl':
+            if self.teamnames and self.series != 'tmsl':
                 # TMSL is for madison support events
                 sec.showheats = True
 
@@ -606,9 +615,6 @@ class ittt:
                 self.addrider(str(miss))  # WARNING!
                 miss += 1
         blanknames = False
-        teams = False
-        if 't' in self.series:  # Team no hack
-            teams = True
         if placeholders > 0:
             blanknames = True
         if self.timetype == 'single':
@@ -621,21 +627,20 @@ class ittt:
                 rname = ''
                 heat = str(count) + '.1'
                 if rh is not None:
-                    if not teams:
-                        rname = rh.resname()
-                    else:
-                        rname = rh['first']
+                    rname = rh.resname()
+                    if self.teamnames:
                         # todo: remove madison teams from ittt
                         info = []
                         col = 'black'
-                        for trno in strops.riderlist_split(rh['note']):
-                            trh = self.meet.rdb.get_rider(trno)  #!! SERIES?
+                        for member in r[COL_MEMBERS].split():
+                            trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
-                                if self.series == 'tmsl':
+                                trno = trh['no']
+                                if self.series == 'tmsl':  # TODO: remove
                                     trno = col
                                     col = 'red'
                                 info.append([trno, trh.resname(), None])
-                    # consider partners here
+                    # TODO: fix tandem labels
                     if rh.in_cat('tandem') and rh['note']:
                         ph = self.meet.rdb.get_rider(rh['note'], self.series)
                         if ph is not None:
@@ -643,7 +648,7 @@ class ittt:
                                 ' ',
                                 ph.resname() + ' - Pilot', ph['uciid']
                             ]]
-                if teams:  # Team no hack
+                if self.teamnames:  # Team no hack
                     rno = ' '  # force name
                 hlist.append([heat, rno, rname, info])
                 # all heats are one up
@@ -660,21 +665,20 @@ class ittt:
                 if cats and rno in cats:
                     info = cats[rno]
                 if rh is not None:
-                    if not teams:
-                        rname = rh.resname()
-                    else:
-                        rname = rh['first']
+                    rname = rh.resname()
+                    if self.teamnames:
                         # todo: remove madison teams from ittt
                         info = []
                         col = 'black'
-                        for trno in strops.riderlist_split(rh['note']):
-                            trh = self.meet.rdb.get_rider(trno)  #!! SERIES?
+                        for member in r[COL_MEMBERS].split():
+                            trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
-                                if self.series == 'tmsl':
+                                trno = trh['no']
+                                if self.series == 'tmsl':  # TODO: remove
                                     trno = col
                                     col = 'red'
                                 info.append([trno, trh.resname(), None])
-                    # consider partners here
+                    # TODO: fix tandem labels
                     if rh.in_cat('tandem') and rh['note']:
                         ph = self.meet.rdb.get_rider(rh['note'], self.series)
                         if ph is not None:
@@ -682,7 +686,7 @@ class ittt:
                                 ' ',
                                 ph.resname() + ' - Pilot', ph['uciid']
                             ]]
-                if 't' in self.series:  # Team no hack
+                if self.teamnames:
                     rno = ' '  # force name
                 hlist.append([heat, rno, rname, info])
                 lane += 1
@@ -922,7 +926,7 @@ class ittt:
             time = None
             info = None
             cmts = r[COL_COMMENT]
-            if cmts in ('caught', 'rel', 'w/o', 'lose'):
+            if cmts in ('caught', 'rel', 'abd', 'w/o', 'lose'):
                 info = cmts
             if self.onestart:
                 pls = r[COL_PLACE]
@@ -973,7 +977,7 @@ class ittt:
             if self.teamnames:
                 rno = ' '  # force name
             rtime = None
-            # consider partners here
+            # TODO: fix tandem labels
             if rh.in_cat('tandem') and rh['note']:
                 ph = self.meet.rdb.get_rider(rh['note'], self.series)
                 if ph is not None:
@@ -1007,18 +1011,24 @@ class ittt:
                 elif r[COL_COMMENT]:
                     if r[COL_COMMENT] in ('catch', 'caught'):
                         rtime = str(r[COL_COMMENT])
-                    elif r[COL_COMMENT] not in ('dns', 'dsq', 'dnf'):
+                    elif r[COL_COMMENT] not in ('abd', 'dns', 'dsq', 'dnf'):
                         rtime = 'ntr'
             if rank:
                 sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
                 finriders.add(rno)
                 # then add team members if relevant
-                if 't' in self.series:
-                    for trno in strops.riderlist_split(rh['note']):
-                        trh = self.meet.rdb.get_rider(trno)  #!! SERIES?
+                if self.teamnames:
+                    # todo: remove madison teams from ittt
+                    col = 'black'
+                    for member in r[COL_MEMBERS].split():
+                        trh = self.meet.rdb.fetch_bibstr(member)
                         if trh is not None:
+                            trno = trh['no']
+                            trinf = ''  # TODO: fix this trh['uciid']
                             trname = trh.resname()
-                            trinf = trh['uciid']
+                            if self.series == 'tmsl':  # TODO: remove
+                                trno = col
+                                col = 'red'
                             sec.lines.append(
                                 [None, trno, trname, trinf, None, None, None])
         doheats = False
@@ -1036,6 +1046,8 @@ class ittt:
         ret.append(sec)
 
         if doheats and not self.difftime:
+            # TODO: fix this for teams, rider no is suppressed so cannot be
+            #       matched between startlist and result
             for s in slist:
                 if s.sectionid == secid:  # the startlist
                     newlines = []
@@ -1238,13 +1250,13 @@ class ittt:
         if not self.winopen:
             return False
         now = tod.now()
-        if self.fs.status in ['running', 'armint', 'armfin']:
+        if self.fs.status in ('running', 'armint', 'armfin'):
             self.fs.runtime(now - self.lstart)
             if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
                 elapstr = self.fs.get_time()
                 self.meet.scbwin.sett1(elapstr)
                 self.meet.gemini.set_time(elapstr[0:12], lane=0)
-        if self.bs.status in ['running', 'armint', 'armfin']:
+        if self.bs.status in ('running', 'armint', 'armfin'):
             self.bs.runtime(now - self.lstart)
             if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
                 elapstr = self.bs.get_time()
@@ -1392,8 +1404,24 @@ class ittt:
         """Edit the team members list."""
         old_text = self.riders[path][col]
         if old_text != new_text:
-            # TODO: parse and verify team members
-            self.riders[path][col] = new_text
+            nr = []
+            for rno in new_text.split():
+                nno = strops.bibstr(rno)
+                if nno not in nr:
+                    nr.append(nno)
+            self.riders[path][col] = ' '.join(nr)
+            dbr = self.meet.rdb.get_rider(self.riders[path][COL_NO],
+                                          self.series)
+            if dbr is not None:
+                newmbrs = []
+                oldmbrs = dbr['members'].split()
+                for rno in oldmbrs:
+                    nno = strops.bibstr(rno)
+                    newmbrs.append(nno)
+                for rno in nr:
+                    if rno not in newmbrs:
+                        newmbrs.append(rno)
+                dbr['members'] = ' '.join(newmbrs)
 
     def _editname_cb(self, cell, path, new_text, col):
         """Edit the rider name if possible."""
@@ -1422,6 +1450,8 @@ class ittt:
                             tod.FAKETIMES['rel'], tod.FAKETIMES['caught']):
                     place = self.results.rank(bib) + 1
                     self.onestart = True
+                elif t[0] == tod.FAKETIMES['abd']:
+                    place = 'abd'
                 elif t[0] == tod.FAKETIMES['dsq']:
                     place = 'dsq'
                 elif t[0] == tod.FAKETIMES['dns']:
@@ -1512,7 +1542,7 @@ class ittt:
         """Arm timer for start trigger."""
         if self.timerstat == 'armstart':
             self.toload()
-        elif self.timerstat in ['load', 'idle']:
+        elif self.timerstat in ('load', 'idle'):
             self.toarmstart()
 
     def disable_autotime(self):
@@ -1527,7 +1557,7 @@ class ittt:
             _log.info('Autotime disabled by manual intervention')
             self.disable_autotime()
         if self.timerstat == 'running':
-            if sp.getstatus() in ['caught', 'running']:
+            if sp.getstatus() in ('caught', 'running'):
                 if sp.on_halflap():
                     sp.lap_up()
                 if sp.split < len(self.splitlist) - 1:
@@ -1550,7 +1580,7 @@ class ittt:
 
     def abortrider(self, sp):
         """Abort the selected lane."""
-        if sp.getstatus() not in ['idle', 'caught', 'finish']:
+        if sp.getstatus() not in ('idle', 'caught', 'finish'):
             bib = sp.getrider()
             ri = self._getiter(bib)
             if ri is not None:
@@ -1569,7 +1599,7 @@ class ittt:
             _log.info('Rider %r catch ignored', sp.getrider())
         elif self.timetype != 'single':
             op = self.t_other(sp)
-            if op.getstatus() not in ['idle', 'finish']:
+            if op.getstatus() not in ('idle', 'finish'):
                 bib = op.getrider()
                 ri = self._getiter(bib)
 
@@ -1587,7 +1617,7 @@ class ittt:
                     else:
                         self.meet.scbwin.sett2(' [caught]     ')
                         self.meet.gemini.set_time('    -:--.-  ', 1)
-            if sp.getstatus() not in ['idle', 'finish']:
+            if sp.getstatus() not in ('idle', 'finish'):
                 bib = sp.getrider()
                 ri = self._getiter(bib)
                 if ri is not None:
@@ -1606,13 +1636,13 @@ class ittt:
         if self.timerstat == 'autotime':
             self.disable_autotime()
         if self.timerstat == 'running':
-            if self.fs.getstatus() not in ['idle', 'caught', 'finish']:
+            if self.fs.getstatus() not in ('idle', 'caught', 'finish'):
                 self.fs.toload()
                 self.meet.timer_log_msg(self.fs.getrider(), '- False start -')
                 if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
                     self.meet.scbwin.setr1('False')
                     self.meet.scbwin.sett1('Start')
-            if self.bs.getstatus() not in ['idle', 'caught', 'finish']:
+            if self.bs.getstatus() not in ('idle', 'caught', 'finish'):
                 self.bs.toload()
                 self.meet.timer_log_msg(self.bs.getrider(), '- False start -')
                 if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
@@ -1632,7 +1662,7 @@ class ittt:
             _log.info('Autotime disabled by manual intervention')
             self.disable_autotime()
         if self.timerstat == 'running':
-            if sp.getstatus() in ['running', 'caught', 'finish']:
+            if sp.getstatus() in ('running', 'caught', 'finish'):
                 if sp.getstatus() == 'finish':
                     self.meet.timer_log_msg(sp.getrider(), '- False finish -')
                     self.meet.scbwin.setr1('')
@@ -1660,6 +1690,36 @@ class ittt:
             name = dbr.fitname(width)
             club = dbr['organisation']
         return name, club
+
+    def fmtmembers(self, tp):
+        """Prepare the team member name lines for display."""
+        ret = None
+        if self.teamnames:
+            name_w = self.meet.scb.linelen // 2 - 5
+            fmt = (' ', (3, 'r'), ' ', (name_w, 'l'))
+            bib = tp.getrider().strip()
+            if bib != '':
+                r = self._getrider(bib)
+                if r is not None and r[COL_NO]:
+                    tn = []
+                    mc = 0
+                    for trno in r[COL_MEMBERS].split():
+                        trh = self.meet.rdb.fetch_bibstr(trno)
+                        if trh is not None:
+                            tn.append(
+                                scbwin.fmt_row(
+                                    fmt,
+                                    (trh['no'], trh.fitname(width=name_w))))
+                            mc += 1
+                    if mc == 1:
+                        ret = (tn[0], '')
+                    elif mc == 2:
+                        ret = (tn[0] + tn[1], '')
+                    elif mc == 3:
+                        ret = (tn[0] + tn[1], tn[2])
+                    else:
+                        ret = (tn[0] + tn[1], tn[2] + tn[3])
+        return ret
 
     def fmtridername(self, tp):
         """Prepare rider name for display on scoreboard."""
@@ -1695,7 +1755,9 @@ class ittt:
         self.meet.scbwin = scbwin.scbtt(self.meet.scb,
                                         self.meet.racenamecat(self.event),
                                         self.fmtridername(self.fs),
-                                        self.fmtridername(self.bs))
+                                        self.fmtridername(self.bs),
+                                        team1=self.fmtmembers(self.fs),
+                                        team2=self.fmtmembers(self.bs))
         if self.timetype == 'single':
             self.meet.scbwin.set_single()
         self.meet.gemini.reset_fields()
@@ -1833,6 +1895,13 @@ class ittt:
             self.log_clear(self.riders.get_value(sel[1], COL_NO))
             GLib.idle_add(self.delayed_announce)
 
+    def tod_context_abd_activate_cb(self, menuitem, data=None):
+        """Abandon rider."""
+        sel = self.view.get_selection().get_selected()
+        if sel is not None:
+            self.settimes(sel[1], comment='abd')
+            GLib.idle_add(self.delayed_announce)
+
     def tod_context_rel_activate_cb(self, menuitem, data=None):
         """Relegate rider."""
         sel = self.view.get_selection().get_selected()
@@ -1901,6 +1970,7 @@ class ittt:
         placeopts = {
             '': ' Not yet classified',
             'ntr': 'No time recorded',
+            'abd': 'Abandon',
             'dns': 'Did not start',
             'otl': 'Outside time limit',
             'dnf': 'Did not finish',
@@ -2105,7 +2175,7 @@ class ittt:
             str,  # 0 bib
             str,  # 1 name
             str,  # 2 reserved
-            str,  # 3 reserved
+            str,  # 3 team members
             str,  # 4 Comment
             str,  # 5 seeding
             str,  # 6 place
@@ -2154,10 +2224,12 @@ class ittt:
                                 COL_NAME,
                                 self._editname_cb,
                                 expand=True)
-            #uiutil.mkviewcoltxt(t, 'Members', COL_MEMBERS, self._editmembers_cb)
+            uiutil.mkviewcoltxt(t, 'Members', COL_MEMBERS,
+                                self._editmembers_cb)
             uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self._editseed_cb)
             uiutil.mkviewcoltod(t, 'Time/Last Lap', cb=self.todstr)
             uiutil.mkviewcoltxt(t, 'Rank', COL_PLACE, halign=0.5, calign=0.5)
+            self.view.get_column(_VIEWCOL_MEMBERS).set_visible(False)
 
             t.show()
             b.get_object('race_result_win').add(t)

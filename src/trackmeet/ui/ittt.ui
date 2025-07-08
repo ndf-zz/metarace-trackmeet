@@ -216,10 +216,17 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="tod_context_ntr">
-        <property name="label">ntr</property>
+      <object class="GtkMenuItem" id="tod_context_rel">
+        <property name="label">rel</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="tod_context_ntr_activate_cb"/>
+        <signal name="activate" handler="tod_context_rel_activate_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="tod_context_abd">
+        <property name="label">abd</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="tod_context_abd_activate_cb"/>
       </object>
     </child>
     <child>
@@ -230,10 +237,10 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="tod_context_rel">
-        <property name="label">rel</property>
+      <object class="GtkMenuItem" id="tod_context_dnf">
+        <property name="label">dnf</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="tod_context_rel_activate_cb"/>
+        <signal name="activate" handler="tod_context_dnf_activate_cb"/>
       </object>
     </child>
     <child>
@@ -241,13 +248,6 @@
         <property name="label">dns</property>
         <property name="visible">True</property>
         <signal name="activate" handler="tod_context_dns_activate_cb"/>
-      </object>
-    </child>
-    <child>
-      <object class="GtkMenuItem" id="tod_context_dnf">
-        <property name="label">dnf</property>
-        <property name="visible">True</property>
-        <signal name="activate" handler="tod_context_dnf_activate_cb"/>
       </object>
     </child>
     <child>

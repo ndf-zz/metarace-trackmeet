@@ -199,18 +199,28 @@ class scbtt(scbwin):
         012345678901234567890123
               Prefix Info
         ------------------------
+                                +	[+added for single]
         12 Blackburn Team 1
 	   A. RIDER___B.RIDER___*	[*suppressed on small display]
 	   C. RIDER___D.RIDER___*
-        >>>>>>>>(1) hh:mm:ss.dcm 
+        >>(1) 250M: hh:mm:ss.dcm
+                                *
         10 Blackburn Team 2
 	   A. RIDER___B.RIDER___*
 	   C. RIDER___D.RIDER___*
-        >>>>>>>>(3) hh:mm:ss.dcm 
+        >>(3) 250M: hh:mm:ss.dcm
+                                *
 
     """
 
-    def __init__(self, scb=None, header='', line1='', line2='', subheader=''):
+    def __init__(self,
+                 scb=None,
+                 header='',
+                 line1='',
+                 line2='',
+                 subheader='',
+                 team1=None,
+                 team2=None):
         scbwin.__init__(self, scb)
         self.header = header.strip().center(self.scb.linelen)
         self.subheader = subheader.strip().center(self.scb.linelen)
@@ -218,6 +228,11 @@ class scbtt(scbwin):
         self.nextline1 = line1
         self.line2 = line2
         self.nextline2 = line2
+        self.team1 = None
+        self.team2 = None
+        if self.scb.pagelen > 9 and self.scb.linelen > 27:
+            self.team1 = team1
+            self.team2 = team2
         self.curt1 = ''
         self.nextt1 = ''
         self.curr1 = ''
@@ -227,9 +242,26 @@ class scbtt(scbwin):
         self.curr2 = ''
         self.nextr2 = ''
         self.singleoft = 0
+        self.rankoft = 1
+        self.ridergap = 0
+        if self.scb.pagelen > 11:
+            self.rankoft = 3
+            self.ridergap = 1
+            self.singleoft = 1
+        elif self.scb.pagelen > 10:
+            self.rankoft = 3
+            self.ridergap = 1
+        elif self.scb.pagelen > 9:
+            self.rankoft = 3
+        elif self.scb.pagelen > 7:
+            self.ridergap = 1
+            self.singleoft = 1
 
     def set_single(self):
-        self.singleoft = 1
+        oft = 1
+        if self.scb.pagelen > 9:
+            oft = 2
+        self.singleoft = oft
 
     def redraw(self):
         clrset = list(range(0, self.scb.pagelen))
@@ -237,10 +269,24 @@ class scbtt(scbwin):
         clrset.remove(0)
         self.scb.setline(1, self.subheader)
         clrset.remove(1)
-        self.scb.setline(2 + self.singleoft, self.line1)
-        clrset.remove(2 + self.singleoft)
-        self.scb.setline(4 + self.singleoft, self.line2)
-        clrset.remove(4 + self.singleoft)
+
+        c1oft = 2 + self.singleoft
+        self.scb.setline(c1oft, self.line1)
+        clrset.remove(c1oft)
+        if self.team1:
+            self.scb.setline(c1oft + 1, self.team1[0])
+            clrset.remove(c1oft + 1)
+            self.scb.setline(c1oft + 2, self.team1[1])
+            clrset.remove(c1oft + 2)
+        c2oft = c1oft + self.rankoft + self.ridergap + 1
+        self.scb.setline(c2oft, self.line2)
+        clrset.remove(c2oft)
+        if self.team2:
+            self.scb.setline(c2oft + 1, self.team2[0])
+            clrset.remove(c2oft + 1)
+            self.scb.setline(c2oft + 2, self.team2[1])
+            clrset.remove(c2oft + 2)
+
         # only clear rows not already set above.
         for i in clrset:
             self.scb.clrline(i)
@@ -283,26 +329,33 @@ class scbtt(scbwin):
     def update(self):
         """If any time or ranks change, copy new value onto overlay."""
         if not self.paused:
+            c1oft = 2 + self.singleoft
+            teamoft = 1
+            if self.team1 or self.team2:
+                teamoft = self.rankoft
+            c1rkoft = c1oft + teamoft
+            c2oft = c1oft + self.rankoft + self.ridergap + 1
+            c2rkoft = c2oft + teamoft
             if self.curr1 != self.nextr1 or self.curt1 != self.nextt1:
                 self.scb.setline(
-                    3 + self.singleoft,
+                    c1rkoft,
                     strops.truncpad(self.nextr1, self.scb.linelen - 13, 'r') +
                     ' ' + self.nextt1)
                 self.curr1 = self.nextr1
                 self.curt1 = self.nextt1
             if self.curr2 != self.nextr2 or self.curt2 != self.nextt2:
                 self.scb.setline(
-                    5,
+                    c2rkoft,
                     strops.truncpad(self.nextr2, self.scb.linelen - 13, 'r') +
                     ' ' + self.nextt2)
                 self.curr2 = self.nextr2
                 self.curt2 = self.nextt2
             if self.line1 != self.nextline1:
                 self.line1 = self.nextline1
-                self.scb.setline(2 + self.singleoft, self.nextline1)
+                self.scb.setline(c1oft, self.nextline1)
             if self.line2 != self.nextline2:
                 self.line2 = self.nextline2
-                self.scb.setline(4 + self.singleoft, self.nextline2)
+                self.scb.setline(c2oft, self.nextline2)
             self.count += 1
 
 
