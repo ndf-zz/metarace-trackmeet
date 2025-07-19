@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
+__version__ = '1.13.4a3'
 
 import sys
 import gi
@@ -30,6 +31,7 @@ from metarace import unt4
 from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
+from metarace.comet import _CONFIG_SCHEMA as _COMET_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
@@ -42,7 +44,8 @@ from . import ittt
 from . import sprnd
 from . import classification
 
-VERSION = '1.13.3'
+PRGNAME = 'org.6_v.trackmeet'
+APPNAME = 'Trackmeet'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG
 CONFIGFILE = 'config.json'
@@ -350,6 +353,7 @@ class trackmeet:
         metarace.sysconf.add_section('telegraph', _TG_SCHEMA)
         metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
         metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
+        metarace.sysconf.add_section('comet', _COMET_SCHEMA)
         cfgres = uiutil.options_dlg(window=self.window,
                                     title='Meet Properties',
                                     sections={
@@ -376,6 +380,11 @@ class trackmeet:
                                         'timy': {
                                             'title': 'Timy',
                                             'schema': _TIMY_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
+                                        'comet': {
+                                            'title': 'Comet',
+                                            'schema': _COMET_SCHEMA,
                                             'object': metarace.sysconf,
                                         },
                                     })
@@ -1272,16 +1281,6 @@ class trackmeet:
 
         GLib.idle_add(self.mirror_start)
 
-    def mirror_completion(self, status, updates):
-        """Send notifies for any changed files sent after export."""
-        # NOTE: called in the mirror thread
-        _log.debug('Mirror status: %r', status)
-        if status == 0:
-            pass
-        else:
-            _log.error('Mirror failed')
-        return False
-
     def mirror_start(self, dirty=None):
         """Create a new mirror thread unless in progress."""
         if self.mirrorpath and self.mirror is None:
@@ -1498,7 +1497,7 @@ class trackmeet:
     ## Help menu callbacks
     def menu_help_about_cb(self, menuitem, data=None):
         """Display metarace about dialog."""
-        uiutil.about_dlg(window=self.window, version=VERSION)
+        uiutil.about_dlg(window=self.window, version=__version__)
 
     ## Menu button callbacks
     def menu_clock_clicked_cb(self, button, data=None):
@@ -3083,6 +3082,7 @@ def edit_defaults():
     metarace.sysconf.add_section('telegraph', _TG_SCHEMA)
     metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
     metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
+    metarace.sysconf.add_section('comet', _COMET_SCHEMA)
     cfgres = uiutil.options_dlg(title='Edit Default Configuration',
                                 sections={
                                     'trackmeet': {
@@ -3108,6 +3108,11 @@ def edit_defaults():
                                     'timy': {
                                         'title': 'Timy',
                                         'schema': _TIMY_SCHEMA,
+                                        'object': metarace.sysconf,
+                                    },
+                                    'comet': {
+                                        'title': 'Comet',
+                                        'schema': _COMET_SCHEMA,
                                         'object': metarace.sysconf,
                                     },
                                 })
@@ -3177,10 +3182,10 @@ def main():
     ch.setFormatter(fh)
     logging.getLogger().addHandler(ch)
 
-    # try to set the menubar accel and logo
     try:
-        lfile = metarace.default_file(metarace.LOGO)
-        Gtk.Window.set_default_icon_from_file(lfile)
+        GLib.set_prgname(PRGNAME)
+        GLib.set_application_name(APPNAME)
+        Gtk.Window.set_default_icon_name(metarace.ICON)
         mset = Gtk.Settings.get_default()
         mset.set_property('gtk-menu-bar-accel', 'F24')
     except Exception as e:
