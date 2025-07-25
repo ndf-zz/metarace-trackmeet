@@ -1679,7 +1679,7 @@ class trackmeet:
     ## Window methods
     def set_title(self, extra=''):
         """Update window title from meet properties."""
-        self.window.set_title('trackmeet: ' +
+        self.window.set_title('Trackmeet: ' +
                               ' '.join([self.title, self.subtitle]).strip())
         self.txt_default()
 
@@ -1836,6 +1836,20 @@ class trackmeet:
 
         cr.merge(metarace.sysconf, 'trackmeet')
         cr.load(CONFIGFILE)
+
+        # Is this meet path an existing roadmeet?
+        if cr.has_section('roadmeet'):
+            _log.error('Meet folder contains road meet configuration')
+            if not os.isatty(sys.stdout.fileno()):
+                uiutil.messagedlg(
+                    message='Invalid meet type.',
+                    title='Trackmeet: Error',
+                    subtext=
+                    'Selected meet folder contains configuration for a road meet.'
+                )
+            sys.exit(-1)
+
+        # Load schema options into meet object
         cr.export_section('trackmeet', self)
 
         if self.timerport:
@@ -3214,7 +3228,7 @@ def main():
         if not os.isatty(sys.stdout.fileno()):
             uiutil.messagedlg(
                 message='Error opening meet',
-                title='trackmeet: Error',
+                title='Trackmeet: Error',
                 subtext='Trackmeet was unable to open a meet folder')
         sys.exit(-1)
 
@@ -3224,7 +3238,7 @@ def main():
         if not os.isatty(sys.stdout.fileno()):
             uiutil.messagedlg(
                 message='Meet folder is locked',
-                title='trackmeet: Locked',
+                title='Trackmeet: Locked',
                 subtext='Another application has locked the meet folder for use'
             )
         sys.exit(-1)
