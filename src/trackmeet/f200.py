@@ -1067,18 +1067,20 @@ class f200:
         for t in self.results:
             bib = t[0].refid
             if t[0] > tod.FAKETIMES['max']:
-                if t[0] == tod.FAKETIMES['dsq']:
+                if t[0] == tod.FAKETIMES['rel']:
+                    place = self.results.rank(bib) + 1
+                    self.onestart = True
+                elif t[0] == tod.FAKETIMES['abd']:
+                    place = 'abd'
+                elif t[0] == tod.FAKETIMES['dsq']:
                     place = 'dsq'
-                elif t[0] == tod.FAKETIMES['ntr']:
-                    place = 'ntr'
-                elif t[0] == tod.FAKETIMES['rel']:
-                    place = 'rel'
                 elif t[0] == tod.FAKETIMES['dns']:
                     place = 'dns'
                 elif t[0] == tod.FAKETIMES['dnf']:
                     place = 'dnf'
             else:
                 place = self.results.rank(bib) + 1
+                self.onestart = True
             i = self._getiter(bib)
             if i is not None:
                 if place == 'comment':  # superfluous but ok
@@ -1339,6 +1341,13 @@ class f200:
         if sel is not None:
             self.settimes(sel[1])
             self.log_clear(self.riders.get_value(sel[1], COL_NO))
+            GLib.idle_add(self.delayed_announce)
+
+    def tod_context_abd_activate_cb(self, menuitem, data=None):
+        """Abandon rider."""
+        sel = self.view.get_selection().get_selected()
+        if sel is not None:
+            self.settimes(sel[1], comment='abd')
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_rel_activate_cb(self, menuitem, data=None):
