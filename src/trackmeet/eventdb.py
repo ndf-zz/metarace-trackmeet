@@ -152,6 +152,8 @@ _EVENT_TYPES = {
     'elimination': 'Elimination',
     'race': 'Bunch Race',
     'hour': 'Hour Record',
+    'team aggregate': 'Team Aggregate',
+    'indiv aggregate': 'Indiv Aggregate',
     #'competition': 'Competition',
     #'aggregate': 'Points Aggregate',
 }

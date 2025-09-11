@@ -43,6 +43,7 @@ from . import f200
 from . import ittt
 from . import sprnd
 from . import classification
+from . import aggregate
 
 PRGNAME = 'org.6_v.trackmeet'
 APPNAME = 'Trackmeet'
@@ -319,8 +320,10 @@ def mkrace(meet, event, ui=True):
         ret = sprnd.sprnd(meet=meet, event=event, ui=ui)
     ##elif etype == 'hour':
     ##ret = hourrec.hourrec(meet=meet, event=event, ui=ui)
-    ##elif etype == 'aggregate':
-    ##ret = aggregate.aggregate(meet=meet, event=event, ui=ui)
+    elif etype == 'team aggregate':
+        ret = aggregate.teamagg(meet=meet, event=event, ui=ui)
+    elif etype == 'indiv aggregate':
+        ret = aggregate.indivagg(meet=meet, event=event, ui=ui)
     else:
         ret = race.race(meet=meet, event=event, ui=ui)
     return ret
@@ -497,6 +500,7 @@ class trackmeet:
 
         # write out to files if exportfile set
         if exportfile:
+            rep.canonical = os.path.join(self.linkbase, exportfile + '.json')
             ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
             with metarace.savefile(ofile, mode='b') as f:
                 rep.output_pdf(f)
@@ -850,8 +854,9 @@ class trackmeet:
             newevent.loadconfig()
             self.curevent = newevent
             self.race_box.add(self.curevent.frame)
-            if self.curevent.evtype not in ('classification', 'aggregate',
-                                            'break'):
+            if self.curevent.evtype not in ('classification', 'break',
+                                            'team aggregate',
+                                            'indiv aggregate'):
 
                 self.menu_race_recover.set_sensitive(True)
             self.menu_race_info.set_sensitive(True)
@@ -947,7 +952,9 @@ class trackmeet:
                         h.loadconfig()
                         # Source is finished or omnium and dest not class
                         if h.finished or (h.evtype == 'omnium'
-                                          and race.evtype != 'classification'):
+                                          and race.evtype not in
+                                          ('classification', 'team aggregate',
+                                           'indiv aggregate')):
                             for ri in h.result_gen():
                                 if isinstance(ri[1],
                                               int) and ri[1] in placeset:
@@ -1140,6 +1147,7 @@ class trackmeet:
                 h = None
 
         filebase = 'program'
+        r.canonical = os.path.join(self.linkbase, filebase + '.json')
         ofile = os.path.join(EXPORTPATH, filebase + '.pdf')
         with metarace.savefile(ofile, mode='b') as f:
             r.output_pdf(f, docover=True)
@@ -1235,8 +1243,9 @@ class trackmeet:
         sec.heading = 'Index of Events'
         #sec.subheading = Date?
         for eh in self.edb:
-            if eh['result'] and eh[
-                    'type'] == 'classification':  # include in result?
+            if eh['result'] and eh['type'] in (
+                    'classification', 'team aggregate',
+                    'indiv aggregate'):  # include in result?
                 referno = eh['evid']
                 linkfile = None
                 if referno:
@@ -1271,6 +1280,7 @@ class trackmeet:
         if sec.lines:
             orep.add_section(sec)
         basename = 'index'
+        orep.canonical = os.path.join(self.linkbase, basename + '.json')
         ofile = os.path.join(EXPORTPATH, basename + '.html')
         with metarace.savefile(ofile) as f:
             orep.output_html(f, linkbase=lb, linktypes=lt)
@@ -1383,7 +1393,8 @@ class trackmeet:
                     self.report_strings(orep)
                     orep.strings['subtitle'] = evstr
                     orep.strings['docstr'] = evstr
-                    if etype in ['classification']:
+                    if etype in ('classification', 'team aggregate',
+                                 'indiv aggregate'):
                         orep.strings['docstr'] += ' Classification'
                     orep.set_provisional(self.provisional)
                     if self.provisional:
@@ -1418,6 +1429,8 @@ class trackmeet:
                         orep.add_section(sec)
                     basename = 'event_' + str(evno).translate(
                         strops.WEBFILE_UTRANS)
+                    orep.canonical = os.path.join(self.linkbase,
+                                                  basename + '.json')
                     ofile = os.path.join(EXPORTPATH, basename + '.html')
                     with metarace.savefile(ofile) as f:
                         orep.output_html(f)
@@ -2122,7 +2135,8 @@ class trackmeet:
         """Remove riderNo.series from all events on program"""
         for ev in self.edb:
             if ev['series'] == series:
-                if ev['type'] not in ('classification', ):
+                if ev['type'] not in ('classification', 'team aggregate',
+                                      'indiv aggregate'):
                     r = mkrace(meet=self, event=ev, ui=False)
                     r.readonly = False
                     r.loadconfig()
@@ -2496,7 +2510,7 @@ class trackmeet:
                 if ev['reference'] == oldevno:
                     ev.set_value('reference', newevno)
                 # update evno references in event configs
-                if ev['type'] == 'classification':
+                if ev['type'] in ('classification', ):
                     # TODO: update via schema
                     # showevents: list of evnos to include with result export
                     #  - same as depends in edb
@@ -2519,6 +2533,19 @@ class trackmeet:
                         if newplac != oldplac:
                             ecr.set('event', 'placesrc', newplac)
                             dosave = True
+                    if dosave:
+                        with metarace.savefile(config) as f:
+                            ecr.write(f)
+                elif ev['type'] in ('indiv aggregate', 'team aggregate'):
+                    # TODO: requires a method
+                    _log.warning('change evno not supported on %r', ev['type'])
+                    dosave = False
+                    config = self.event_configfile(ev['evid'])
+                    ecr = jsonconfig.config()
+                    ecr.add_section('event')
+                    ecr.load(config)
+                    # check sources
+                    pass
                     if dosave:
                         with metarace.savefile(config) as f:
                             ecr.write(f)
@@ -2638,7 +2665,8 @@ class trackmeet:
                     ev = self.edb[evid]
                     series = ev['series']
                     slist = strops.riderlist_split(adds, self.rdb, series)
-                    if ev['type'] not in ('classification', ):
+                    if ev['type'] not in ('classification', 'indiv aggregate',
+                                          'team aggregate'):
                         _log.debug('%s %r %r to %s', action, adds, slist,
                                    ev['evid'])
                         if self.curevent is not None and self.curevent.evno == evid:
