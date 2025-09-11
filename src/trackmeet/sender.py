@@ -30,8 +30,17 @@ _log.setLevel(logging.DEBUG)
 
 _CONFIG_SCHEMA = {
     'ttype': {
-        'prompt': 'Caprica/DHI Sender Options',
+        'prompt': 'Text Scoreboard Sender Options',
         'control': 'section',
+    },
+    'scoreboard': {
+        'prompt': 'Type:',
+        'control': 'choice',
+        'options': {
+            'dhi': 'Caprica/DHI',
+            'dak': 'Daktronics (DGV)',
+        },
+        'default': 'dhi',
     },
     'portspec': {
         'prompt': 'Default Port:',
@@ -230,7 +239,20 @@ def mkport(port):
         return scbport((naddr, nport), nprot)
 
 
-class sender(threading.Thread):
+def sender(port=None):
+    """Return a sender of the configured type"""
+    stype = 'dhi'
+    if sysconf.has_option('sender', 'scoreboard'):
+        ntype = sysconf.get('sender', 'scoreboard')
+        if ntype in ('dhi', 'dak'):
+            stype = ntype
+    if stype == 'dak':
+        return daksender(port)
+    else:
+        return basesender(port)
+
+
+class basesender(threading.Thread):
     """Caprica/Galactica DHI sender thread."""
 
     def clrall(self):
@@ -370,3 +392,64 @@ class sender(threading.Thread):
         if self._port is not None:
             self._port.close()
         _log.info('Exiting')
+
+
+class daksender(basesender):
+
+    def _daksum(self, msg):
+        sum = 0x00
+        for c in msg.encode(self._encoding, 'replace'):
+            sum += c
+        return '{0:02X}'.format(sum & 0xff)
+
+    def sendmsg(self, unt4msg=None):
+        """Pack and send a DAK message."""
+        msg = None
+        oft = 0
+        text = ''
+        if unt4msg.erp:
+            # emit full page of spaces
+            text = ' ' * self.linelen * self.pagelen
+        elif unt4msg.xx is not None and unt4msg.yy is not None and unt4msg.text:
+            # place chars at board offset
+            oft = unt4msg.yy * self.linelen + unt4msg.xx
+            text = unt4msg.text.replace('\u2006', ' ')
+        else:
+            pass
+        control = '004010%04d' % (oft, )
+        msg = ''.join((
+            '20000000',
+            chr(unt4.SOH[0]),
+            control,
+            chr(unt4.STX[0]),
+            text,
+            chr(unt4.EOT[0]),
+        ))
+        _log.debug('dak message = %r', msg)
+        ob = ''.join((
+            chr(unt4.SYN[0]),
+            msg,
+            self._daksum(msg),
+            chr(unt4.ETB[0]),
+        ))
+        _log.debug('dak buf = %r', ob)
+        self._queue.put_nowait(('MSG', ob))
+
+    def setoverlay(self, newov):
+        """Ignore overlay change."""
+        pass
+
+    def flush(self):
+        """Ignore flush."""
+        pass
+
+    def postxt(self, line, oft, msg):
+        """Position msg at oft on line."""
+        if oft < self.linelen:
+            msg = msg[0:(self.linelen - oft)]
+            self.sendmsg(unt4.unt4(xx=int(oft), yy=int(line), text=msg))
+
+    def clrline(self, line):
+        """Clear the specified line."""
+        msg = ' ' * self.linelen
+        self.sendmsg(unt4.unt4(xx=0, yy=int(line), text=msg))
