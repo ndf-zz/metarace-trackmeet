@@ -135,7 +135,7 @@ class ps:
         progressivepoints = False
         findsource = False
         if self.evtype == 'madison':
-            defscoretype = 'madison'
+            defscoretype = 'points'  # no longer lap-based
             defmasterslaps = 'No'
         elif self.evtype == 'tempo':
             tempopoints = True
@@ -371,6 +371,10 @@ class ps:
         else:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
+        # Force team names unless event is a real madison
+        self.teamnames = (self.series.sartswith('t')
+                          and self.event['info'].lower() != 'madison')
+
         self.recalculate()
 
         st = tod.mktod(cr.get('event', 'start'))
@@ -512,9 +516,11 @@ class ps:
             fs = (self.finish - self.start).rawtime(2)
         fl = None
         ll = None
+        rno = ''
         for r in self.riders:
-            rno = r[RES_COL_NO]
-            rh = self.meet.rdb.get_rider(rno, self.series)
+            if not self.teamnames:
+                rno = r[RES_COL_NO]
+            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             rname = ''
             if rh is not None:
                 rname = rh.resname()
@@ -562,14 +568,14 @@ class ps:
                     # placed in final sprint
                     sec.lines.append([plstr, rno, rname, rcat, fs, ptstr])
                     ## TEAM HACKS
-                    if 't' in self.series and rh is not None:
-                        for trno in rh['note'].split():
-                            trh = self.meet.rdb.get_rider(trno, self.series)
+                    if self.series.startswith('t') and rh is not None:
+                        for trno in rh['members'].split():
+                            trh = self.meet.rdb.fetch_bibstr(trno)
                             if trh is not None:
                                 trname = trh.resname()
                                 trinf = trh['ucicode']
                                 sec.lines.append([
-                                    None, '', trname, trinf, None, None, None
+                                    None, trno, trname, trinf, None, None, None
                                 ])
                 fs = ''
 
@@ -817,9 +823,11 @@ class ps:
         if self.inomnium and len(self.riders) > 0:
             sec.lines.append([' ', ' ', 'The Fence', None, None, None])
             col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
+        rno = ''
         for r in self.riders:
-            rno = r[RES_COL_NO]
-            rh = self.meet.rdb.get_rider(rno, self.series)
+            if not self.teamnames:
+                rno = r[RES_COL_NO]
+            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             inf = r[RES_COL_INFO]
             if self.inomnium:
                 # inf holds seed, ignore for now
@@ -844,32 +852,48 @@ class ps:
             else:
                 cnt += 1
                 sec.lines.append([rankCol, rno, rname, inf, None, None])
-                if self.evtype == 'madison':
+                docolour = self.event['info'].lower() == 'madison'
+                if docolour or self.teamnames:  # was self.evtype == 'madison':
                     # add the black/red entry
                     if rh is not None:
-                        tvec = rh['note'].split()
-                        if len(tvec) == 2:
+                        tvec = rh['members'].split()
+                        if docolour and len(tvec) == 2:
                             trname = ''
                             trinf = ''
-                            trh = self.meet.rdb.get_rider(tvec[0], self.series)
+                            trno = 'Red'
+                            trh = self.meet.rdb.fetch_bibstr(tvec[0])
                             if trh is not None:
                                 trname = trh.resname()
                                 trinf = trh['ucicode']
+                                if not docolour:
+                                    trno = trh['no']
+
                             sec.lines.append([
-                                rankCol, 'Red', trname, trinf, None, None, None
+                                rankCol, trno, trname, trinf, None, None, None
                             ])
                             trname = ''
                             trinf = ''
-                            trh = self.meet.rdb.get_rider(tvec[1], self.series)
+                            trno = 'Black'
+                            trh = self.meet.rdb.fetch_bibstr(tvec[1])
                             if trh is not None:
                                 trname = trh.resname()
                                 trinf = trh['ucicode']
+                                if not docolour:
+                                    trno = trh['no']
+
                             sec.lines.append([
-                                rankCol, 'Black', trname, trinf, None, None,
-                                None
+                                rankCol, trno, trname, trinf, None, None, None
                             ])
                             #sec.lines.append([None, None, None, None,
                             #None, None, None])
+                        else:
+                            for member in tvec:
+                                trh = self.meet.rdb.fetch_bibstr(member)
+                                if trh is not None:
+                                    trno = trh['no']
+                                    sec.lines.append(
+                                        (rankCol, trno, trh.resname(), None,
+                                         None, None))
 
         for i in col2:
             sec.lines.append(i)
@@ -1194,11 +1218,13 @@ class ps:
             name_w = self.meet.scb.linelen - 11
             fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (4, 'r'))
             #ldr = None
+            bstr = ''
             for r in self.riders:
                 if r[RES_COL_INRACE]:
                     name, club = self._getname(r[RES_COL_NO], width=name_w)
                     plstr = r[RES_COL_PLACE] + '.'
-                    bstr = r[RES_COL_NO]
+                    if not self.teamnames:
+                        bstr = r[RES_COL_NO]
                     #if ldr is None and r[RES_COL_TOTAL] > 0:
                     #ldr = r[RES_COL_TOTAL]	# current leader
                     pstr = str(r[RES_COL_TOTAL])
@@ -1628,13 +1654,16 @@ class ps:
         lastsprint = None
         sprintid = None
         cur = 1
+        firstgap = None
         for s in self.sprints:
             totcontests += 1
             if s[SPRINT_COL_ID] not in self.laplabels:
                 totsprints += 1
-            if s[SPRINT_COL_PLACES]:
+            if s[SPRINT_COL_PLACES] and firstgap is None:
                 lastsprint = cur
                 sprintid = s[SPRINT_COL_ID]
+            else:
+                firstgap = cur
             cur += 1
         if lastsprint is not None:
             if lastsprint >= totcontests:
@@ -2110,6 +2139,7 @@ class ps:
         self.evtype = event['type']
         self.series = event['seri']
         self.configfile = meet.event_configfile(self.evno)
+        self.teamnames = False  # updated in loadconfig
 
         self.readonly = not ui
         rstr = ''
