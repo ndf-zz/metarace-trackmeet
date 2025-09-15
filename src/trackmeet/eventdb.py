@@ -426,7 +426,9 @@ class event:
         """Return a concatenated and stripped event information string."""
         rv = []
         if showevno and self['type'] != 'break':
-            rv.append('Event\u2006' + self.get_evno())
+            evno = strops.confopt_posfloat(self.get_evno())
+            if evno:
+                rv.append('Event\u2006' + self.get_evno())
         if self['pref']:
             rv.append(self['pref'])
         if self['info']:

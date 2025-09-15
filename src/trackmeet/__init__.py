@@ -1634,7 +1634,9 @@ class trackmeet:
         evno = ''
         srcev = event.get_evno()
         if self.showevno and event['type'] != 'break':
-            evno = 'Ev ' + srcev
+            srcno = strops.posint(srcev, None)
+            if srcno is not None:
+                evno = 'Ev ' + srcev
         info = event['info']
         prefix = event['pref']
         ret = ' '.join((evno, prefix, info, tail)).strip()
