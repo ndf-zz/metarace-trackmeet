@@ -403,7 +403,7 @@ class daksender(basesender):
         return '{0:02X}'.format(sum & 0xff)
 
     def sendmsg(self, unt4msg=None):
-        """Pack and send a DAK message."""
+        """Pack and send a DAK (Venus) message."""
         msg = None
         oft = 0
         text = ''
@@ -425,14 +425,12 @@ class daksender(basesender):
             text,
             chr(unt4.EOT[0]),
         ))
-        _log.debug('dak message = %r', msg)
         ob = ''.join((
             chr(unt4.SYN[0]),
             msg,
             self._daksum(msg),
             chr(unt4.ETB[0]),
         ))
-        _log.debug('dak buf = %r', ob)
         self._queue.put_nowait(('MSG', ob))
 
     def setoverlay(self, newov):
@@ -446,8 +444,17 @@ class daksender(basesender):
     def postxt(self, line, oft, msg):
         """Position msg at oft on line."""
         if oft < self.linelen:
+            if line > 1:
+                msg = msg.upper()
             msg = msg[0:(self.linelen - oft)]
             self.sendmsg(unt4.unt4(xx=int(oft), yy=int(line), text=msg))
+
+    def setline(self, line, msg):
+        """Set the specified line to msg."""
+        if line > 1:
+            msg = msg.upper()
+        msg = strops.truncpad(msg, self.linelen, 'l', False)
+        self.sendmsg(unt4.unt4(xx=0, yy=int(line), text=msg))
 
     def clrline(self, line):
         """Clear the specified line."""
