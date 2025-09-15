@@ -195,17 +195,7 @@ class teamagg(classification.classification):
         sec = report.section(secid)
         sec.units = 'pt'
         sec.nobreak = True  # TODO: check in comp
-        if recurse:
-            sec.heading = ' '.join([self.event['pref'],
-                                    self.event['info']]).strip()
-        else:
-            if self.event['evov']:
-                sec.heading = ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-            else:
-                sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-        sec.lines = []
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
         substr = ' '.join(
@@ -278,7 +268,7 @@ class teamagg(classification.classification):
                 if cno in self.ptstally:
                     # enforce truncation of final tally
                     total = int(self.ptstally[cno]['total'])
-                    detail = self.ptstally[cno]['detail']
+                    details = self.ptstally[cno]['detail']
                     composite = False
                     secid = 'detail-' + cno
                     sec = report.section(secid)
@@ -288,31 +278,50 @@ class teamagg(classification.classification):
                     first = ''
                     sec.subheading = '%s %s' % (cr[COL_NAME],
                                                 strops.rank2ord(cr[COL_PLACE]))
-                    for l in detail:
-                        rno = l['rno']
-                        rseries = l['series']
-                        rname = ''
+                    # extract an ordered list of events from detail
+                    aux = []
+                    cnt = 9999
+                    for detail in details:
+                        cnt += 1
                         evname = ''
-                        evno = l['evno']
-                        if evno in self.meet.edb:
-                            evh = self.meet.edb[evno]
+                        evid = detail['evno']
+                        evno = evid
+                        evkey = cnt  # primary sorting key
+                        evseries = ''
+                        if evid in self.meet.edb:
+                            evh = self.meet.edb[evid]
+                            evno = evh['evov'] if evh['evov'] else evid
+                            evkey = strops.confopt_posint(evno, cnt)
                             evname = self.meet.racenamecat(evh,
                                                            slen=28,
                                                            halign='l').strip()
-                            dbr = self.meet.rdb.get_rider(rno, rseries)
-                            if dbr is not None:
-                                rname = dbr.fitname(3)
-                            if dbr['series'] != evh['series']:
-                                rname += ' *'
-                                composite = True
-                                _log.debug('Composite team rider in result')
+                            evseries = evh['series']
+                        aux.append(
+                            (evkey, cnt, evno, evname, evseries, detail))
+                    aux.sort()
+                    for l in aux:
+                        evno = l[2]
+                        evname = l[3]
+                        evseries = l[4]
+                        detail = l[5]
+                        rno = detail['rno']
+                        rseries = detail['series']
+                        rname = ''
+                        dbr = self.meet.rdb.get_rider(rno, rseries)
+                        if dbr is not None:
+                            rname = dbr.fitname(3)
+                        if dbr['series'] != evseries:
+                            rname += ' *'
+                            composite = True
+                            _log.debug('Composite team rider in result')
                         sec.lines.append((
                             '',
                             '',
                             ': '.join((evname, rname)),
-                            l['type'],
-                            strops.rank2ord(str(l['place'])),
-                            '%.3g' % (l['points'], ),  # but display fractions
+                            detail['type'],
+                            strops.rank2ord(str(detail['place'])),
+                            '%.3g' %
+                            (detail['points'], ),  # but display fractions
                         ))
                     sec.lines.append(('', '', '', 'Total:', '', str(total)))
                     if composite:
@@ -376,6 +385,8 @@ class teamagg(classification.classification):
         dbr = self.meet.rdb.get_rider(no, series)
         if dbr is not None:
             team = dbr['organisation']
+            if not team and series.startswith('t'):
+                team = dbr['first']  # Assume team name only
             cno = self.teamkey(team)
             if cno == 'COMPOSITE':
                 # riders not all same team
@@ -419,7 +430,7 @@ class teamagg(classification.classification):
         r = self.meet.get_event(evno, False)
         if r is None:
             _log.warning('Event %r not found for lookup %r', evno,
-                         lookup[evno])
+                         pmap['label'])
             return
         r.loadconfig()  # now have queryable event handle
         bestn = self.bestindiv
@@ -735,7 +746,6 @@ class indivagg(teamagg):
                 # overwrite info if showcats true
                 if self.showcats:
                     rcat = rh.primary_cat()
-                    _log.debug('over the cat: %r', rcat)
 
                 # consider partners here
                 if rh['cat'] and 'tandem' in rh['cat'].lower():

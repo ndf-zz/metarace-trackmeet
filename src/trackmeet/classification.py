@@ -265,17 +265,7 @@ class classification:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        if recurse:
-            sec.heading = ' '.join([self.event['pref'],
-                                    self.event['info']]).strip()
-        else:
-            if self.event['evov']:
-                sec.heading = ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-            else:
-                sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-        sec.lines = []
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
         substr = ' '.join(
