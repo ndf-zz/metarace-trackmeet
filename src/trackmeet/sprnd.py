@@ -198,14 +198,17 @@ class sprnd:
             ccount = len(self._rescache)
             for cid in self._rescache:
                 cm = self._rescache[cid]
-                if cm['bye'] or max(cm['a'], cm['b']) > 1:
-                    # contest is decided
-                    dcount += 1
+                if cm['bye']:
+                    ccount -= 1  # one less contest result required
+                elif max(cm['a'], cm['b']) > 1:
+                    dcount += 1  # this contest is decided
         else:
             # visit all contests simply
             ccount = len(self.contests)
             for c in self.contests:
-                if c[COL_WINNER]:
+                if c[COL_BYE]:
+                    ccount -= 1  # one less contest result required
+                elif c[COL_WINNER]:
                     dcount += 1
         if ccount > 0:
             if dcount:
@@ -405,6 +408,9 @@ class sprnd:
             if cid == 'bye':
                 cid = str(oft + 1) + ' bye'
                 bye = True
+            elif 'bye' in cid:
+                cid = cid.replace('-', ' ')
+                bye = True  # Assume contest no is provided in text
             heats = (cid, )
             if self.event['type'] == 'sprint final':
                 heats = (cid + ' Heat 1', cid + ' Heat 2', cid + ' Heat 3')
@@ -616,7 +622,7 @@ class sprnd:
             if croot not in contestset:
                 contestset.add(croot)
                 if c[COL_BYE]:
-                    contestlist.append('bye')
+                    contestlist.append(croot.replace(' ', '-'))
                 else:
                     contestlist.append(croot)
 
@@ -1288,8 +1294,7 @@ class sprnd:
         else:
             sec = report.sprintround(secid)
         sec.nobreak = True
-        sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-            [self.event['pref'], self.event['info']]).strip()
+        sec.heading = self.event.get_info(showevno=True)
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join(
