@@ -12,6 +12,37 @@
 
 ### Security
 
+## [1.13.4] - 2025-09-16
+
+### Added
+
+   - Team members saved with event handler for ittt events
+   - Include team names on scb when space permits
+   - Add comet configuration to meet properties dialog
+   - quit with error if loadconfig detects roadmeet configuration
+   - Return Daktronics/Venus output option to txt scb sender (DGV)
+   - Team / individual points aggregate handler (Blackline)
+
+### Changed
+
+   - Adjust vertical spacing on scb for rows > 7
+   - set program and application names to match .desktop file
+   - set default logo by xdg name instead of file
+   - use __version__ instead of VERSION
+   - Suppress event id/no when not numeric
+   - Uppercase scoreboard content for Dak sender when line > 1
+
+### Deprecated
+
+   - Use of 'tandem' category for PARA 'B' sport class riders
+
+### Fixed
+
+   - Add missing abd callback in flying 200 handler
+   - Mark and remember assigned bye ranking in sprnd
+   - Standardise report headings and scoreboard info lines
+   - Mark ps finalised only after all intermediates have result
+
 ## [1.13.3] - 2025-07-04
 
 ### Added
@@ -83,6 +114,7 @@
    - A5 booklet template for program export
    - Add standard sponsor and prizemoney footers on program reports
    - Include optional list of competitors at start of program
+   - Include canonical reference on reports for auto reloader
 
 ### Changed
 
