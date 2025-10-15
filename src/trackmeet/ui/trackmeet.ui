@@ -409,7 +409,7 @@
                         </child>
                         <child>
                           <object class="GtkMenuItem" id="menu_data_update">
-                            <property name="label">_Update</property>
+                            <property name="label">_Update Index</property>
                             <property name="visible">True</property>
                             <property name="use_underline">True</property>
                             <accelerator key="u" signal="activate" modifiers="GDK_CONTROL_MASK"/>
@@ -836,28 +836,21 @@
   <object class="GtkMenu" id="event_context">
     <property name="visible">True</property>
     <child>
-      <object class="GtkMenuItem" id="event_edit">
-        <property name="label">Edit</property>
+      <object class="GtkMenuItem" id="event_astarters">
+        <property name="label">Add Starters</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_edit_cb"/>
+        <signal name="activate" handler="event_popup_starters_cb"/>
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="event_copy">
-        <property name="label">Duplicate</property>
+      <object class="GtkMenuItem" id="event_dstarters">
+        <property name="label">Del Starters</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_duplicate_cb"/>
+        <signal name="activate" handler="event_popup_starters_cb"/>
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="event_insert">
-        <property name="label">Add new</property>
-        <property name="visible">True</property>
-        <signal name="activate" handler="menu_race_make_activate_cb"/>
-      </object>
-    </child>
-    <child>
-      <object class="GtkSeparatorMenuItem" id="event_sapa">
+      <object class="GtkSeparatorMenuItem" id="event_sypa">
         <property name="visible">True</property>
       </object>
     </child>
@@ -888,17 +881,29 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="event_astarters">
-        <property name="label">Add Starters</property>
+      <object class="GtkMenuItem" id="event_edit">
+        <property name="label">Edit</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_starters_cb"/>
+        <signal name="activate" handler="event_popup_edit_cb"/>
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="event_dstarters">
-        <property name="label">Del Starters</property>
+      <object class="GtkMenuItem" id="event_copy">
+        <property name="label">Duplicate</property>
         <property name="visible">True</property>
-        <signal name="activate" handler="event_popup_starters_cb"/>
+        <signal name="activate" handler="event_popup_duplicate_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_insert">
+        <property name="label">Add new</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="menu_race_make_activate_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="event_sapa">
+        <property name="visible">True</property>
       </object>
     </child>
     <child>
