@@ -442,6 +442,7 @@ class f200:
                 rname = ''
                 if rh is not None:
                     rname = rh.resname()
+                    info = rh['class']
                     if rh.in_cat('tandem') and rh['note']:
                         ph = self.meet.rdb.get_rider(rh['note'], self.series)
                         if ph is not None:
@@ -716,8 +717,7 @@ class f200:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
-
-            rcat = None
+            rcls = rh['class']
             plink = ''
             rank = None
             rname = rh.resname()
@@ -727,13 +727,8 @@ class f200:
                 if ph is not None:
                     plink = [
                         '', '',
-                        ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
+                        ph.resname() + ' - Pilot', ph['class'], '', '', ''
                     ]
-            if self.event['cate']:
-                if rh['cat']:
-                    rcat = rh['cat']
-            if rh['uciid']:
-                rcat = rh['uciid']  # overwrite by force
             rtime = None
             info = None
             dtime = None
@@ -757,7 +752,7 @@ class f200:
                         rtime = time.rawtime(2) + '\u2007'
 
             if rank:
-                sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
+                sec.lines.append([rank, rno, rname, rcls, rtime, dtime, plink])
                 finriders.add(rno)
         doheats = False
         sv = []
@@ -1267,6 +1262,7 @@ class f200:
                 self.meet.scbwin.sett1('       0.0     ')
                 nstr = self.fs.biblbl.get_text()
                 self.meet.timer_log_msg(bib, nstr)
+                self.meet.timer_log_env()
                 self.meet.gemini.set_bib(bib)
                 self.meet.gemini.set_time(' 0.0 ')
                 self.meet.gemini.set_rank('')
@@ -1516,7 +1512,7 @@ class f200:
 
     def log_split(self, bib, start, split):
         """Print split log."""
-        slbl = '100'
+        slbl = '100m'
         if self.evtype == 'flying lap':
             slbl = 'int'
         self.meet.timer_log_straight(bib, slbl, split - start, 3)
