@@ -299,6 +299,10 @@ class timerpane:
         """Return true is current split pointer is a half-lap."""
         return self.split % 2 == 0
 
+    def split_up(self):
+        """Increment split to next."""
+        self.set_split(self.split + 1)
+
     def lap_up(self):
         """Increment the split point to the next whole lap."""
         nsplit = self.split
