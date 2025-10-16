@@ -486,17 +486,17 @@ class teamagg(classification.classification):
         # load pre-meet points tally (starting points)
         self.load_startpts()
 
+        pmap = self.load_pointsmap(self.bheatpts, 'B Heat')
         for evno in self.bheat.split():
-            pmap = self.load_pointsmap(self.bheatpts, 'B Heat')
             self.accumulate_event(evno, pmap)
+        pmap = self.load_pointsmap(self.aheatpts, 'A Heat')
         for evno in self.aheat.split():
-            pmap = self.load_pointsmap(self.aheatpts, 'A Heat')
             self.accumulate_event(evno, pmap)
+        pmap = self.load_pointsmap(self.bfinalpts, 'B Final')
         for evno in self.bfinal.split():
-            pmap = self.load_pointsmap(self.bfinalpts, 'B Final')
             self.accumulate_event(evno, pmap)
+        pmap = self.load_pointsmap(self.afinalpts, 'A Final')
         for evno in self.afinal.split():
-            pmap = self.load_pointsmap(self.afinalpts, 'A Final')
             self.accumulate_event(evno, pmap)
 
         aux = []
@@ -528,7 +528,6 @@ class teamagg(classification.classification):
         else:
             self._standingstat = 'Standings'
 
-        #_log.debug('Updated ranks: %r', self.ptstally)
         return
 
     def do_places(self):
@@ -540,7 +539,7 @@ class teamagg(classification.classification):
         teamnames = False
         name_w = self.meet.scb.linelen - 13
         fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (6, 'r'))
-        if self.series and self.series[0].lower() == 't':
+        if self.series.startswith('t'):
             teamnames = True
             name_w = self.meet.scb.linelen - 10
             fmt = ((3, 'l'), ' ', (name_w, 'l'), (6, 'r'))
