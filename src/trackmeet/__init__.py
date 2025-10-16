@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.4'
+__version__ = '1.13.5a1'
 
 import sys
 import gi
@@ -31,7 +31,7 @@ from metarace import unt4
 from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
-from metarace.comet import _CONFIG_SCHEMA as _COMET_SCHEMA
+from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
@@ -356,7 +356,7 @@ class trackmeet:
         metarace.sysconf.add_section('telegraph', _TG_SCHEMA)
         metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
         metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
-        metarace.sysconf.add_section('comet', _COMET_SCHEMA)
+        metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
         cfgres = uiutil.options_dlg(window=self.window,
                                     title='Meet Properties',
                                     sections={
@@ -385,9 +385,9 @@ class trackmeet:
                                             'schema': _TIMY_SCHEMA,
                                             'object': metarace.sysconf,
                                         },
-                                        'comet': {
-                                            'title': 'Comet',
-                                            'schema': _COMET_SCHEMA,
+                                        'weather': {
+                                            'title': 'Weather',
+                                            'schema': _WEATHER_SCHEMA,
                                             'object': metarace.sysconf,
                                         },
                                     })
@@ -397,7 +397,8 @@ class trackmeet:
         tgchange = False
         timerchange = False
         scbchange = False
-        for sec in ('export', 'timy', 'telegraph', 'sender'):
+        weatherchange = False
+        for sec in ('export', 'timy', 'telegraph', 'sender', 'weather'):
             for key in cfgres[sec]:
                 if cfgres[sec][key][0]:
                     syschange = True
@@ -407,6 +408,8 @@ class trackmeet:
                         timerchange = True
                     elif sec == 'sender':
                         scbchange = True
+                    elif sec == 'weather':
+                        weatherchange = True
 
         if syschange:
             _log.info('Saving config updates to meet folder')
@@ -415,7 +418,7 @@ class trackmeet:
 
         # reset telegraph connection if required
         if tgchange:
-            _log.info('Re-start telegraph')
+            _log.debug('Re-start telegraph')
             newannounce = telegraph()
             newannounce.setcb(self._controlcb)
             newannounce.start()
@@ -425,7 +428,7 @@ class trackmeet:
 
         # reset timer connection if required
         if timerchange:
-            _log.info('Re-start timer')
+            _log.debug('Re-start timer')
             newtimy = timy()
             newtimy.setcb(self._timercb)
             newtimy.start()
@@ -435,12 +438,19 @@ class trackmeet:
 
         # reset scb connection if required
         if scbchange:
-            _log.info('Re-start scb')
+            _log.debug('Re-start scb')
             self.scbwin = None
             oldscb = self.scb
             self.scb = sender()
             self.scb.start()
             oldscb.exit()
+
+        # create new weather handler if required
+        if weatherchange:
+            _log.debug('Re-start weather')
+            self.weather.exit()
+            self.weather = Weather()
+            self.weather.start()
 
         res = cfgres['meet']
         # handle a change in announce topic
@@ -1619,6 +1629,13 @@ class trackmeet:
         lstr = '{0:3} {1}'.format(bib[0:3], str(msg)[0:20])
         self.main_timer.printline(lstr)
 
+    def timer_log_env(self):
+        """Print the current weather observations if valid."""
+        if self.weather.valid():
+            lstr = '{0:0.1f}\u00b0C {1:0.1f}%rh {2:0.1f}hPa'.format(
+                self.weather.t, self.weather.h, self.weather.p)
+            self.main_timer.printline(lstr)
+
     def infoline(self, event):
         """Format event information for display on event info label."""
         evstr = event.get_info()
@@ -1634,7 +1651,7 @@ class trackmeet:
         evno = ''
         srcev = event.get_evno()
         if self.showevno and event['type'] != 'break':
-            srcno = strops.posint(srcev, None)
+            srcno = strops.confopt_posint(srcev, None)
             if srcno is not None:
                 evno = 'Ev ' + srcev
         info = event['info']
@@ -1741,6 +1758,7 @@ class trackmeet:
         self.scb.exit(msg)
         self.gemini.exit(msg)
         self.main_timer.exit(msg)
+        self.weather.exit()
         _log.info('Waiting for workers to exit')
         if self.exporter is not None:
             _log.debug('Result compiler')
@@ -1750,10 +1768,6 @@ class trackmeet:
             _log.debug('Result export')
             self.mirror.join()
             self.mirror = None
-        _log.debug('Gemini scoreboard')
-        self.gemini.join()
-        _log.debug('DHI scoreboard')
-        self.scb.join()
         _log.debug('Telegraph/announce')
         self.announce.join()
 
@@ -1776,6 +1790,7 @@ class trackmeet:
             self.main_timer.setcb(self._timercb)
             self.main_timer.start()
             self.gemini.start()
+            self.weather.start()
             self.started = True
 
     # Track meet functions
@@ -2983,6 +2998,7 @@ class trackmeet:
         self.main_timer = timy()
         self.timerport = ''
         self.gemini = gemini()
+        self.weather = Weather()
         self.gemport = ''
         self.mirror = None  # file mirror thread
         self.exporter = None  # export worker thread
@@ -3126,7 +3142,7 @@ def edit_defaults():
     metarace.sysconf.add_section('telegraph', _TG_SCHEMA)
     metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
     metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
-    metarace.sysconf.add_section('comet', _COMET_SCHEMA)
+    metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
     cfgres = uiutil.options_dlg(title='Edit Default Configuration',
                                 sections={
                                     'trackmeet': {
@@ -3154,9 +3170,9 @@ def edit_defaults():
                                         'schema': _TIMY_SCHEMA,
                                         'object': metarace.sysconf,
                                     },
-                                    'comet': {
-                                        'title': 'Comet',
-                                        'schema': _COMET_SCHEMA,
+                                    'weather': {
+                                        'title': 'Weather',
+                                        'schema': _WEATHER_SCHEMA,
                                         'object': metarace.sysconf,
                                     },
                                 })
