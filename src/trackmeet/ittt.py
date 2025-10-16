@@ -48,6 +48,9 @@ COL_FINISH = 8
 COL_LASTLAP = 9
 COL_SPLITS = 10
 _VIEWCOL_MEMBERS = 2  # Team member list col
+_HALFLAP_MIN = tod.mktod(5)
+_HALFLAP_MAX = tod.mktod(30)  # check
+_LAP_MIN = tod.mktod(13)
 
 # scb function key mappings
 key_reannounce = 'F4'  # (+CTRL) calls into delayed announce
@@ -278,7 +281,7 @@ class ittt:
         defchans = 0
         defchana = 2
         defchanb = 3
-        defautotime = False  # without splits, this is not reliable
+        defautotime = True
         self.seedsrc = 1  # fetch seed from the rank col
 
         # type specific overrides
@@ -291,6 +294,7 @@ class ittt:
             if 'pursuit' in self.evtype:
                 self.teampursuit = True
                 defprecision = 2
+                defautotime = False
 
         cr = jsonconfig.config({
             'event': {
@@ -313,6 +317,7 @@ class ittt:
                 'chan_B': defchanb,
                 'autotime': defautotime,
                 'inomnium': False,
+                'forcedetail': True,  # include split data on main result
                 'timetype': deftimetype,
             }
         })
@@ -341,6 +346,7 @@ class ittt:
         self.autotime = strops.confopt_bool(cr.get('event', 'autotime'))
         self.showcats = cr.get_bool('event', 'showcats')
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
+        self.forcedetail = strops.confopt_bool(cr.get('event', 'forcedetail'))
         if self.inomnium:
             self.seedsrc = 3  # read seeding from points standing
         self.precision = strops.confopt_posint(cr.get('event', 'precision'), 3)
@@ -382,13 +388,13 @@ class ittt:
                     nr[COL_MEMBERS] = dbr['members']
             nri = self.riders.append(nr)
             if not self.readonly:
-                # skip fetching traces and split if opened readonly
+                # skip fetching traces if opened readonly
                 if cr.has_option('traces', r):
                     self.traces[r] = cr.get('traces', r)
-                if cr.has_option('splits', r):
-                    rsplit = cr.get('splits', r)
-                    for sid, split in rsplit.items():
-                        sp[sid] = tod.mktod(split)
+            if cr.has_option('splits', r):
+                rsplit = cr.get('splits', r)
+                for sid, split in rsplit.items():
+                    sp[sid] = tod.mktod(split)
             self.settimes(nri, st, ft, lt, sp, doplaces=False, comment=co)
         self.placexfer()
 
@@ -472,6 +478,7 @@ class ittt:
         cw.set('event', 'autotime', self.autotime)
         cw.set('event', 'startlist', self.get_startlist())
         cw.set('event', 'inomnium', self.inomnium)
+        cw.set('event', 'forcedetail', self.forcedetail)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'precision', self.precision)
         cw.set('event', 'decisions', self.decisions)
@@ -628,6 +635,7 @@ class ittt:
                 heat = str(count) + '.1'
                 if rh is not None:
                     rname = rh.resname()
+                    info = rh['class']
                     if self.teamnames:
                         # todo: remove madison teams from ittt
                         info = []
@@ -666,6 +674,7 @@ class ittt:
                     info = cats[rno]
                 if rh is not None:
                     rname = rh.resname()
+                    info = rh['class']
                     if self.teamnames:
                         # todo: remove madison teams from ittt
                         info = []
@@ -941,7 +950,7 @@ class ittt:
 
             yield (bib, rank, time, info)
 
-    def result_report(self, recurse=False):
+    def result_report(self, recurse=True):
         """Return a list of report sections containing the race result."""
         slist = self.startlist_report()  # keep for unfinished
         finriders = set()
@@ -959,6 +968,8 @@ class ittt:
         )).strip()
         sec.lines = []
         ftime = None
+        maxtime = _HALFLAP_MAX
+        rtimes = {}
         downprec = min(self.precision, 2)
         rcount = 0
         pcount = 0
@@ -969,8 +980,7 @@ class ittt:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
-
-            rcat = None
+            rcls = rh['class']
             plink = ''
             rank = None
             rname = rh.resname()
@@ -985,8 +995,8 @@ class ittt:
                         '', '',
                         ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
                     ]
-            if self.showcats:
-                rcat = rh.primary_cat()
+            #if self.showcats:
+            #rcat = rh.primary_cat()
             info = None
             dtime = None
             if self.onestart:
@@ -1008,13 +1018,16 @@ class ittt:
                         rtime = time.rawtime(self.precision)
                     else:
                         rtime = time.rawtime(2) + '\u2007'
+                    if time > maxtime:
+                        maxtime = time
+                    rtimes[r[COL_NO]] = time
                 elif r[COL_COMMENT]:
                     if r[COL_COMMENT] in ('catch', 'caught'):
                         rtime = str(r[COL_COMMENT])
                     elif r[COL_COMMENT] not in ('abd', 'dns', 'dsq', 'dnf'):
                         rtime = 'ntr'
             if rank:
-                sec.lines.append([rank, rno, rname, rcat, rtime, dtime, plink])
+                sec.lines.append([rank, rno, rname, rcls, rtime, dtime, plink])
                 finriders.add(rno)
                 # then add team members if relevant
                 if self.teamnames:
@@ -1062,6 +1075,48 @@ class ittt:
 
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
+
+        if recurse or self.forcedetail:
+            secid = 'detail-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+            sec = report.laptimes(secid)
+            sec.heading = 'Detail'
+            sec.precision = self.precision
+            sec.absolute = True
+            sec.showelapsed = False
+            sec.colheader = ['', '', '', '', '']
+            for sid in self.splitlist:
+                sec.colheader.append(sid)
+            lastsplit = sid
+            sec.start = tod.ZERO
+            sec.finish = maxtime + tod.tod(1)
+            for r in self.riders:
+                # add each rider, even when there is no info to display
+                rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
+                rdata = {}
+                if self.teamnames:
+                    rdata['no'] = None
+                else:
+                    rdata['no'] = r[COL_NO]
+                rdata['name'] = rh.fitname(4, trunc=False)
+                rdata['cat'] = rh['class']
+                rdata['count'] = None
+                rdata['place'] = r[COL_PLACE]
+                rdata['elapsed'] = None
+                rdata['average'] = None
+                rdata['laps'] = []
+                stime = r[COL_START]
+                if stime is not None:
+                    rsplits = r[COL_SPLITS]
+                    for sid in self.splitlist:
+                        if sid == lastsplit and r[COL_NO] in rtimes:
+                            rdata['laps'].append(rtimes[r[COL_NO]])  # elap
+                        elif sid in rsplits and rsplits[sid] is not None:
+                            st = rsplits[sid] - stime
+                            rdata['laps'].append(st)
+                        else:
+                            rdata['laps'].append(None)
+                sec.lines.append(rdata)
+            ret.append(sec)
         return ret
 
     def editent_cb(self, entry, col):
@@ -1079,6 +1134,70 @@ class ittt:
         """Run callback once in main loop idle handler."""
         cb('')
         return False
+
+    def auto_trig(self, sp, t):
+        """Handle an accepted passing for the nominated lane"""
+        if sp.split < len(self.splitlist) - 1:
+            _log.info('Intermediate split %r', sp.split)
+            self.halflap_trig(sp, t)
+        else:
+            _log.info('Finishing rider split %r', sp.split)
+            self.fin_trig(sp, t)
+
+    def halflap_trig(self, sp, t):
+        """Register half-lap trigger."""
+        sid = sp.get_sid()  # might be None
+        rank = self.insert_split(sid, t - self.curstart, sp.getrider())
+
+        # log to chronometer trace
+        prev = None
+        itvl = None
+        if sp.on_halflap():
+            if sp.split > 0:
+                prev = sp.getsplit(sp.split - 1)
+            itvl = '1/2'
+        else:
+            if sp.split > 1:
+                prev = sp.getsplit(sp.split - 2)
+            itvl = 'lap'
+        self.log_lap(sp.getrider(), sid, self.curstart, t, prev, itvl=itvl)
+
+        # save inter time to split cache in timer, and advance split pointer
+        sp.intermed(t)
+        sp.split_up()
+
+        if self.difftime:
+            if self.diffstart is None or self.difflane is sp:
+                self.diffstart = t
+                self.difflane = sp
+            else:
+                # 'other' lane has previously completed this lap
+                so = self.t_other(sp)
+                if so.split == sp.split and self.diffstart is not None:
+                    dt = t - self.diffstart
+                    if dt < 4:
+                        sp.difftime(dt)
+                    self.difflane = None
+                    self.diffstart = None
+        if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
+            if rank is not None:
+                rlbl = '({}) {}:'.format(rank + 1, sid)
+            else:
+                rlbl = '{}:'.format(sid)
+            if sp is self.fs:
+                self.meet.scbwin.setr1(rlbl)
+                GLib.timeout_add_seconds(4, self.clear_rank,
+                                         self.meet.scbwin.setr1)
+                self.meet.txt_postxt(
+                    5, 8,
+                    strops.truncpad(rlbl, 17) + ' ' + self.fs.get_time())
+            else:
+                self.meet.scbwin.setr2(rlbl)
+                GLib.timeout_add_seconds(4, self.clear_rank,
+                                         self.meet.scbwin.setr2)
+                self.meet.txt_postxt(
+                    5, 50,
+                    strops.truncpad(rlbl, 17) + ' ' + self.bs.get_time())
 
     def lap_trig(self, sp, t):
         """Register manual lap trigger."""
@@ -1152,7 +1271,7 @@ class ittt:
             else:
                 _log.warning('Rider %r manual finish with incorrect splits',
                              sp.getrider())
-        if prev is None:
+        if prev is None and sp.split > 1:  # ignore degenerate standing lap
             _log.warning('Last lap data not available for %r', sp.getrider())
 
         # update model with result
@@ -1221,14 +1340,109 @@ class ittt:
         else:
             _log.info('Unable to recover start')
 
+    def estimate_arrival(self, elap, split, sp, e):
+        """Determine if e is valid arrival and return expected time"""
+        # Temp: assume one-up and just sanitize lap time
+        prev = self.curstart
+        if split > 1:
+            prev = sp.getsplit(split - 2)
+        if prev is not None:
+            pt = e - prev
+            if pt < _LAP_MIN:
+                _log.debug('Early arrival %s', pt.rawtime(1))
+                return False
+        # TODO: track speed over last full lap
+        # Estimate rear wheel
+        # Predict arrival
+        return True
+
+    def autotime_home(self, e):
+        """Handle auto timer impulse on home straight"""
+        asplit = None  # A splits will be even
+        bsplit = None  # B splits will be odd
+        if self.fs.getstatus() == 'running':
+            if not self.fs.on_halflap():
+                asplit = self.fs.split
+        if self.bs.getstatus() == 'running':
+            if self.bs.on_halflap():
+                bsplit = self.bs.split
+        if asplit is None and bsplit is None:
+            _log.debug('Spurious home trigger ignored')
+            return
+
+        elap = e - self.curstart
+        _log.debug('Front: a=%r, b=%r, elap=%s', asplit, bsplit,
+                   elap.rawtime(1))
+        if bsplit == 0:
+            # special case: first half-lap, assume A does not catch B
+            if elap >= _HALFLAP_MIN and elap < _HALFLAP_MAX:
+                self.auto_trig(self.bs, e)
+        elif asplit == 1:
+            # special case: end of first full lap
+            if elap > _LAP_MIN:
+                self.auto_trig(self.fs, e)
+            else:
+                _log.debug('Early arrival A')
+        else:
+            if asplit is None:
+                if self.estimate_arrival(elap, bsplit, self.bs, e):
+                    self.auto_trig(self.bs, e)  # B on half lap
+            elif bsplit is None:
+                if self.estimate_arrival(elap, asplit, self.fs, e):
+                    self.auto_trig(self.fs, e)  # A on full lap
+            else:
+                _log.debug('TODO: pick first compatable arrival')
+
+    def autotime_back(self, e):
+        """Handle auto timer impulse on back straight"""
+        _log.debug('autotime back')
+        asplit = None  # A splits will be odd
+        bsplit = None  # B splits will be even
+        if self.fs.getstatus() == 'running':
+            if self.fs.on_halflap():
+                asplit = self.fs.split
+        if self.bs.getstatus() == 'running':
+            if not self.bs.on_halflap():
+                bsplit = self.bs.split
+        if asplit is None and bsplit is None:
+            _log.debug('Spurious back trigger ignored')
+            return
+
+        elap = e - self.curstart
+        _log.debug('Back: a=%r, b=%r, elap=%s', asplit, bsplit,
+                   elap.rawtime(1))
+        if asplit == 0:
+            # special case: first half-lap, assume B does not catch A
+            if elap > _HALFLAP_MIN and elap < _HALFLAP_MAX:
+                self.auto_trig(self.fs, e)
+        elif bsplit == 1:
+            # special case: end of first full lap
+            if elap > _LAP_MIN:
+                self.auto_trig(self.bs, e)
+            else:
+                _log.debug('Early arrival B')
+        else:
+            if bsplit is None:
+                if self.estimate_arrival(elap, asplit, self.bs, e):
+                    self.auto_trig(self.fs, e)  # A on half lap
+            elif asplit is None:
+                if self.estimate_arrival(elap, bsplit, self.fs, e):
+                    self.auto_trig(self.bs, e)  # B on full lap
+            else:
+                _log.debug('TODO: pick first compatable arrival')
+
     def timercb(self, e):
         """Handle a timer event."""
         chan = strops.chan2id(e.chan)
+        _log.debug('timerstat=%s', self.timerstat)
         if self.timerstat == 'armstart':
             if chan == self.chan_S:
                 self.torunning(e)
         elif self.timerstat == 'autotime':
-            _log.warning('AUTOTIMER CALLBACK')
+            if chan == self.chan_A:
+                self.autotime_home(e)
+            elif chan == self.chan_B:
+                self.autotime_back(e)
         elif self.timerstat == 'running':
             if chan == self.chan_A or (self.timetype == 'single'
                                        and self.chan_B):
@@ -1292,6 +1506,10 @@ class ittt:
         self.difflane = None
         if self.autotime:
             self.timerstat = 'autotime'
+            # armlock
+            self.meet.main_timer.armlock(lock=True)
+            self.meet.main_timer.arm(self.chan_A)
+            self.meet.main_timer.arm(self.chan_B)
         else:
             self.timerstat = 'running'
         self.onestart = True
@@ -1506,6 +1724,8 @@ class ittt:
                                 bib)
         else:  # DNF/Catch/etc
             self.results.insert(comment, None, bib)
+        _log.debug('r[COL_SPLITS] = %r',
+                   self.riders.get_value(iter, COL_SPLITS))
         if splits is not None:
             # save reference to rider model
             self.riders.set_value(iter, COL_SPLITS, splits)
@@ -1548,7 +1768,7 @@ class ittt:
     def disable_autotime(self):
         """Cancel a running autotime for manual intervention."""
         if self.timerstat == 'autotime':
-            _log.error('DISABLE AUTOTIMER')
+            _log.debug('Autotime off, timerstat->running')
             self.timerstat = 'running'
 
     def armlap(self, sp, cid):
@@ -1587,7 +1807,7 @@ class ittt:
                 self.settimes(ri,
                               st=self.curstart,
                               splits=sp.splits,
-                              comment='abort')
+                              comment='dnf')
             sp.tofinish()
             self.meet.timer_log_msg(bib, '- Abort -')
             GLib.idle_add(self.delayed_announce)
@@ -1804,6 +2024,7 @@ class ittt:
             if self.timetype == 'single':
                 self.bs.toidle()
                 self.bs.disable()
+            self.meet.timer_log_env()
             GLib.idle_add(self.delayed_announce)
 
     def toidle(self, idletimers=True):
@@ -1826,6 +2047,7 @@ class ittt:
         self.diffstart = None
         for i in range(0, 8):
             self.meet.main_timer.dearm(i)
+        self.meet.main_timer.armlock(False)
         if not self.onestart:
             pass
         self.fs.grab_focus()
@@ -1891,7 +2113,7 @@ class ittt:
         """Clear times for selected rider."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            self.settimes(sel[1])
+            self.settimes(sel[1], splits={})
             self.log_clear(self.riders.get_value(sel[1], COL_NO))
             GLib.idle_add(self.delayed_announce)
 
@@ -1899,28 +2121,24 @@ class ittt:
         """Abandon rider."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            self.settimes(sel[1], comment='abd')
+            st = self.riders.get_value(sel[1], COL_START)
+            self.settimes(sel[1], st=st, comment='abd')
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_rel_activate_cb(self, menuitem, data=None):
         """Relegate rider."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            self.settimes(sel[1], comment='rel')
-            GLib.idle_add(self.delayed_announce)
-
-    def tod_context_ntr_activate_cb(self, menuitem, data=None):
-        """No time recorded for rider."""
-        sel = self.view.get_selection().get_selected()
-        if sel is not None:
-            self.settimes(sel[1], comment='ntr')
+            st = self.riders.get_value(sel[1], COL_START)
+            self.settimes(sel[1], st=st, comment='rel')
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_dnf_activate_cb(self, menuitem, data=None):
         """DNF rider."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            self.settimes(sel[1], comment='dnf')
+            st = self.riders.get_value(sel[1], COL_START)
+            self.settimes(sel[1], st=st, comment='dnf')
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_dsq_activate_cb(self, menuitem, data=None):
@@ -2068,13 +2286,11 @@ class ittt:
         """Print clear time log."""
         self.meet.timer_log_msg(bib, '- Time Cleared -')
 
-    def log_lap(self, bib, sid, start, split, prev=None):
-        """Print a split log."""
-        if prev is None:
-            prev = start
-        self.meet.timer_log_straight(bib, sid, split - prev, 3)
-        if prev != start:
-            self.meet.timer_log_straight(bib, 'time', split - start, 3)
+    def log_lap(self, bib, sid, start, split, prev=None, itvl='lap'):
+        """Print a split log entry."""
+        if prev is not None:
+            self.meet.timer_log_straight(bib, itvl, split - prev, 3)
+        self.meet.timer_log_straight(bib, sid, split - start, 3)
 
     def log_elapsed(self,
                     bib,
@@ -2087,10 +2303,13 @@ class ittt:
         if manual:
             self.meet.timer_log_msg(bib, '- Manual Adjust -')
         if prev is not None and prev != start:
-            self.meet.timer_log_straight(bib, sid, finish - prev, 3)
+            # log final lap time at finish (for tie-breaking)
+            self.meet.timer_log_straight(bib, 'lap', finish - prev, 3)
         self.meet.timer_log_straight(bib, 'ST', start)
         self.meet.timer_log_straight(bib, 'FIN', finish)
-        self.meet.timer_log_straight(bib, 'TIME', finish - start, 3)
+        if sid is None:
+            sid = 'TIME'
+        self.meet.timer_log_straight(bib, sid, finish - start, 3)
 
     def set_timetype(self, data=None):
         """Update timer panes to match timetype or data if provided."""
@@ -2154,6 +2373,7 @@ class ittt:
         self._standingstr = ''
         self.finished = False
         self.inomnium = False
+        self.forcedetail = False
         self.seedsrc = 1  # default seeding is by rank in last round
         self.onestart = False
         self.winopen = ui
