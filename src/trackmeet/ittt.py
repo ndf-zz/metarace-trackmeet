@@ -564,12 +564,17 @@ class ittt:
         )).strip()
         if substr:
             sec.subheading = substr
-        if self.event['reco']:
-            sec.footer = self.event['reco']
         if self.event['plac']:
             sec.lines = self.get_heats(placeholders=self.event['plac'])
         else:
             sec.lines = self.get_heats()
+
+        # Prizemoney line
+        sec.prizes = self.meet.prizeline(self.event)
+
+        # Footer line (suppressed competitor count)
+        sec.footer = self.meet.footerline(self.event)
+
         ret.append(sec)
         return ret
 
@@ -1724,8 +1729,6 @@ class ittt:
                                 bib)
         else:  # DNF/Catch/etc
             self.results.insert(comment, None, bib)
-        _log.debug('r[COL_SPLITS] = %r',
-                   self.riders.get_value(iter, COL_SPLITS))
         if splits is not None:
             # save reference to rider model
             self.riders.set_value(iter, COL_SPLITS, splits)

@@ -585,6 +585,13 @@ class sprnd:
                         cr[COL_CONTEST] + ':', [None, ano, aname, aqual],
                         [byeflag, bno, bname, bqual], timestr
                     ])
+
+        # Prizemoney line
+        sec.prizes = self.meet.prizeline(self.event)
+
+        # Footer line (with suppressed competitor count)
+        sec.footer = self.meet.footerline(self.event)
+
         ret.append(sec)
         return ret
 

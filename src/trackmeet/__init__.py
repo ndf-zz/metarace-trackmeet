@@ -1636,6 +1636,44 @@ class trackmeet:
                 self.weather.t, self.weather.h, self.weather.p)
             self.main_timer.printline(lstr)
 
+    def footerline(self, event, count=None, label='Riders'):
+        """Format competitor count, sponsor and record for program report."""
+        footer = None
+        fvec = []
+        if count is not None and count > 2:
+            fvec.append('Total %s: %d' % (
+                label,
+                count,
+            ))
+        if event['reco']:
+            fvec.append(event['reco'])
+        if event['sponsor']:
+            fvec.append('Sponsor: ' + event['sponsor'])
+        if fvec:
+            footer = '\u2003'.join(fvec)
+        return footer
+
+    def prizeline(self, event):
+        """Format prizemoney line for inclusion on program report."""
+        prizes = None
+        pvec = []
+        if event['prizemoney']:
+            count = 0
+            for place in event['prizemoney'].split():
+                count += 1
+                if place.isdigit():
+                    placeval = int(place)
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s $%d: ____' % (rank, placeval))
+                elif place == '-':
+                    rank = strops.rank2ord(str(count))
+                    pvec.append('%s: ____' % (rank, ))
+                else:
+                    pvec.append('%s: ____' % (place, ))
+        if pvec:
+            prizes = '\u2003'.join(pvec)
+        return prizes
+
     def infoline(self, event):
         """Format event information for display on event info label."""
         evstr = event.get_info()

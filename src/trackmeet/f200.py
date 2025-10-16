@@ -497,9 +497,14 @@ class f200:
             (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             sec.subheading = substr
-        if self.event['reco']:
-            sec.footer = self.event['reco']
         sec.lines = self.get_heats()
+
+        # Prizemoney line
+        sec.prizes = self.meet.prizeline(self.event)
+
+        # Footer line (suppressed competitor count)
+        sec.footer = self.meet.footerline(self.event)
+
         ret.append(sec)
         return ret
 

@@ -606,10 +606,7 @@ class race:
         twocol = True
         rankcol = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
-        if not self.inomnium and not program and etype in ['axe', 'run']:
-            sec = report.section(secid)  # one column overrides
-        else:
-            sec = report.twocol_startlist(secid)
+        sec = report.twocol_startlist(secid)
 
         sec.nobreak = True
         headvec = self.event.get_info(showevno=True).split()
@@ -662,39 +659,10 @@ class race:
                 cnt += 1
 
         # Prizemoney line
-        pvec = []
-        if self.event['prizemoney']:
-            count = 0
-            for place in self.event['prizemoney'].split():
-                count += 1
-                if place.isdigit():
-                    placeval = int(place)
-                    rank = strops.rank2ord(str(count))
-                    pvec.append('%s $%d: ____' % (rank, placeval))
-                elif place == '-':
-                    rank = strops.rank2ord(str(count))
-                    pvec.append('%s: ____' % (rank, ))
-                else:
-                    pvec.append('%s: ____' % (place, ))
-        if pvec:
-            sec.prizes = '\u2003'.join(pvec)
+        sec.prizes = self.meet.prizeline(self.event)
 
         # Footer line
-        fvec = []
-        ptype = 'Riders'
-        if etype == 'run':
-            ptype = 'Runners'
-        elif self.evtype == 'axe':
-            ptype = 'Axemen'
-        if cnt > 2:
-            fvec.append('Total %s: %d' % (ptype, cnt))
-        if self.event['reco']:
-            fvec.append(self.event['reco'])
-        if self.event['sponsor']:
-            fvec.append('Sponsor: ' + self.event['sponsor'])
-
-        if fvec:
-            sec.footer = '\u2003'.join(fvec)
+        sec.footer = self.meet.footerline(self.event, count=cnt)
 
         ret.append(sec)
         return ret

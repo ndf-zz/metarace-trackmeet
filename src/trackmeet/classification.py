@@ -207,6 +207,13 @@ class classification:
             if rh is not None:
                 rname = rh.resname()
             sec.lines.append([None, rno, rname, None, None, None])
+
+        # Prizemoney line
+        sec.prizes = self.meet.prizeline(self.event)
+
+        # Footer line (suppressed competitor count)
+        sec.footer = self.meet.footerline(self.event)
+
         ret.append(sec)
         return ret
 

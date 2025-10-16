@@ -904,38 +904,14 @@ class ps:
                 sec.lines.append([rankCol, None, None, None, None, None])
                 cnt += 1
 
-    # Prizemoney line
-        pvec = []
-        if self.event['prizemoney']:
-            count = 0
-            for place in self.event['prizemoney'].split():
-                count += 1
-                if place.isdigit():
-                    placeval = int(place)
-                    rank = strops.rank2ord(str(count))
-                    pvec.append('%s $%d: ____' % (rank, placeval))
-                elif place == '-':
-                    rank = strops.rank2ord(str(count))
-                    pvec.append('%s: ____' % (rank, ))
-                else:
-                    pvec.append('%s: ____' % (place, ))
-        if pvec:
-            sec.prizes = '\u2003'.join(pvec)
+        # Prizemoney line
+        sec.prizes = self.meet.prizeline(self.event)
 
         # Footer line
-        fvec = []
         ptype = 'Riders'
         if self.evtype == 'madison':
             ptype = 'Teams'
-        if cnt > 2:
-            fvec.append('Total %s: %d' % (ptype, cnt))
-        if self.event['reco']:
-            fvec.append(self.event['reco'])
-        if self.event['sponsor']:
-            fvec.append('Sponsor: ' + self.event['sponsor'])
-
-        if fvec:
-            sec.footer = '\u2003'.join(fvec)
+        sec.footer = self.meet.footerline(self.event, count=cnt, label=ptype)
 
         ret.append(sec)
         return ret
