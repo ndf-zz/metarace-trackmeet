@@ -62,6 +62,8 @@ COMMON_SPRINTS = {
     60: '50 40 30 20 10 0',
     80: '70 60 50 40 30 20 10 0',
 }
+# Tempo race no sprint laps
+_TEMPO_NOSPRINT = 4
 
 # scb consts
 SPRINT_PLACE_DELAY = 3  # 3 seconds per place
@@ -266,12 +268,10 @@ class ps:
                             'Sprint points defined, progressive skipped')
 
                 if tempopoints:
-                    neutral = 4
-                    if self.distance < 6:
-                        neutral = 1
-                    elif self.distance < 12:
-                        neutral = 2
-                    fl = self.distance - (neutral + 1)
+                    nosprint = _TEMPO_NOSPRINT
+                    fl = 0
+                    if self.distance > nosprint:
+                        fl = self.distance - (nosprint + 1)
 
                     # pre-populate config if not present
                     slt = cr.get('event', 'sprintlaps')
@@ -372,7 +372,7 @@ class ps:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
         # Force team names unless event is a real madison
-        self.teamnames = (self.series.sartswith('t')
+        self.teamnames = (self.series.startswith('t')
                           and self.event['info'].lower() != 'madison')
 
         self.recalculate()
