@@ -521,29 +521,25 @@ class ps:
         for r in self.riders:
             if not self.teamnames:
                 rno = r[RES_COL_NO]
-            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             rname = ''
+            rcat = ''
+            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
                 rname = rh.resname()
+                rcat = rh['class']
+                if not rcat and self.showcats:
+                    rcat = rh.primary_cat()
             plstr = ''
-            rcat = None
-            if self.event['cate']:
-                if rname is not None and rh['cat']:
-                    rcat = rh['cat']
-            if self.inomnium:
-                rcat = None
-            if rh is not None and rh['ucicode']:
-                rcat = rh['ucicode']  # overwrite by force
-            if self.showcats and rh is not None:
-                rcat = rh.primary_cat()
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
                 if r[RES_COL_PLACE].isdigit():
                     plstr += '.'
-                elif r[RES_COL_INFO] in ['dns', 'dsq']:
+                    if r[RES_COL_INFO] and not self.inomnium:
+                        rcat = r[RES_COL_INFO]
+                elif r[RES_COL_INFO] in ('dns', 'dsq', 'abd'):
                     plstr = r[RES_COL_INFO]
                 elif r[RES_COL_INFO] and r[RES_COL_INFO].isdigit():
-                    plstr = r[RES_COL_INFO] + '.'
+                    plstr = r[RES_COL_INFO] + '.'  # Why allow manual?
                 ptstr = ''
                 if r[RES_COL_TOTAL] != 0 and r[RES_COL_INRACE]:
                     ptstr = str(r[RES_COL_TOTAL])
@@ -574,7 +570,7 @@ class ps:
                             trh = self.meet.rdb.fetch_bibstr(trno)
                             if trh is not None:
                                 trname = trh.resname()
-                                trinf = trh['ucicode']
+                                trinf = trh['class']
                                 sec.lines.append([
                                     None, trno, trname, trinf, None, None, None
                                 ])
@@ -822,25 +818,22 @@ class ps:
         col2 = []
         cnt = 0
         if self.inomnium and len(self.riders) > 0:
-            sec.lines.append([' ', ' ', 'The Fence', None, None, None])
-            col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
+            sec.lines.append((' ', ' ', 'The Fence', None, None, None))
+            col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
         rno = ''
         for r in self.riders:
             if not self.teamnames:
                 rno = r[RES_COL_NO]
-            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
-            inf = r[RES_COL_INFO]
-            if self.inomnium:
-                # inf holds seed, ignore for now
-                inf = None
-                if self.showcats and rh is not None:
-                    inf = rh.primary_cat()
-            # layout needs adhjustment
-            #if rh[u'ucicode']:
-            #inf = rh[u'ucicode']   # overwrite by force
             rname = ''
+            inf = ''
+            rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
                 rname = rh.resname()
+                inf = rh['class']
+                if not inf and self.showcats:
+                    inf = rh.primary_cat()
+            if r[RES_COL_INFO] and not self.inomnium:
+                inf = r[RES_COL_INFO]
 
             if self.inomnium:
                 if r[RES_COL_PLACE].isdigit() or r[RES_COL_PLACE] == '':
@@ -865,7 +858,7 @@ class ps:
                             trh = self.meet.rdb.fetch_bibstr(tvec[0])
                             if trh is not None:
                                 trname = trh.resname()
-                                trinf = trh['ucicode']
+                                trinf = trh['class']
                                 if not docolour:
                                     trno = trh['no']
 
@@ -878,7 +871,7 @@ class ps:
                             trh = self.meet.rdb.fetch_bibstr(tvec[1])
                             if trh is not None:
                                 trname = trh.resname()
-                                trinf = trh['ucicode']
+                                trinf = trh['class']
                                 if not docolour:
                                     trno = trh['no']
 
@@ -927,9 +920,10 @@ class ps:
         fmt = ((3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         for r in self.riders:
             if r[RES_COL_INRACE]:
-                name, club = self._getname(r[RES_COL_NO], width=name_w)
-                if len(club) != 3:
-                    club = ''
+                name, club, cls = self._getname(r[RES_COL_NO], width=name_w)
+                if not cls:
+                    if len(club) == 3:
+                        cls = club
                 nfo = ''
                 if self.inomnium:
                     if self.evtype == 'omnium':
@@ -940,7 +934,7 @@ class ps:
                         # overwrite nfo with seed value
                         nfo = r[RES_COL_INFO]
                 else:
-                    nfo = club
+                    nfo = cls
                 startlist.append((r[RES_COL_NO], name, nfo))
         self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
                                            head=self.meet.racenamecat(
@@ -951,14 +945,16 @@ class ps:
         self.meet.scbwin.reset()
 
     def _getname(self, bib, width=32):
-        """Return a name and club for the rider if known"""
+        """Return a name, club and class label for the rider if known"""
         name = ''
         club = ''
+        cls = ''
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is not None:
             name = dbr.fitname(width)
             club = dbr['organisation']
-        return name, club
+            cls = dbr['class']
+        return name, club, cls
 
     def key_event(self, widget, event):
         """Race window key press handler."""
@@ -1182,7 +1178,7 @@ class ps:
             llap = None  # leader's lap
             for r in self.riders:
                 if r[RES_COL_INRACE]:
-                    name, club = self._getname(r[RES_COL_NO])
+                    name, club, cls = self._getname(r[RES_COL_NO])
                     bstr = r[RES_COL_NO]
                     if llap is None:
                         llap = r[RES_COL_LAPS]
@@ -1198,7 +1194,8 @@ class ps:
             bstr = ''
             for r in self.riders:
                 if r[RES_COL_INRACE]:
-                    name, club = self._getname(r[RES_COL_NO], width=name_w)
+                    name, club, cls = self._getname(r[RES_COL_NO],
+                                                    width=name_w)
                     plstr = r[RES_COL_PLACE] + '.'
                     if not self.teamnames:
                         bstr = r[RES_COL_NO]
@@ -1258,7 +1255,7 @@ class ps:
                 recalc = True
                 _log.info('Rider %r gains a lap', bib)
                 rlines.append(scbwin.fmt_row(rfmt, (bib, r[RES_COL_NAME])))
-                name, club = self._getname(r[RES_COL_NO], width=srname_w)
+                name, club, cls = self._getname(r[RES_COL_NO], width=srname_w)
                 srlines.append((bib, name))
             else:
                 _log.warning('Did not gain lap for %r', bib)
@@ -1854,7 +1851,7 @@ class ps:
                         _log.info('Adding non-starter: %r', bib)
                         self.addrider(bib)
                         r = self._getrider(bib)
-                    name, club = self._getname(bib, width=name_w)
+                    name, club, cls = self._getname(bib, width=name_w)
                     ptsstr = ''
                     if place < len(points):
                         ptsstr = str(points[place])

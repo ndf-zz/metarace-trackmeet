@@ -181,7 +181,7 @@ class classification:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
 
     def startlist_report(self, program=False):
-        """Return a startlist report."""
+        """Return a startlist report placeholder - cf has no starters"""
         ret = []
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
@@ -197,16 +197,16 @@ class classification:
             (lapstring, self.event['distance'], self.event['phase'])).strip()
         if substr:
             sec.subheading = substr
-        sec.lines = []
-        for r in self.riders:
-            rno = r[COL_NO]
-            if 't' in self.series:  # Team no hack
-                rno = ' '  # force name
-            rh = self.meet.rdb.get_rider(rno, self.series)
-            rname = ''
-            if rh is not None:
-                rname = rh.resname()
-            sec.lines.append([None, rno, rname, None, None, None])
+        #sec.lines = []
+        #for r in self.riders:
+        #rno = r[COL_NO]
+        #if 't' in self.series:  # Team no hack
+        #rno = ' '  # force name
+        #rh = self.meet.rdb.get_rider(rno, self.series)
+        #rname = ''
+        #if rh is not None:
+        #rname = rh.resname()
+        #sec.lines.append([None, rno, rname, None, None, None])
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
@@ -285,37 +285,41 @@ class classification:
         if subvec:
             sec.subheading = ' - '.join(subvec)
 
+        teamnames = self.series.startswith('t')
         prevmedal = ''
         sec.lines = []
         for r in self.riders:
             rno = r[COL_NO]
-            rh = self.meet.rdb.get_rider(rno, self.series)
+            if teamnames:
+                rno = ''
             rname = ''
+            rcls = ''
             plink = ''
-            rcat = ''
-            if 't' in self.series:  # Team no hack
-                rno = ' '  # force name
-                if rh is not None:
-                    rname = rh['first']
-            else:
-                if rh is not None:
-                    rname = rh.resname()
-                    if rh['uciid']:
-                        rcat = rh['uciid']  # overwrite by force
+            tlink = []
+            rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
+            if rh is not None:
+                rname = rh.resname()
+                rcls = rh['class']
+                if not rcls and self.showcats:
+                    rcls = rh.primary_cat()
 
-                    # overwrite info if showcats true
-                    if self.showcats:
-                        rcat = rh.primary_cat()
+                # TODO: PARA Pilots
+                #if rh['cat'] and 'tandem' in rh['cat'].lower():
+                #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+                #if ph is not None:
+                #plink = [
+                #'', '', ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
+                #]
 
-                    # consider partners here
-                    if rh['cat'] and 'tandem' in rh['cat'].lower():
-                        ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                        if ph is not None:
-                            plink = [
-                                '', '',
-                                ph.resname() + ' - Pilot', ph['uciid'], '', '',
-                                ''
-                            ]
+                if teamnames:
+                    # in classification, all members are shown
+                    for trno in rh['members'].split():
+                        trh = self.meet.rdb.fetch_bibstr(trno)
+                        if trh is not None:
+                            trname = trh.resname()
+                            trinf = trh['class']
+                            tlink.append(
+                                [None, trno, trname, trinf, None, None, None])
 
             rank = ''
             rks = r[COL_PLACE]
@@ -333,16 +337,10 @@ class classification:
                 sec.lines.append([None, None, None])
             prevmedal = medal
 
-            nrow = [rank, rno, rname, rcat, None, medal, plink]
+            nrow = [rank, rno, rname, rcls, None, medal, plink]
             sec.lines.append(nrow)
-            if 't' in self.series:
-                for trno in strops.riderlist_split(rh['note']):
-                    trh = self.meet.rdb.get_rider(trno, self.series)
-                    if trh is not None:
-                        trname = trh.resname()
-                        trinf = trh['uciid']
-                        sec.lines.append(
-                            [None, trno, trname, trinf, None, None, None])
+            if tlink:
+                sec.lines.extend(tlink)
         ret.append(sec)
 
         if len(self.decisions) > 0:
@@ -580,14 +578,16 @@ class classification:
         return self.do_places()
 
     def _getname(self, bib, width=32):
-        """Return a name and club for the rider if known"""
+        """Return a name, club and class label for the rider if known"""
         name = ''
         club = ''
+        cls = ''
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is not None:
             name = dbr.fitname(width)
             club = dbr['organisation']
-        return name, club
+            cls = dbr['class']
+        return name, club, cls
 
     def do_places(self):
         """Show race result on scoreboard."""
@@ -607,13 +607,14 @@ class classification:
             if plstr.isdigit():
                 plstr = plstr + '.'
             no = r[COL_NO]
-            name, club = self._getname(no, name_w)
-            if len(club) != 3:
-                club = ''
+            name, club, cls = self._getname(no, name_w)
+            if not cls:
+                if len(club) == 3:
+                    cls = club
             if not teamnames:
-                resvec.append((plstr, no, name, club))
+                resvec.append((plstr, no, name, cls))
             else:
-                resvec.append((plstr, name, club))
+                resvec.append((plstr, name, cls))
             count += 1
         self.meet.scbwin = None
         header = self.meet.racenamecat(self.event)

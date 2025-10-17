@@ -186,14 +186,14 @@ class ittt:
                 plstr = r[COL_PLACE]
                 if plstr.isdigit():
                     plstr = plstr + '.'
-                name, club = self._getname(r[COL_NO], width=name_w)
-                if len(club) != 3:
-                    club = ''
+                name, club, cls = self._getname(r[COL_NO], width=name_w)
+                if not cls and len(club) == 3:
+                    cls = club
                 if not self.teamnames:
                     bib = r[COL_NO]
-                    fmtplaces.append((plstr, bib, name, club))
+                    fmtplaces.append((plstr, bib, name, cls))
                 else:
-                    fmtplaces.append((plstr, name, club))
+                    fmtplaces.append((plstr, name, cls))
         evtstatus = 'Standings'
         if rcount > 0 and pcount == rcount:
             evtstatus = 'Result'
@@ -609,7 +609,7 @@ class ittt:
             auxmap.sort(key=cmp_to_key(self.sort_startlist))
             self.riders.reorder([a[0] for a in auxmap])
 
-    def get_heats(self, placeholders=0, cats=None):
+    def get_heats(self, placeholders=0):
         """Return a list of heats in the event."""
         ret = []
 
@@ -631,36 +631,37 @@ class ittt:
             blanknames = True
         if self.timetype == 'single':
             for r in self.riders:
-                rno = r[COL_NO]
-                info = None
-                if cats and rno in cats:
-                    info = cats[rno]
-                rh = self.meet.rdb.get_rider(rno, self.series)
-                rname = ''
                 heat = str(count) + '.1'
+                rno = r[COL_NO]
+                info = ''
+                rname = ''
+                rh = self.meet.rdb.get_rider(rno, self.series)
                 if rh is not None:
                     rname = rh.resname()
                     info = rh['class']
+                    if not info and self.showcats:
+                        info = rh.primary_cat()
                     if self.teamnames:
-                        # todo: remove madison teams from ittt
+                        # TODO: standardise team members/madison teams
                         info = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
                                 trno = trh['no']
+                                trinf = trh['class']
                                 if self.series == 'tmsl':  # TODO: remove
                                     trno = col
                                     col = 'red'
-                                info.append([trno, trh.resname(), None])
-                    # TODO: fix tandem labels
-                    if rh.in_cat('tandem') and rh['note']:
-                        ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                        if ph is not None:
-                            info = [[
-                                ' ',
-                                ph.resname() + ' - Pilot', ph['uciid']
-                            ]]
+                                info.append([trno, trh.resname(), trinf])
+                    # TODO: PARA Pilots
+                    #if rh.in_cat('tandem') and rh['note']:
+                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+                    #if ph is not None:
+                    #info = [[
+                    #' ',
+                    #ph.resname() + ' - Pilot', ph['uciid']
+                    #]]
                 if self.teamnames:  # Team no hack
                     rno = ' '  # force name
                 hlist.append([heat, rno, rname, info])
@@ -670,36 +671,37 @@ class ittt:
             hno = int(ceil(0.5 * count))
             lane = 1
             for r in self.riders:
+                heat = str(hno) + '.' + str(lane)
                 rno = r[COL_NO]
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 rname = ''
-                heat = str(hno) + '.' + str(lane)
-                info = None
-                if cats and rno in cats:
-                    info = cats[rno]
+                info = ''
                 if rh is not None:
                     rname = rh.resname()
                     info = rh['class']
+                    if not info and self.showcats:
+                        info = rh.primary_cat()
                     if self.teamnames:
-                        # todo: remove madison teams from ittt
+                        # TODO: standardise team members/madison teams
                         info = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
                                 trno = trh['no']
+                                trinf = trh['class']
                                 if self.series == 'tmsl':  # TODO: remove
                                     trno = col
                                     col = 'red'
-                                info.append([trno, trh.resname(), None])
-                    # TODO: fix tandem labels
-                    if rh.in_cat('tandem') and rh['note']:
-                        ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                        if ph is not None:
-                            info = [[
-                                ' ',
-                                ph.resname() + ' - Pilot', ph['uciid']
-                            ]]
+                                info.append([trno, trh.resname(), trinf])
+                    # TODO: PARA Pilots
+                    #if rh.in_cat('tandem') and rh['note']:
+                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+                    #if ph is not None:
+                    #info = [[
+                    #' ',
+                    #ph.resname() + ' - Pilot', ph['uciid']
+                    #]]
                 if self.teamnames:
                     rno = ' '  # force name
                 hlist.append([heat, rno, rname, info])
@@ -939,6 +941,7 @@ class ittt:
             rank = None
             time = None
             info = None
+            # TODO: Check all of these against current use
             cmts = r[COL_COMMENT]
             if cmts in ('caught', 'rel', 'abd', 'w/o', 'lose'):
                 info = cmts
@@ -986,23 +989,22 @@ class ittt:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
             rcls = rh['class']
+            if not rcls and self.showcats:
+                rcls = rh.primary_cat()
             plink = ''
             rank = None
             rname = rh.resname()
             if self.teamnames:
                 rno = ' '  # force name
             rtime = None
-            # TODO: fix tandem labels
-            if rh.in_cat('tandem') and rh['note']:
-                ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                if ph is not None:
-                    plink = [
-                        '', '',
-                        ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
-                    ]
-            #if self.showcats:
-            #rcat = rh.primary_cat()
-            info = None
+            # TODO: PARA Pilots
+            #if rh.in_cat('tandem') and rh['note']:
+            #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+            #if ph is not None:
+            #plink = [
+            #'', '',
+            #ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
+            #]
             dtime = None
             if self.onestart:
                 pls = r[COL_PLACE]
@@ -1905,14 +1907,16 @@ class ittt:
         self.toidle(idletimers=False)
 
     def _getname(self, bib, width=32):
-        """Return a name and club for the rider if known"""
+        """Return a name, club and class label for the rider if known"""
         name = ''
         club = ''
+        cls = ''
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is not None:
             name = dbr.fitname(width)
             club = dbr['organisation']
-        return name, club
+            cls = dbr['class']
+        return name, club, cls
 
     def fmtmembers(self, tp):
         """Prepare the team member name lines for display."""
@@ -1949,24 +1953,22 @@ class ittt:
         bib = tp.getrider().strip()
         if bib != '':
             ret = ''
-            name = ''
-            club = ''
             r = self._getrider(bib)
             if r is not None and r[COL_NO]:
                 if self.teamnames:
                     name_w = self.meet.scb.linelen - 5
                 else:
                     name_w = self.meet.scb.linelen - 9
-                name, club = self._getname(r[COL_NO], width=name_w)
-                if len(club) != 3:
-                    club = ''
+                name, club, cls = self._getname(r[COL_NO], width=name_w)
+                if not cls and len(club) == 3:
+                    cls = club
                 if self.teamnames:
                     fmt = ((name_w, 'l'), (5, 'r'))
-                    row = (name, club)
+                    row = (name, cls)
                     ret = scbwin.fmt_row(fmt, row)
                 else:
                     fmt = ((3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
-                    row = (r[COL_NO], name, club)
+                    row = (r[COL_NO], name, cls)
                     ret = scbwin.fmt_row(fmt, row)
             return ret
         else:

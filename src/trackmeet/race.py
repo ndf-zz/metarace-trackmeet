@@ -245,14 +245,16 @@ class race:
             self.riders.remove(i)
 
     def _getname(self, bib, width=32):
-        """Return a name and club for the rider if known"""
+        """Return a name, club and class label for the rider if known"""
         name = ''
         club = ''
+        cls = ''
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is not None:
             name = dbr.fitname(width)
             club = dbr['organisation']
-        return name, club
+            cls = dbr['class']
+        return name, club, cls
 
     def placexfer(self, placestr=None):
         """Transfer places in placestr to model."""
@@ -290,13 +292,14 @@ class race:
                 self.addrider(bib)
                 r = self._getrider(bib)
 
-            name, club = self._getname(bib, width=resname_w)
+            name, club, nfo = self._getname(bib, width=resname_w)
             rank = incnt
             r[COL_PLACE] = str(rank)
             if len(club) != 3:
                 club = ''
-            nfo = r[COL_INFO]
-            if not nfo:
+            if r[COL_INFO]:
+                nfo = r[COL_INFO]
+            if not nfo:  # TBC nation
                 nfo = club
             outriders.insert(0, [str(rank) + '.', bib, name, nfo])
             i = self._getiter(bib)
@@ -323,10 +326,11 @@ class race:
                         r = self._getrider(bib)
                     rank = place
                     r[COL_PLACE] = str(rank)
-                    name, club = self._getname(bib, width=resname_w)
+                    name, club, nfo = self._getname(bib, width=resname_w)
                     if len(club) != 3:
                         club = ''
-                    nfo = r[COL_INFO]
+                    if r[COL_INFO]:
+                        nfo = r[COL_INFO]
                     if not nfo:
                         nfo = club
                     self.results.append([str(rank) + '.', bib, name, nfo])
@@ -626,24 +630,23 @@ class race:
         cnt = 0
         col2 = []
         if self.inomnium and len(self.riders) > 0:
-            pass
-            #sec.lines.append([' ', ' ', 'The Fence', None, None, None])
-            #col2.append([' ', ' ', 'Sprinters Lane', None, None, None])
+            sec.lines.append((' ', ' ', 'The Fence', None, None, None))
+            col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
         for r in self.riders:
             cnt += 1
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
-            inf = r[COL_INFO]
-            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
-                inf = strops.drawno_encirc(inf)
-            if self.inomnium:
-                # inf holds seed, ignore for now
-                inf = None
-            if self.showcats and rh is not None:
-                inf = rh.primary_cat()
             rname = ''
+            inf = ''
             if rh is not None:
                 rname = rh.resname()
+                inf = rh['class']
+                if not inf and self.showcats:
+                    inf = rh.primary_cat()
+            if r[COL_INFO] and not self.inomnium:
+                inf = r[COL_INFO]
+            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
+                inf = strops.drawno_encirc(inf)
             if self.inomnium:
                 if cnt % 2 == 1:
                     sec.lines.append([rankcol, rno, rname, inf, None, None])
@@ -937,10 +940,11 @@ class race:
         name_w = self.meet.scb.linelen - 9
         for r in self.riders:
             if not r[COL_DNF]:
-                name, club = self._getname(r[COL_NO], width=name_w)
+                name, club, nfo = self._getname(r[COL_NO], width=name_w)
                 if len(club) != 3:
                     club = ''
-                nfo = r[COL_INFO]
+                if r[COL_INFO]:
+                    nfo = r[COL_INFO]
                 if not nfo:
                     nfo = club
                 startlist.append((r[COL_NO], name, nfo))
@@ -1071,7 +1075,7 @@ class race:
                     ret = True
                     if self.evtype == 'elimination':
                         rno = r[COL_NO]
-                        name, club = self._getname(
+                        name, club, nfo = self._getname(
                             r[COL_NO],
                             width=self.meet.scb.linelen - 3 - len(rno))
                         rstr = (rno + ' ' + name)
@@ -1284,7 +1288,7 @@ class race:
                         rank = int(r[COL_PLACE])
                 else:
                     inft = r[COL_INFO]
-                    if inft in ('dns', 'dsq'):
+                    if inft in ('dns', 'dsq', 'abd'):
                         rank = inft
                     else:
                         rank = 'dnf'
@@ -1318,28 +1322,28 @@ class race:
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
+            inf = ''
             if rh is not None:
                 rname = rh.resname()
-            inf = r[COL_INFO].strip()
-            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
-                inf = strops.drawno_encirc(inf)
+                inf = rh['class']
+                if not inf and self.showcats:
+                    inf = rh.primary_cat()
             if r[COL_DNF]:
                 pcount += 1
-                if r[COL_INFO] in ['dns', 'dsq']:
+                if r[COL_INFO] in ('dns', 'dsq', 'abd'):
                     plstr = r[COL_INFO]
-                    inf = None
                 else:
                     plstr = 'dnf'
-            elif self.onestart and r[COL_PLACE] != '':
-                plstr = r[COL_PLACE] + '.'
-                pcount += 1
-            # but suppress inf if within an omnium
-            if self.inomnium:
-                inf = None
-            if self.evtype != 'handicap' and rh is not None and rh['ucicode']:
-                inf = rh['ucicode']  # overwrite by force
-            if self.showcats and rh is not None:
-                inf = rh.primary_cat()
+            else:
+                if r[COL_INFO]:
+                    inf = r[COL_INFO]
+                if self.onestart and r[COL_PLACE] != '':
+                    plstr = r[COL_PLACE] + '.'
+                    pcount += 1
+            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
+                inf = strops.drawno_encirc(inf)
+            #if self.inomnium:
+            #inf = None
             if plstr:  # don't emit a row for unplaced riders
                 if not first:
                     sec.lines.append([plstr, rno, rname, inf, None, None])

@@ -161,11 +161,11 @@ class f200:
                 plstr = r[COL_PLACE]
                 if plstr.isdigit():
                     plstr += '.'
-                name, club = self._getname(r[COL_NO], width=name_w)
-                if len(club) != 3:
-                    club = ''
+                name, club, cls = self._getname(r[COL_NO], width=name_w)
+                if not cls and len(club) == 3:
+                    cls = club
                 bib = r[COL_NO]
-                fmtplaces.append((plstr, bib, name, club))
+                fmtplaces.append((plstr, bib, name, cls))
 
         evtstatus = 'Standings'
         if rcount > 0 and pcount == rcount:
@@ -443,13 +443,14 @@ class f200:
                 if rh is not None:
                     rname = rh.resname()
                     info = rh['class']
-                    if rh.in_cat('tandem') and rh['note']:
-                        ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                        if ph is not None:
-                            info = [[
-                                ' ',
-                                ph.resname() + ' - Pilot', ph['uciid']
-                            ]]
+                    # TODO: PARA Pilots
+                    #if rh.in_cat('tandem') and rh['note']:
+                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+                    #if ph is not None:
+                    #info = [[
+                    #' ',
+                    #ph.resname() + ' - Pilot', ph['uciid']
+                    #]]
                 hlist.append([str(count) + '.1', rno, rname, info])
                 # all f200 heats are one up
                 count -= 1
@@ -722,18 +723,18 @@ class f200:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
-            rcls = rh['class']
             plink = ''
             rank = None
             rname = rh.resname()
-            # consider partners here
-            if rh.in_cat('tandem') and rh['note']:
-                ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                if ph is not None:
-                    plink = [
-                        '', '',
-                        ph.resname() + ' - Pilot', ph['class'], '', '', ''
-                    ]
+            rcls = rh['class']
+            # TODO: PARA Pilot
+            #if rh.in_cat('tandem') and rh['note']:
+            #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+            #if ph is not None:
+            #plink = [
+            #'', '',
+            #ph.resname() + ' - Pilot', ph['class'], '', '', ''
+            #]
             rtime = None
             info = None
             dtime = None
@@ -1208,14 +1209,16 @@ class f200:
         self.toidle(idletimers=False)
 
     def _getname(self, bib, width=32):
-        """Return a name and club for the rider if known"""
+        """Return a name, club and class label for the rider if known"""
         name = ''
         club = ''
+        cls = ''
         dbr = self.meet.rdb.get_rider(bib, self.series)
         if dbr is not None:
             name = dbr.fitname(width)
             club = dbr['organisation']
-        return name, club
+            cls = dbr['class']
+        return name, club, cls
 
     def fmtridername(self, tp):
         """Prepare rider name for display on scoreboard."""
@@ -1226,11 +1229,11 @@ class f200:
             club = ''
             r = self._getrider(bib)
             if r is not None and r[COL_NO]:
-                name, club = self._getname(r[COL_NO], width=name_w)
-                if len(club) != 3:
-                    club = ''
+                name, club, cls = self._getname(r[COL_NO], width=name_w)
+                if not cls and len(club) == 3:
+                    cls = club
             coldesc = ((3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
-            row = (r[COL_NO], name, club)
+            row = (r[COL_NO], name, cls)
             return scbwin.fmt_row(coldesc, row)
         else:
             return ''

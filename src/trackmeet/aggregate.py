@@ -208,57 +208,31 @@ class teamagg(classification.classification):
         if subvec:
             sec.subheading = ' - '.join(subvec)
 
+        teamnames = self.series.startswith('t')
         sec.lines = []
         for r in self.riders:
             rno = r[COL_NO]
-            rh = self.meet.rdb.get_rider(rno, self.series)
-            rname = ''
+            if teamnames:
+                rno = ''
+            rname = r[COL_NAME]
+            rcls = ''
             plink = ''
-            rcat = ''
-            if 't' in self.series:  # Team no hack
-                rname = r[COL_NAME]
-                rno = ' '  # force name
-                if rh is not None:
-                    rname = rh['first']
-            else:
-                if rh is not None:
-                    rname = rh.resname()
-                    if rh['uciid']:
-                        rcat = rh['uciid']  # overwrite by force
-
-                    # overwrite info if showcats true
-                    if self.showcats:
-                        rcat = rh.primary_cat()
-
-                    # consider partners here
-                    if rh['cat'] and 'tandem' in rh['cat'].lower():
-                        ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                        if ph is not None:
-                            plink = [
-                                '', '',
-                                ph.resname() + ' - Pilot', ph['uciid'], '', '',
-                                ''
-                            ]
-
+            rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
+            # check for info override via rdb
+            if rh is not None:
+                rname = rh.resname()
+                rcls = rh['class']
+                if not rcls and self.showcats:
+                    rcls = rh.primary_cat()
             rank = ''
             rks = r[COL_PLACE]
             if rks:
                 rank = rks
                 if rank.isdigit():
                     rank += '.'
-
             pts = r[COL_MEDAL]
-
-            nrow = [rank, rno, rname, rcat, None, pts, plink]
+            nrow = [rank, rno, rname, rcls, None, pts, plink]
             sec.lines.append(nrow)
-            #if 't' in self.series:
-            #for trno in strops.riderlist_split(rh['note']):
-            #trh = self.meet.rdb.get_rider(trno, self.series)
-            #if trh is not None:
-            #trname = trh.resname()
-            #trinf = trh['uciid']
-            #sec.lines.append(
-            #[None, trno, trname, trinf, None, None, None])
         ret.append(sec)
 
         if self.ptstally:
@@ -427,6 +401,9 @@ class teamagg(classification.classification):
         return ret
 
     def accumulate_event(self, evno, pmap):
+        if evno == self.evno:
+            _log.warning('Event %r: Self-reference ignored', evno)
+            return
         r = self.meet.get_event(evno, False)
         if r is None:
             _log.warning('Event %r not found for lookup %r', evno,
@@ -693,6 +670,57 @@ class indivagg(teamagg):
             }
         return {cno: ((no, series, pts), )}
 
+    def do_places(self):
+        """Show race result on scoreboard."""
+        _log.debug('indiv agg: do_places')
+        resvec = []
+        count = 0
+        allteamnames = False
+        name_w = self.meet.scb.linelen - 13
+        fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (6, 'r'))
+        if self.series.startswith('t'):
+            allteamnames = True
+            name_w = self.meet.scb.linelen - 10
+            fmt = ((3, 'l'), ' ', (name_w, 'l'), (6, 'r'))
+
+        for r in self.riders:
+            rno = r[COL_NO]
+            rh = None
+            rhid = self.meet.rdb.get_id(r[COL_NO])  # rno includes series
+            if rhid is not None:
+                rh = self.meet.rdb[rhid]
+            rname = ''
+            plink = ''
+            tlink = []
+            if rh is not None:
+                rname = rh.fitname(name_w)
+                teamnames = rh['series'].startswith('t')
+                if teamnames:
+                    rno = ''
+                else:
+                    # replace BIB.series with db riderno
+                    rno = rh['no']
+            plstr = r[COL_PLACE]
+            if plstr.isdigit():
+                plstr = plstr + '.'
+            ptstr = r[COL_TALLY]
+            if not allteamnames:
+                resvec.append((plstr, rno, rname, ptstr))
+            else:
+                resvec.append((plstr, rname, ptstr))
+            count += 1
+        self.meet.scbwin = None
+        header = self.meet.racenamecat(self.event)
+        evtstatus = self._standingstat.upper()
+        self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
+                                           head=self.meet.racenamecat(
+                                               self.event),
+                                           subhead=evtstatus,
+                                           coldesc=fmt,
+                                           rows=resvec)
+        self.meet.scbwin.reset()
+        return False
+
     def result_report(self, recurse=True):  # by default include inners
         """Return a list of report sections containing the race result."""
         _log.debug('indivagg: result_report, recurse=%r', recurse)
@@ -731,29 +759,41 @@ class indivagg(teamagg):
         for r in self.riders:
             rno = r[COL_NO]
             rh = None
-            rhid = self.meet.rdb.get_id(rno)  # rno includes series
+            rhid = self.meet.rdb.get_id(r[COL_NO])  # rno includes series
             if rhid is not None:
                 rh = self.meet.rdb[rhid]
             rname = ''
             plink = ''
-            rcat = ''
+            tlink = []
+            rcls = ''
             if rh is not None:
                 rname = rh.resname()
-                if rh['uciid']:
-                    rcat = rh['uciid']  # overwrite by force
-
-                # overwrite info if showcats true
-                if self.showcats:
+                rcls = rh['class']
+                if not rcls and self.showcats:
                     rcat = rh.primary_cat()
 
-                # consider partners here
-                if rh['cat'] and 'tandem' in rh['cat'].lower():
-                    ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                    if ph is not None:
-                        plink = [
-                            '', '',
-                            ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
-                        ]
+                teamnames = rh['series'].startswith('t')
+                if teamnames:
+                    rno = ''
+                    for trno in rh['members'].split():
+                        trh = self.meet.rdb.fetch_bibstr(trno)
+                        if trh is not None:
+                            trname = trh.resname()
+                            trinf = trh['class']
+                            tlink.append(
+                                [None, trno, trname, trinf, None, None, None])
+                else:
+                    # replace BIB.series with db riderno
+                    rno = rh['no']
+
+                # TODO: PARA Pilots
+                #if rh['cat'] and 'tandem' in rh['cat'].lower():
+                #ph = self.meet.rdb.get_rider(rh['note'], self.series)
+                #if ph is not None:
+                #plink = [
+                #'', '',
+                #ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
+                #]
 
             rank = ''
             rks = r[COL_PLACE]
@@ -764,8 +804,9 @@ class indivagg(teamagg):
 
             pts = r[COL_MEDAL]
 
-            nrow = ['', rno, rname, rcat, None, pts, plink]
-            sec.lines.append(nrow)
+            sec.lines.append([rks, rno, rname, rcls, None, pts, plink])
+            if tlink:
+                sec.lines.extend(tlink)
         ret.append(sec)
 
         if len(self.decisions) > 0:
