@@ -132,13 +132,13 @@ class ps:
         definomnium = False
         defsprintlaps = ''
         defscoretype = 'points'
-        defmasterslaps = 'No'
+        deftenptlaps = 'No'
         tempopoints = False
         progressivepoints = False
         findsource = False
         if self.evtype == 'madison':
             defscoretype = 'points'  # no longer lap-based
-            defmasterslaps = 'No'
+            deftenptlaps = 'No'
         elif self.evtype == 'tempo':
             tempopoints = True
         elif self.evtype == 'progressive':
@@ -175,7 +175,7 @@ class ps:
                 'sprintlaps': defsprintlaps,
                 'distance': '',
                 'distunits': 'laps',
-                'masterslaps': defmasterslaps,
+                'tenptlaps': deftenptlaps,
                 'inomnium': definomnium,
                 'showinfo': False,
                 'scoring': defscoretype
@@ -236,14 +236,15 @@ class ps:
             # only make changes if sprint points not yet defined
             sp0 = cr.get_value('sprintpoints', '0')
             if sp0 is None:
-                # adjust points when distance >= 15km (!! Note: AU Only)
+                # Domestic rule: Adjust points when distance < 15km
                 racelen = self.meet.get_distance(self.distance, 'laps')
-                _log.debug('Checking new event with length: %dm', racelen)
-                if racelen < 15000:
+                if self.meet.domestic and racelen < 15000:
                     _log.debug('< 15km: Gain/Lose 10pts per lap')
-                    cr.set('event', 'masterslaps', True)
+                    cr.set('event', 'tenptlaps', True)
+                    # may be further overridden by tempo/progressive
+                    cr.set('sprintpoints', '0', '5 3 2 1')
                 else:
-                    _log.debug('>= 15km: Award double points on final sprint')
+                    _log.debug('Award double points on final sprint')
                     cr.set('sprintpoints', '0', '10 6 4 2')
 
                 if progressivepoints:
@@ -305,7 +306,7 @@ class ps:
                 else:
                     _log.debug('Sprint source already defined for %r', sid)
 
-        self.masterslaps = cr.get_bool('event', 'masterslaps')
+        self.tenptlaps = cr.get_bool('event', 'tenptlaps')
         self.reset_lappoints()
         slt = cr.get('event', 'sprintlaps')
         self.sprintlaps = strops.reformat_bibserlist(slt)
@@ -418,7 +419,7 @@ class ps:
         cw.set('event', 'distance', self.distance)
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'scoring', self.scoring)
-        cw.set('event', 'masterslaps', self.masterslaps)
+        cw.set('event', 'tenptlaps', self.tenptlaps)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
@@ -1413,8 +1414,8 @@ class ps:
         rle.set_text(self.sprintlaps)
         #if self.onestart:
         #rle.set_sensitive(False)
-        rsb = b.get_object('race_showbib_toggle')
-        rsb.set_active(self.masterslaps)
+        rsb = b.get_object('race_showbib_toggle')  # tenptlaps
+        rsb.set_active(self.tenptlaps)
         rt = b.get_object('race_score_type')
         if self.scoring == 'madison':
             rt.set_active(0)
@@ -1445,7 +1446,7 @@ class ps:
                 if self.onestart:
                     _log.warning('Intermediate sprints updated to: %r',
                                  newlaps)
-            self.masterslaps = rsb.get_active()
+            self.tenptlaps = rsb.get_active()
             if rt.get_active() == 0:
                 self.scoring = 'madison'
             else:
@@ -2087,7 +2088,7 @@ class ps:
 
     def reset_lappoints(self):
         """Update lap points allocation"""
-        if self.masterslaps:
+        if self.tenptlaps:
             self.lappoints = 10
         else:
             self.lappoints = 20
@@ -2126,7 +2127,7 @@ class ps:
 
         # race property attributes
         self.decisions = []
-        self.masterslaps = True
+        self.tenptlaps = False
         self.lappoints = 20
         self.scoring = 'points'
         self.distance = None
