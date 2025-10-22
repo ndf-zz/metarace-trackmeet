@@ -1,11 +1,11 @@
-# Trackmeet "Databridge" Schema
+# Trackmeet "Data Bridge" Schema
 
 *Updated: 2025-10-14*
 
 
 ## Overview
 
-Trackmeet Databridge is a loose collection of data objects
+Trackmeet data bridge is a loose collection of data objects
 that convey information about a meet, competitions, competitors
 and results for overlay on graphic displays. All data endpoints are
 communicated as JSON-encoded objects, via MQTT (telegraph)
@@ -456,8 +456,8 @@ category | string | Competitor category ID
 title | string | Category/Competition title eg "Men Elite Sprint"
 status | STATUS | Competition overall result status
 phases | object | Mapping of phase ids to phase labels
-warnings | object | Mapping of competitor IDs to warnings
 events | object | Map of event IDs in competition to event Labels
+warnings | object | Mapping of competitor IDs to warnings
 records | object | Mapping of record types to RECORD objects
 
 Subtopics available under [COMPETITION]:
@@ -491,6 +491,7 @@ key | type | descr
 title | string | Category/Competition title eg "Men Elite Keirin"
 subtitle | string | Phase title eg "Qualifying"
 info | string | Event information string
+status | STATUS | Phase result status (if known)
 contests | object | Map of contest ids to labels
 events | object | Map of event ids to event subtitle
 distance | string | Event distance and units (if relevant)
@@ -527,8 +528,8 @@ subtitle | string | Phase/Contest title eg "Round 1 1v16"
 label | string | Contest Label
 status | STATUS | Contest result status
 info | string | Event (phase) information string
-heats | array | Ordered list of heat IDs in the contest
-events | array | Ordered list of event IDs belonging to this contest
+heats | object | Map of heat ids to labels
+events | object | Map of event ids to event subtitle
 distance | string | Event distance and units (if relevant)
 laps | integer | Number of laps (if relevant)
 
@@ -567,7 +568,7 @@ subtitle | string | Phase/Contest/Heat title eg "1/4 Final - 2v7 Heat 1"
 label | string | Heat label eg "Heat 1"
 status | STATUS | Heat result status
 info | string | Event (phase) information string
-events | array | Ordered list of event IDs belonging to this heat
+events | object | Map of event ids to event subtitle
 distance | string | Event distance and units (if relevant)
 laps | integer | Number of laps (if relevant)
 
