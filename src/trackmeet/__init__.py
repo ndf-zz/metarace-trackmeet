@@ -35,6 +35,7 @@ from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
+from .databridge import DataBridge, _CONFIG_SCHEMA as _DB_SCHEMA
 from . import uiutil
 from . import scbwin
 from . import race
@@ -88,6 +89,14 @@ _CONFIG_SCHEMA = {
         'hint': 'Text for the meet location / document line',
         'attr': 'document',
         'default': '',
+    },
+    'facility': {
+        'prompt': 'Facility:',
+        'hint': 'Facility code for the meet venue',
+        'control': 'short',
+        'default': '',
+        'defer': True,
+        'attr': 'facility',
     },
     'date': {
         'prompt': 'Date:',
@@ -357,6 +366,7 @@ class trackmeet:
         metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
         metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
         metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
+        metarace.sysconf.add_section('databridge', _DB_SCHEMA)
         cfgres = uiutil.options_dlg(window=self.window,
                                     title='Meet Properties',
                                     sections={
@@ -390,6 +400,11 @@ class trackmeet:
                                             'schema': _WEATHER_SCHEMA,
                                             'object': metarace.sysconf,
                                         },
+                                        'databridge': {
+                                            'title': 'Data Bridge',
+                                            'schema': _DB_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
                                     })
 
         # check for sysconf changes
@@ -398,7 +413,8 @@ class trackmeet:
         timerchange = False
         scbchange = False
         weatherchange = False
-        for sec in ('export', 'timy', 'telegraph', 'sender', 'weather'):
+        for sec in ('export', 'timy', 'telegraph', 'sender', 'weather',
+                    'databridge'):
             for key in cfgres[sec]:
                 if cfgres[sec][key][0]:
                     syschange = True
@@ -472,6 +488,10 @@ class trackmeet:
 
         # always re-set title
         self.set_title()
+
+        # always re-load databridge
+        _log.debug('Re-load Data Bridge')
+        self.db.load()
 
     def menu_meet_quit_cb(self, menuitem, data=None):
         """Quit the track meet application."""
@@ -697,6 +717,15 @@ class trackmeet:
                         ol.append(word)
                 ret.append(' '.join(ol))
         return '\n'.join(ret)
+
+    def decision_list(self, decisions=[]):
+        """Return an officials decision list for data bridge"""
+        ret = []
+        if decisions:
+            for decision in decisions:
+                if decision:
+                    ret.append(self.decision_format(decision))
+        return ret
 
     def decision_section(self, decisions=[]):
         """Return an officials decision section"""
@@ -1180,10 +1209,18 @@ class trackmeet:
             _log.error('%s writing report: %s', e.__class__.__name__, e)
             raise
 
+    def menu_data_pausebridge_activate_cb(self, menuitem, data=None):
+        """Update event index"""
+        _log.info('Data Bridge Paused')
+        self.db.pause()
+
     def menu_data_update_activate_cb(self, menuitem, data=None):
         """Update event index"""
+        self.db.unpause()
         try:
             self.updateindex()
+            if self.curevent is not None:
+                self.curevent.resend_current()
         except Exception as e:
             _log.error('%s updating event index: %s', e.__class__.__name__, e)
             raise
@@ -1298,6 +1335,10 @@ class trackmeet:
         ofile = os.path.join(EXPORTPATH, jbase)
         with metarace.savefile(ofile) as f:
             orep.output_json(f)
+
+        # dump data bridge root elements if meetcode set
+        if self.eventcode:
+            self.db.update()
 
         GLib.idle_add(self.mirror_start)
 
@@ -1449,6 +1490,10 @@ class trackmeet:
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
 
+                # bridge data startlist/result & subfrags if required
+                if self.eventcode:
+                    r.data_bridge()
+
                 # release handle provided by mkrace
                 r = None
             if self.mirrorpath:
@@ -1476,6 +1521,10 @@ class trackmeet:
         self.scb.clrall()  # force clear of current text page
         self.scb.sendmsg(OVERLAY_CLOCK)
         _log.debug('Show facility clock')
+        if self.eventcode:
+            data = {}
+            self.db.clearCurrent()
+            self.db.updateCurrent()
 
     def menu_scb_blank_cb(self, menuitem, data=None):
         """Select blank scoreboard overlay."""
@@ -1484,6 +1533,10 @@ class trackmeet:
         self.scb.clrall()
         self.txt_announce(unt4.GENERAL_CLEARING)
         _log.debug('Blank scoreboard')
+        if self.eventcode:
+            data = {}
+            self.db.clearCurrent()
+            self.db.updateCurrent()
 
     def menu_scb_test_cb(self, menuitem, data=None):
         """Select test scoreboard overlay."""
@@ -1534,6 +1587,12 @@ class trackmeet:
                                       line3,
                                       locstr=self.document)
         self.scbwin.reset()
+        if self.eventcode:
+            data = {}
+            if self.curevent is not None:
+                data['session'] = self.curevent.event['session']
+            self.db.clearCurrent()
+            self.db.sendCurrent(data=data)
 
     ## Directory utilities
     def event_configfile(self, evno):
@@ -1628,6 +1687,17 @@ class trackmeet:
         """Print the given msg entry on the Timy receipt."""
         lstr = '{0:3} {1}'.format(bib[0:3], str(msg)[0:20])
         self.main_timer.printline(lstr)
+
+    def get_weather(self):
+        """Return a current weather object if available and valid"""
+        ret = None
+        if self.weather.valid():
+            ret = {
+                't': self.weather.t,
+                'h': self.weather.h,
+                'p': self.weather.p,
+            }
+        return ret
 
     def timer_log_env(self):
         """Print the current weather observations if valid."""
@@ -1816,8 +1886,27 @@ class trackmeet:
                           evt,
                           priority=GLib.PRIORITY_HIGH)
 
+    def update_lapscore(self, laps):
+        """Handle lap count control message"""
+        self._prevlap = self.lapscore
+        self.lapscore = laps
+        if self.lapscore != self._prevlap:
+            _log.debug('Lap score = %r', self.lapscore)
+            if self.curevent is not None:
+                if self.curevent.show_lapscore(laps, self._prevlap):
+                    _log.debug('resend due to laps')
+                    self.curevent.resend_current()
+                else:
+                    _log.debug('resend blocked')
+
     def _controlcb(self, topic=None, message=None):
-        _log.debug('Unsupported control %r: %r', topic, message)
+        path = topic.split('/')
+        if path:
+            cmd = path[-1]
+            if cmd == 'laps':
+                self.update_lapscore(strops.confopt_posint(message, None))
+            else:
+                _log.debug('Unsupported control %r: %r', topic, message)
 
     def start(self):
         """Start the timer and scoreboard threads."""
@@ -1829,6 +1918,7 @@ class trackmeet:
             self.main_timer.start()
             self.gemini.start()
             self.weather.start()
+            self.db.load()
             self.started = True
 
     # Track meet functions
@@ -1879,6 +1969,7 @@ class trackmeet:
             cw.write(f)
         self.rdb.save('riders.csv')
         self.edb.save('events.csv')
+        self.db.save()
         _log.info('Meet configuration saved')
 
     def loadconfig(self):
@@ -2988,6 +3079,7 @@ class trackmeet:
         self.host = ''
         self.subtitle = ''
         self.document = ''
+        self.facility = ''
         self.date = ''
         self.organiser = ''
         self.pcp = ''
@@ -3012,6 +3104,8 @@ class trackmeet:
         self.prevlink = None
         self.nextlink = None
         self.linkbase = '.'
+        self.lapscore = None
+        self._prevlap = None
 
         # printer preferences
         paper = Gtk.PaperSize.new_custom('metarace-full', 'A4 for reports',
@@ -3037,6 +3131,7 @@ class trackmeet:
         self.timerport = ''
         self.gemini = gemini()
         self.weather = Weather()
+        self.db = DataBridge(self)
         self.gemport = ''
         self.mirror = None  # file mirror thread
         self.exporter = None  # export worker thread
@@ -3181,6 +3276,7 @@ def edit_defaults():
     metarace.sysconf.add_section('sender', _SENDER_SCHEMA)
     metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
     metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
+    metarace.sysconf.add_section('databridge', _DB_SCHEMA)
     cfgres = uiutil.options_dlg(title='Edit Default Configuration',
                                 sections={
                                     'trackmeet': {
@@ -3211,6 +3307,11 @@ def edit_defaults():
                                     'weather': {
                                         'title': 'Weather',
                                         'schema': _WEATHER_SCHEMA,
+                                        'object': metarace.sysconf,
+                                    },
+                                    'databridge': {
+                                        'title': 'Data Bridge',
+                                        'schema': _DB_SCHEMA,
                                         'object': metarace.sysconf,
                                     },
                                 })

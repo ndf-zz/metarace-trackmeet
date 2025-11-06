@@ -417,6 +417,15 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkMenuItem" id="menu_data_pausebridge">
+                            <property name="label">Pause _Bridge</property>
+                            <property name="visible">True</property>
+                            <property name="use_underline">True</property>
+                            <accelerator key="b" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                            <signal name="activate" handler="menu_data_pausebridge_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkMenuItem" id="menu_data_result">
                             <property name="label">Final R_esult</property>
                             <property name="visible">True</property>
