@@ -85,6 +85,10 @@ def cmp(x, y):
 
 class ittt:
 
+    def show_lapscore(self, laps, prev):
+        """Reject lapscore updates"""
+        return False
+
     def ridercb(self, rider):
         """Rider change notification"""
         if self.winopen:
@@ -166,6 +170,65 @@ class ittt:
                     self.do_places()
                     return True
         return False
+
+    def resend_current(self):
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            self.meet.db.sendCurrent(self.event, fragment, data)
+
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['competitionType'] = self.timetype
+        ret['status'] = self._status
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if self._detail is not None:
+            ret['detail'] = self._detail
+        if self._infoLine is not None:
+            ret['info'] = self._infoLine
+
+        # A/B details
+        if self._competitorA is not None:
+            ret['competitorA'] = self._competitorA
+        if self._competitorB is not None:
+            ret['competitorB'] = self._competitorB
+        if self._timeA is not None:
+            ret['timeA'] = self._timeA
+        if self._timeB is not None:
+            ret['timeB'] = self._timeB
+        if self._labelA is not None:
+            ret['labelA'] = self._labelA
+        if self._labelB is not None:
+            ret['labelB'] = self._labelB
+        if self._downA is not None:
+            ret['downA'] = self._downA
+        if self._downB is not None:
+            ret['downB'] = self._downB
+        if self._rankA is not None:
+            ret['rankA'] = self._rankA
+        if self._rankB is not None:
+            ret['rankB'] = self._rankB
+
+        # rolling time - pick first
+        ff = None
+        if self._endA is not None:
+            ff = self._endA
+        if self._endB is not None:
+            if ff is None or self._endB < ff:
+                ff = self._endB
+        if ff is not None:
+            ret['startTime'] = self.curstart
+            ret['endTime'] = ff
+        elif self.lstart is not None:
+            ret['startTime'] = self.lstart
+
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
 
     def do_places(self):
         """Show race result on scoreboard."""
@@ -267,6 +330,9 @@ class ittt:
                 self.bs.splitlbls = self.splitlist
         else:
             _log.debug('Splits not available')
+        self._eventlen = None
+        if event_d:
+            self._eventlen = '%0.0f\u2006m' % (event_d)
 
     def loadconfig(self):
         """Load race config from disk."""
@@ -319,6 +385,7 @@ class ittt:
                 'inomnium': False,
                 'forcedetail': True,  # include split data on main result
                 'timetype': deftimetype,
+                'weather': None,
             }
         })
         cr.add_section('event')
@@ -331,6 +398,7 @@ class ittt:
         self.chan_S = strops.confopt_chan(cr.get('event', 'chan_S'), defchans)
         self.chan_A = strops.confopt_chan(cr.get('event', 'chan_A'), defchana)
         self.chan_B = strops.confopt_chan(cr.get('event', 'chan_B'), defchanb)
+        self._weather = cr.get('event', 'weather')
         self.decisions = cr.get('event', 'decisions')
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
@@ -482,6 +550,7 @@ class ittt:
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'precision', self.precision)
         cw.set('event', 'decisions', self.decisions)
+        cw.set('event', 'weather', self._weather)
 
         if self.winopen:
             cw.set('event', 'showinfo', self.info_expand.get_expanded())
@@ -560,7 +629,7 @@ class ittt:
         substr = ' '.join((
             lapstring,
             self.event['distance'],
-            self.event['phase'],
+            self.event['rules'],
         )).strip()
         if substr:
             sec.subheading = substr
@@ -617,6 +686,7 @@ class ittt:
         self.reorder_startlist()
 
         # then build aux map of heats
+        self._startlines = []
         hlist = []
         emptyrows = False
         count = len(self.riders)
@@ -632,39 +702,42 @@ class ittt:
         if self.timetype == 'single':
             for r in self.riders:
                 heat = str(count) + '.1'
-                rno = r[COL_NO]
-                info = ''
+                dbrno = r[COL_NO]
+                rno = dbrno
+                rh = self.meet.rdb.get_rider(rno, self.series)
                 rname = ''
+                info = ''
+                rcls = None
+                nation = None
+                members = None
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 if rh is not None:
+                    dbrno = rh['no']
                     rname = rh.resname()
-                    info = rh['class']
+                    rcls = rh['class']
+                    nation = rh['nation']
+                    info = info
                     if not info and self.showcats:
                         info = rh.primary_cat()
                     if self.teamnames:
                         # TODO: standardise team members/madison teams
                         info = []
+                        members = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
                                 trno = trh['no']
+                                members.append(trno)
                                 trinf = trh['class']
                                 if self.series == 'tmsl':  # TODO: remove
                                     trno = col
                                     col = 'red'
                                 info.append([trno, trh.resname(), trinf])
-                    # TODO: PARA Pilots
-                    #if rh.in_cat('tandem') and rh['note']:
-                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                    #if ph is not None:
-                    #info = [[
-                    #' ',
-                    #ph.resname() + ' - Pilot', ph['uciid']
-                    #]]
                 if self.teamnames:  # Team no hack
                     rno = ' '  # force name
-                hlist.append([heat, rno, rname, info])
+                hlist.append(
+                    [heat, rno, rname, info, dbrno, rcls, nation, members])
                 # all heats are one up
                 count -= 1
         else:
@@ -672,23 +745,32 @@ class ittt:
             lane = 1
             for r in self.riders:
                 heat = str(hno) + '.' + str(lane)
-                rno = r[COL_NO]
+                dbrno = r[COL_NO]
+                rno = dbrno
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 rname = ''
                 info = ''
+                rcls = None
+                nation = None
+                members = None
                 if rh is not None:
+                    dbrno = rh['no']
                     rname = rh.resname()
-                    info = rh['class']
+                    rcls = rh['class']
+                    nation = rh['nation']
+                    info = info
                     if not info and self.showcats:
                         info = rh.primary_cat()
                     if self.teamnames:
                         # TODO: standardise team members/madison teams
                         info = []
+                        members = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
                                 trno = trh['no']
+                                members.append(trno)
                                 trinf = trh['class']
                                 if self.series == 'tmsl':  # TODO: remove
                                     trno = col
@@ -704,7 +786,8 @@ class ittt:
                     #]]
                 if self.teamnames:
                     rno = ' '  # force name
-                hlist.append([heat, rno, rname, info])
+                hlist.append(
+                    [heat, rno, rname, info, dbrno, rcls, nation, members])
                 lane += 1
                 if lane > 2:
                     hno -= 1
@@ -732,6 +815,15 @@ class ittt:
             rec.extend([heat, r[1], r[2], r[3]])
             lcnt += 1
             lh = h
+            if r[4]:
+                self._startlines.append({
+                    'competitor': r[4],
+                    'nation': r[6],
+                    'name': r[2],
+                    'info': r[5],
+                    'members': r[7],
+                })
+
         if len(rec) > 0:
             ret.append(rec)
         return ret
@@ -825,6 +917,7 @@ class ittt:
                     curline, posoft, ' '.join(
                         (placestr, bibstr, namestr, tmstr)))
                 curline += 1
+            self.resend_current()
 
     def do_properties(self):
         """Run race properties dialog."""
@@ -958,6 +1051,13 @@ class ittt:
 
             yield (bib, rank, time, info)
 
+    def data_bridge(self):
+        """Export data bridge fragments, startlists and results"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            self.meet.db.updateFragment(self.event, fragment, data)
+
     def result_report(self, recurse=True):
         """Return a list of report sections containing the race result."""
         slist = self.startlist_report()  # keep for unfinished
@@ -972,9 +1072,10 @@ class ittt:
         substr = ' '.join((
             lapstring,
             self.event['distance'],
-            self.event['phase'],
+            self.event['rules'],
         )).strip()
         sec.lines = []
+        self._reslines = []
         ftime = None
         maxtime = _HALFLAP_MAX
         rtimes = {}
@@ -988,15 +1089,17 @@ class ittt:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
+            plink = ''
+            rank = None
+            dbrno = rh['no']
+            rname = rh.resname()
+            rnat = rh['nation']
             rcls = rh['class']
             if not rcls and self.showcats:
                 rcls = rh.primary_cat()
-            plink = ''
-            rank = None
-            rname = rh.resname()
             if self.teamnames:
                 rno = ' '  # force name
-            rtime = None
+
             # TODO: PARA Pilots
             #if rh.in_cat('tandem') and rh['note']:
             #ph = self.meet.rdb.get_rider(rh['note'], self.series)
@@ -1005,7 +1108,10 @@ class ittt:
             #'', '',
             #ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
             #]
+            rtime = None
+            rtod = None
             dtime = None
+            dtod = None
             if self.onestart:
                 pls = r[COL_PLACE]
                 if pls:
@@ -1017,10 +1123,12 @@ class ittt:
                 if r[COL_FINISH] is not None:
                     time = (r[COL_FINISH] - r[COL_START]).truncate(
                         self.precision)
+                    rtod = time
                     if ftime is None:
                         ftime = time
                     else:
-                        dtime = '+' + (time - ftime).rawtime(downprec)
+                        dtod = time - ftime
+                        dtime = '+' + dtod.rawtime(downprec)
                     if r[COL_START] != tod.ZERO or self.precision != 3:
                         rtime = time.rawtime(self.precision)
                     else:
@@ -1036,21 +1144,36 @@ class ittt:
             if rank:
                 sec.lines.append([rank, rno, rname, rcls, rtime, dtime, plink])
                 finriders.add(rno)
+
                 # then add team members if relevant
+                members = None
                 if self.teamnames:
                     # todo: remove madison teams from ittt
                     col = 'black'
+                    members = []
                     for member in r[COL_MEMBERS].split():
                         trh = self.meet.rdb.fetch_bibstr(member)
                         if trh is not None:
                             trno = trh['no']
-                            trinf = ''  # TODO: fix this trh['uciid']
+                            members.append(trno)  # only add riders in db
+                            trinf = trh['class']
                             trname = trh.resname()
                             if self.series == 'tmsl':  # TODO: remove
                                 trno = col
                                 col = 'red'
                             sec.lines.append(
                                 [None, trno, trname, trinf, None, None, None])
+                self._reslines.append({
+                    'rank': pcount,
+                    'class': rank,
+                    'competitor': dbrno,
+                    'nation': rnat,
+                    'name': rname,
+                    'members': members,
+                    'info': rcls,
+                    'result': rtime,
+                    'extra': dtime,
+                })
         doheats = False
         sv = []
         if substr:
@@ -1154,7 +1277,8 @@ class ittt:
     def halflap_trig(self, sp, t):
         """Register half-lap trigger."""
         sid = sp.get_sid()  # might be None
-        rank = self.insert_split(sid, t - self.curstart, sp.getrider())
+        elap = (t - self.curstart).truncate(self.precision)
+        rank = self.insert_split(sid, elap, sp.getrider())
 
         # log to chronometer trace
         prev = None
@@ -1173,6 +1297,9 @@ class ittt:
         sp.intermed(t)
         sp.split_up()
 
+        # !!! save to current stats
+        # diff will be to "other"
+
         if self.difftime:
             if self.diffstart is None or self.difflane is sp:
                 self.diffstart = t
@@ -1200,19 +1327,37 @@ class ittt:
                     strops.truncpad(rlbl, 17) + ' ' + self.fs.get_time())
             else:
                 self.meet.scbwin.setr2(rlbl)
-                GLib.timeout_add_seconds(4, self.clear_rank,
-                                         self.meet.scbwin.setr2)
+                GLib.timeout_add(5000, self.clear_rank, self.meet.scbwin.setr2)
                 self.meet.txt_postxt(
                     5, 50,
                     strops.truncpad(rlbl, 17) + ' ' + self.bs.get_time())
+        self.resend_current()
+
+    def clear_splitrank(self, lane, label):
+        """Clear time, rank, down and label on nominated lane"""
+        if lane == 'A' and label == self._labelA:
+            self._timeA = None
+            self._labelA = None
+            self._downA = None
+            self._rankA = None
+        elif label == self._labelB:
+            self._timeB = None
+            self._labelB = None
+            self._downB = None
+            self._rankB = None
+        self.resend_current()
+        return False
 
     def lap_trig(self, sp, t):
         """Register manual lap trigger."""
         # fetch cur split and sid from sp, making sure on a whole lap
+        lane = 'A' if sp is self.fs else 'B'
         if sp.on_halflap():
             sp.lap_up()
         sid = sp.get_sid()  # might be None
-        rank = self.insert_split(sid, t - self.curstart, sp.getrider())
+        elap = (t - self.curstart).truncate(self.precision)
+        downtod = None
+        rank = self.insert_split(sid, elap, sp.getrider())
         prev = None
         if sp.split > 1:
             prev = sp.getsplit(sp.split - 2)
@@ -1221,7 +1366,15 @@ class ittt:
         sp.intermed(t)
         sp.lap_up()
 
+        if lane == 'A':
+            self._timeA = elap
+            self._rankA = rank + 1
+        else:
+            self._timeB = elap
+            self._rankB = rank + 1
+
         if self.difftime:
+            # downtime is to other lane
             if self.diffstart is None or self.difflane is sp:
                 self.diffstart = t
                 self.difflane = sp
@@ -1229,11 +1382,35 @@ class ittt:
                 # 'other' lane has previously completed this lap
                 so = self.t_other(sp)
                 if so.split == sp.split and self.diffstart is not None:
-                    dt = t - self.diffstart
+                    dt = (t - self.diffstart).truncate(2)
+                    downtod = dt
                     if dt < 4:
                         sp.difftime(dt)
                     self.difflane = None
                     self.diffstart = None
+        else:
+            if sid is not None:
+                splitdata = self.splitmap[sid]['data']
+                if len(splitdata) > 1:  # at least two entries
+                    if rank == 0:  # leader
+                        nt = tod.agg(elap)
+                        ot = splitdata[1][0]
+                        downtod = (nt - ot).truncate(2)
+                    else:
+                        ot = splitdata[0][0]
+                        downtod = (elap - ot).truncate(2)
+
+        if sid is not None:
+            sdist = self.splitmap[sid]['dist']
+            slbl = '%d\u2006m' % (sdist, )
+            if lane == 'A':
+                self._labelA = slbl
+                self._downA = downtod
+            else:
+                self._labelB = slbl
+                self._downB = downtod
+            GLib.timeout_add_seconds(4, self.clear_splitrank, lane, slbl)
+
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
             if rank is not None:
                 rlbl = '({}) {}:'.format(rank + 1, sid)
@@ -1253,10 +1430,13 @@ class ittt:
                 self.meet.txt_postxt(
                     5, 50,
                     strops.truncpad(rlbl, 17) + ' ' + self.bs.get_time())
+        self.resend_current()
 
     def fin_trig(self, sp, t):
         """Register a manual finish trigger."""
+        lane = 'A' if sp is self.fs else 'B'
         sp.finish(t)
+        downtod = None
         if self.difftime:
             if self.diffstart is None or self.difflane is sp:
                 self.diffstart = t
@@ -1264,7 +1444,8 @@ class ittt:
             else:
                 so = self.t_other(sp)
                 if so.split == sp.split and self.diffstart is not None:
-                    dt = t - self.diffstart
+                    dt = (t - self.diffstart).truncate(2)
+                    downtod = dt
                     if dt < 4:
                         sp.difftime(dt)
                     self.difflane = None
@@ -1282,16 +1463,58 @@ class ittt:
             _log.warning('Last lap data not available for %r', sp.getrider())
 
         # update model with result
-        ri = self._getiter(sp.getrider())
+        bib = sp.getrider().upper()  # just in casE?
+        ri = self._getiter(bib)
         if ri is not None:
             self.settimes(ri, self.curstart, t, prev, sp.splits)
         else:
             _log.warning('Rider not in model, finish time not stored')
-        self.log_elapsed(sp.getrider(), self.curstart, t, sp.get_sid(), prev)
+        sid = sp.get_sid()
+        self.log_elapsed(sp.getrider(), self.curstart, t, sid, prev)
+        rank = self.results.rank(bib)
+        place = self.riders.get_value(ri, COL_PLACE)
+        elap = (t - self.curstart).truncate(self.precision)
+
+        # patch downtime for qualifying / non-race
+        if downtod is None:
+            if len(self.results) > 1:  # at least two entries
+                if rank == 0:  # leader
+                    nt = tod.agg(elap)
+                    ot = self.results[1][0]
+                    downtod = (nt - ot).truncate(2)
+                else:
+                    ot = self.results[0][0]
+                    downtod = (elap - ot).truncate(2)
+
+        # update plain fields
+        compObj = None
+        if lane == 'A':
+            self._timeA = elap
+            self._rankA = rank + 1
+            self._labelA = self._eventlen
+            self._downA = downtod
+            self._endA = t
+            if self._competitorA:
+                compObj = self._competitorA
+        else:
+            self._timeB = elap
+            self._rankB = rank + 1
+            self._labelB = self._eventlen
+            self._downB = downtod
+            self._endB = t
+            if self._competitorB:
+                compObj = self._competitorB
+
+        # patch the competitor line
+        if compObj is not None:
+            compObj['rank'] = rank + 1
+            compObj['class'] = place
+            compObj['result'] = elap.rawtime(self.precision)
+            if downtod is not None:
+                compObj['extra'] = downtod.rawtime(2)
 
         # then report to scb, announce and result
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
-            place = self.riders.get_value(ri, COL_PLACE)
             if sp is self.fs:
                 elap = t - self.curstart
                 self.meet.scbwin.setr1('(' + place + ')')
@@ -1520,8 +1743,11 @@ class ittt:
         else:
             self.timerstat = 'running'
         self.onestart = True
+        if self._weather is None:
+            self._weather = self.meet.get_weather()
         if self.timetype == 'single':
             pass
+        self.resend_current()
 
     def clearplaces(self):
         """Clear rider places."""
@@ -1697,12 +1923,15 @@ class ittt:
                 _log.warning('Rider %r not found in model, check places', bib)
         tcount = len(self.riders)
         self._standingstr = ''
+        self._status = None
         if tcount > 0 and count > 0:
             if tcount == count:
                 self._standingstr = 'Result'
                 self.finished = True
+                self._status = 'provisional'
             else:
                 self._standingstr = 'Virtual Standing'
+                self._status = 'virtual'
 
     def settimes(self,
                  iter,
@@ -1755,6 +1984,7 @@ class ittt:
 
     def insert_split(self, sid, st, bib):
         """Insert a rider split into correct lap."""
+        _log.debug('insert split: sid=%r, st=%r, bib=%r', sid, st, bib)
         ret = None
         if sid in self.splitmap:
             self.splitmap[sid]['data'].insert(st, None, bib)
@@ -1990,6 +2220,7 @@ class ittt:
         self.meet.gemini.set_bib(self.bs.getrider(), 1)
         self.timerwin = True
         self.meet.scbwin.reset()
+        self.resend_current()
 
     def toarmstart(self):
         """Set timer to arm start."""
@@ -2045,6 +2276,18 @@ class ittt:
         if idletimers:
             self.fs.toidle()
             self.bs.toidle()
+            self._competitorA = None
+            self._labelA = None
+            self._timeA = None
+            self._downA = None
+            self._rankA = None
+            self._endA = None
+            self._competitorB = None
+            self._labelB = None
+            self._timeB = None
+            self._downB = None
+            self._rankB = None
+            self._endB = None
         self.timerstat = 'idle'
         self.meet.delayimp('2.00')
         self.curstart = None
@@ -2080,8 +2323,62 @@ class ittt:
             rtxt = r[COL_NAME]
         return rtxt
 
+    def _set_competitor(self, lane=None, bib=None):
+        """Update data bridge name fields for current object"""
+        if lane is None or lane not in ('A', 'B'):
+            # clear both
+            self._competitorA = None
+            self._competitorA = None
+            return
+
+        if bib is None:
+            if lane == 'A':
+                self._competitorA = None
+            else:
+                self._competitorB = None
+            return
+
+        rno = bib
+        rname = None
+        rnat = None
+        rcls = None
+
+        rh = self.meet.rdb.get_rider(bib, self.series)
+        if rh is not None:
+            rno = rh['no']
+            rname = rh.resname()
+            rnat = rh['nation']
+            rcls = rh['class']
+
+        members = None
+        if self.teamnames:
+            members = []
+            rh = self._getrider(bib)
+            if rh is not None:
+                for member in rh[COL_MEMBERS].split():
+                    trh = self.meet.rdb.fetch_bibstr(member)
+                    if trh is not None:
+                        members.append(trh['no'])
+
+        dataObj = {
+            'rank': None,
+            'class': None,
+            'competitor': rno,
+            'nation': rnat,
+            'members': members,
+            'name': rname,
+            'info': rcls,
+            'result': None,
+            'extra': None,
+        }
+        if lane == 'A':
+            self._competitorA = dataObj
+        else:
+            self._competitorB = dataObj
+
     def bibent_cb(self, entry, tp):
         """Bib entry callback."""
+        lane = 'A' if tp is self.fs else 'B'
         bib = entry.get_text().strip().upper()
         if bib != '' and bib.isalnum():
             nstr = self.lanelookup(bib)
@@ -2096,11 +2393,13 @@ class ittt:
                     tp.start(self.curstart)
                 if self.timetype != 'single':
                     self.t_other(tp).grab_focus()
+                self._set_competitor(lane, bib)
             else:
                 _log.warning('Ignoring non-starter: %r', bib)
                 tp.toidle()
         else:
             tp.toidle()
+            self._set_competitor(lane)
 
     def treeview_button_press(self, treeview, event):
         """Set callback for mouse press on model view."""
@@ -2395,6 +2694,25 @@ class ittt:
         self.context_menu = None
         self.traces = {}
         self._winState = {}  # cache ui settings for headless load/save
+        self._status = None
+        self._startlines = None
+        self._reslines = None
+        self._detail = None
+        self._infoLine = None
+        self._competitorA = None
+        self._labelA = None
+        self._timeA = None
+        self._downA = None
+        self._rankA = None
+        self._endA = None
+        self._competitorB = None
+        self._labelB = None
+        self._timeB = None
+        self._downB = None
+        self._rankB = None
+        self._endB = None
+        self._eventlen = None
+        self._weather = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

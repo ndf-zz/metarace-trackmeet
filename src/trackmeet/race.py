@@ -4,6 +4,7 @@
 import os
 import gi
 import logging
+from random import shuffle
 
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
@@ -68,6 +69,29 @@ def cmp(x, y):
 
 class race:
     """Data handling for scratch, handicap, keirin, derby, etc races."""
+
+    def show_lapscore(self, laps, prev):
+        """Accept laps when idle/running"""
+
+        # reject elimination
+        if self.evtype == 'elimination':
+            return False
+
+        # otherwise use the ps method
+        ret = False
+        if self.event['laps'] and prev is not None and laps is not None:
+            if prev - laps == 1:  # only announce decrement
+                if self.timerstat == 'idle':
+                    # check for a missed start
+                    stlap = self.event['laps'] - 1
+                    if laps == stlap:
+                        self.timerstat = 'armstart'
+                        st = tod.now() - tod.mktod(20)
+                        self.starttrig(st, wallstart=st)
+                    ret = True
+                elif self.timerstat == 'running':
+                    ret = True
+        return ret
 
     def ridercb(self, rider):
         """Rider change notification"""
@@ -244,6 +268,16 @@ class race:
         if i is not None:
             self.riders.remove(i)
 
+    def _getresname(self, bib):
+        """Return resline style name"""
+        name = None
+        nation = None
+        dbr = self.meet.rdb.get_rider(bib, self.series)
+        if dbr is not None:
+            name = dbr.resname()
+            nation = dbr['nation']
+        return name, nation
+
     def _getname(self, bib, width=32):
         """Return a name, club and class label for the rider if known"""
         name = ''
@@ -349,13 +383,21 @@ class race:
                 self.eliminated.remove(rno)
         if count > 0 or len(outriders) > 0:
             self.onestart = True
+        self._status = None
+        self._remain = None
         if count == incnt:
-            self.resulttype = 'RESULT'
-            self.finished = True
+            if self.onestart:
+                self.resulttype = 'RESULT'
+                self.finished = True
+                self._status = 'provisional'
         elif count < incnt and len(outriders) > 0:
             self.resulttype = 'STANDING'
+            self._status = 'virtual'
+            self._remain = incnt
         else:
             self.resulttype = 'PROVISIONAL RESULT'
+            if self.onestart:
+                self._status = 'provisional'
 
     def loadconfig(self):
         """Load race config from disk."""
@@ -395,7 +437,8 @@ class race:
                 'distunits': defdistunits,
                 'showinfo': False,
                 'inomnium': False,
-                'timetype': deftimetype
+                'timetype': deftimetype,
+                'weather': None,
             },
             'riders': {}
         })
@@ -425,6 +468,7 @@ class race:
             self.riders.append(nr)
 
         # race infos
+        self._weather = cr.get('event', 'weather')
         self.decisions = cr.get('event', 'decisions')
         self.set_timetype(cr.get('event', 'timetype'))
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
@@ -600,6 +644,7 @@ class race:
                 if dist:
                     tp += 'Avg: ' + et.speedstr(dist)
             self.meet.txt_setline(21, tp)
+            self.resend_current()
         return False
 
     def startlist_report(self, program=False):
@@ -620,26 +665,30 @@ class race:
             rankcol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+        substr = '\u3000'.join(
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             sec.subheading = substr
 
+        self._startlines = []
         self.reorder_handicap()
         sec.lines = []
         cnt = 0
         col2 = []
-        if self.inomnium and len(self.riders) > 0:
-            sec.lines.append((' ', ' ', 'The Fence', None, None, None))
-            col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
+        inomnium = False  # temp ?
+        #if self.inomnium and len(self.riders) > 0:
+        #sec.lines.append((' ', ' ', 'The Fence', None, None, None))
+        #col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
         for r in self.riders:
             cnt += 1
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
+            rnat = None
             inf = ''
             if rh is not None:
                 rname = rh.resname()
+                rnat = rh['nation']
                 inf = rh['class']
                 if not inf and self.showcats:
                     inf = rh.primary_cat()
@@ -647,13 +696,20 @@ class race:
                 inf = r[COL_INFO]
             if self.evtype in ['keirin', 'sprint']:  # encirc draw no
                 inf = strops.drawno_encirc(inf)
-            if self.inomnium:
+            if inomnium:
                 if cnt % 2 == 1:
                     sec.lines.append([rankcol, rno, rname, inf, None, None])
                 else:
                     col2.append([rankcol, rno, rname, inf, None, None])
             else:
                 sec.lines.append([rankcol, rno, rname, inf, None, None])
+            # team members
+            self._startlines.append({
+                'competitor': rno,
+                'nation': rnat,
+                'name': rname,
+                'info': inf,
+            })
         for i in col2:
             sec.lines.append(i)
         if self.event['plac']:
@@ -697,6 +753,7 @@ class race:
         cw.set('event', 'distance', self.distance)
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'timetype', self.timetype)
+        cw.set('event', 'weather', self._weather)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'decisions', self.decisions)
@@ -790,6 +847,12 @@ class race:
         self.lstart = None
         self.timerstat = 'idle'
         self.eliminated = []
+        self._status = None
+        self._weather = None
+        self._startlines = None
+        self._reslines = None
+        self._remain = None
+        self._eliminated = None
         self.ctrl_places.set_text('')
         self.placexfer('')
         self.meet.main_timer.dearm(self.startchan)
@@ -850,6 +913,7 @@ class race:
         if self.timetype == '200m':
             tp = '200m:'
         self.meet.cmd_announce('eliminated', '')
+        self._eliminated = None
         self.meet.scbwin = scbwin.scbtimer(scb=self.meet.scb,
                                            line1=self.meet.racenamecat(
                                                self.event),
@@ -869,6 +933,21 @@ class race:
             self.meet.scbwin.update()
         else:
             self.meet.scbwin.reset()
+        self.resend_current()
+
+    def _do_draw(self):
+        """Clear, shuffle and re-draw for sprint/keirin"""
+        tot = 0
+        for r in self.riders:
+            if not r[COL_DNF]:
+                tot += 1
+        draw = [d for d in range(1, tot + 1)]
+        shuffle(draw)
+        idx = 0
+        for r in self.riders:
+            if not r[COL_DNF]:
+                r[COL_INFO] = str(draw[idx])
+                idx += 1
 
     def key_event(self, widget, event):
         """Race window key press handler."""
@@ -878,6 +957,9 @@ class race:
                 if key == key_abort:  # override ctrl+f5
                     self.resettimer()
                     return True
+                elif key == key_startlist:
+                    if self.evtype in ['keirin', 'sprint']:
+                        self._do_draw()
             if key[0] == 'F':
                 if key == key_armstart:
                     self.armstart()
@@ -929,6 +1011,8 @@ class race:
             self.meet.scbwin.reset()
             self.doscbplaces = False
         self.setfinished()
+        self._eliminated = None  # superfluous?
+        self.resend_current()
 
     def do_startlist(self):
         """Show start list on scoreboard."""
@@ -956,6 +1040,38 @@ class race:
                                            coldesc=fmt,
                                            rows=startlist)
         self.meet.scbwin.reset()
+        self.resend_current()
+
+    def resend_current(self):
+        # TEMP issue cleared current
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            if self.evtype == 'elimination':
+                data['noLaps'] = True
+            self.meet.db.sendCurrent(self.event, fragment, data)
+
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['competitionType'] = 'bunch'  # for all generic races
+        ret['status'] = self._status
+        ret['remain'] = self._remain
+        ret['eliminated'] = self._eliminated
+        ret['weather'] = self._weather
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if self.finish is not None:
+            if self.start is not None:
+                ret['startTime'] = self.start
+                ret['endTime'] = self.finish
+        elif self.lstart is not None:
+            ret['startTime'] = self.lstart
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
 
     def stat_but_cb(self, button):
         """Race ctrl button callback."""
@@ -1059,6 +1175,7 @@ class race:
         else:
             _log.error('Cannot un-eliminate non-starter: %r', bib)
 
+        self.resend_current()
         return ret
 
     def eliminate(self, bib):
@@ -1069,6 +1186,12 @@ class race:
         if r is not None:
             if not r[COL_DNF]:
                 if bib not in self.eliminated:
+                    # ensure event is started
+                    if self.start is None:
+                        self.timerstat = 'armstart'
+                        # allow a ~two lap start
+                        st = tod.now() - tod.mktod(40)
+                        self.starttrig(st, wallstart=st)
                     self.eliminated.append(bib)
                     self.placexfer()
                     _log.info('Rider %r out', bib)
@@ -1078,6 +1201,7 @@ class race:
                         name, club, nfo = self._getname(
                             r[COL_NO],
                             width=self.meet.scb.linelen - 3 - len(rno))
+                        resname, nation = self._getresname(r[COL_NO])
                         rstr = (rno + ' ' + name)
                         self.meet.scbwin = scbwin.scbintsprint(
                             scb=self.meet.scb,
@@ -1090,10 +1214,23 @@ class race:
                         self.meet.gemini.set_bib(bib)
                         self.meet.gemini.show_brt()
                         self.meet.cmd_announce('eliminated', bib)
+                        rank = None
+                        place = None
+                        if self._remain is not None:  # filled by placexfer
+                            rank = self._remain + 1
+                            place = '%s.' % (rank, )
+                        self._eliminated = {
+                            'rank': rank,
+                            'class': place,
+                            'competitor': bib,
+                            'nation': nation,
+                            'name': resname,
+                            'info': nfo,
+                        }
                         # announce it:
                         nrstr = strops.truncpad(rstr, 60)
                         self.meet.txt_postxt(21, 0, 'Out: ' + nrstr)
-                        GLib.timeout_add_seconds(10, self.delayed_result)
+                        GLib.timeout_add_seconds(15, self.delayed_result)
                     else:
                         GLib.idle_add(self.delayed_result)
                     self.meet.delayed_export()
@@ -1104,6 +1241,7 @@ class race:
         else:
             _log.error('Cannot eliminate non-starter: %r', bib)
 
+        self.resend_current()
         return ret
 
     def delayed_result(self):
@@ -1119,6 +1257,7 @@ class race:
                                                    rows=self.results)
                 self.meet.scbwin.reset()
         self.meet.cmd_announce('eliminated', '')
+        self._eliminated = None
         self.meet.gemini.clear()
         GLib.idle_add(self.delayed_announce)
 
@@ -1173,6 +1312,8 @@ class race:
                     GLib.timeout_add_seconds(4, self.armfinish)
                 else:
                     GLib.idle_add(self.armfinish)
+            if self._weather is None:
+                self._weather = self.meet.get_weather()
 
     def fintrig(self, e):
         """React to finish trigger."""
@@ -1298,6 +1439,13 @@ class race:
                 ft = True
             yield (bib, rank, time, info)
 
+    def data_bridge(self):
+        """Export data bridge fragments, startlists and results"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            self.meet.db.updateFragment(self.event, fragment, data)
+
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
         self.placexfer()
@@ -1308,38 +1456,48 @@ class race:
         sec.heading = self.event.get_info(showevno=True)
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+        substr = '\u3000'.join(
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
+        self._reslines = []
         first = True
         fs = ''
         if self.finish is not None and self.start is not None:
             fs = (self.finish - self.start).rawtime(2)
         rcount = 0
         pcount = 0
+        rtot = len(self.riders)  # hack until somethng better
+        if self._remain:
+            pcount = self._remain
         for r in self.riders:
             plstr = ''
             rcount += 1
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
+            rnat = None
             inf = ''
             if rh is not None:
                 rname = rh.resname()
+                rnat = rh['nation']
                 inf = rh['class']
                 if not inf and self.showcats:
                     inf = rh.primary_cat()
             if r[COL_DNF]:
-                pcount += 1
                 if r[COL_INFO] in ('dns', 'dsq', 'abd'):
                     plstr = r[COL_INFO]
+                    pcount = rtot + 1
                 else:
                     plstr = 'dnf'
+                    pcount = rtot
             else:
                 if r[COL_INFO]:
                     inf = r[COL_INFO]
                 if self.onestart and r[COL_PLACE] != '':
                     plstr = r[COL_PLACE] + '.'
-                    pcount += 1
+                    if r[COL_PLACE].isdigit():
+                        pcount = int(r[COL_PLACE])
+                    else:
+                        pcount += 1
             if self.evtype in ['keirin', 'sprint']:  # encirc draw no
                 inf = strops.drawno_encirc(inf)
             #if self.inomnium:
@@ -1350,6 +1508,15 @@ class race:
                 else:
                     sec.lines.append([plstr, rno, rname, inf, fs, None])
                     first = False
+                # todo: members + badges
+                self._reslines.append({
+                    'rank': pcount,
+                    'class': plstr,
+                    'competitor': rno,
+                    'nation': rnat,
+                    'name': rname,
+                    'info': inf,
+                })
         if self.onestart:
             substr = substr.strip()
             shvec = []
@@ -1444,6 +1611,13 @@ class race:
         self.finchan = 1
         self.finished = False
         self._winState = {}  # cache ui settings for headless load/save
+        self._status = None
+        self._weather = None
+        self._startlines = None
+        self._reslines = None
+        self._remain = None
+        self._eliminated = None
+        self._prevlap = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

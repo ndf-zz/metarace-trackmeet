@@ -97,6 +97,72 @@ def cmp(x, y):
 class ps:
     """Data handling for point score omnium scratch and Madison races."""
 
+    def show_lapscore(self, laps, prev):
+        """Accept laps when idle/running"""
+        ret = False
+        if self.event['laps'] and prev is not None and laps is not None:
+            if prev - laps == 1:  # only announce decrement
+                if self.timerstat == 'idle':
+                    # check for a missed start
+                    stlap = self.event['laps'] - 1
+                    if laps == stlap:
+                        self.timerstat = 'armstart'
+                        st = tod.now() - tod.mktod(20)
+                        self.starttrig(st, wallstart=st)
+                    ret = True
+                elif self.timerstat == 'running':
+                    ret = True
+        return ret
+
+        if self.timerstat == 'idle':
+            # check for a missed start
+            if self.event['laps'] and prev is not None:
+                stlap = self.event['laps'] - 1
+                if laps == stlap and prev - laps == 1:
+                    self.timerstat = 'armstart'
+                    st = tod.now() - tod.mktod(20)
+                    self.starttrig(st, wallstart=st)
+            return True
+        elif self.timerstat == 'running':
+            return True
+        else:
+            return False
+
+    def resend_current(self):
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            if self._cursprint is not None:
+                fragment = '/'.join((fragment, self._cursprint))
+                data['subtitle'] = self._cursprintinfo
+                data['info'] = ''
+            self.meet.db.sendCurrent(self.event, fragment, data)
+
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['competitionType'] = 'bunch'  # for all points
+        ret['units'] = 'pt'  # for all points
+        ret['status'] = self._status
+        ret['weather'] = self._weather
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if self._detail is not None:
+            ret['detail'] = self._detail
+        if self._infoLine is not None:
+            ret['info'] = self._infoLine  # overrides rules
+        if self.finish is not None:
+            if self.start is not None:
+                ret['startTime'] = self.start
+                ret['endTime'] = self.finish
+        elif self.lstart is not None:
+            ret['startTime'] = self.lstart
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
+
     def ridercb(self, rider):
         """Rider change notification"""
         if self.winopen:
@@ -178,7 +244,8 @@ class ps:
                 'tenptlaps': deftenptlaps,
                 'inomnium': definomnium,
                 'showinfo': False,
-                'scoring': defscoretype
+                'scoring': defscoretype,
+                'weather': None,
             }
         })
         cr.add_section('event')
@@ -223,6 +290,7 @@ class ps:
             self.scoring = 'points'
 
         # race infos
+        self._weather = cr.get('event', 'weather')
         self.decisions = cr.get('event', 'decisions')
 
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
@@ -424,6 +492,7 @@ class ps:
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
         cw.set('event', 'decisions', self.decisions)
+        cw.set('event', 'weather', self._weather)
 
         cw.add_section('sprintplaces')
         cw.add_section('sprintpoints')
@@ -480,13 +549,10 @@ class ps:
                     if r[RES_COL_PLACE] is not None and r[RES_COL_PLACE] != '':
                         rank = int(r[RES_COL_PLACE])
                 else:
-                    if r[RES_COL_INFO] in ['dns', 'dsq']:
+                    if r[RES_COL_INFO] in ('dns', 'dsq', 'abd'):
                         rank = r[RES_COL_INFO]
                     else:
-                        if r[RES_COL_INFO].isdigit():
-                            rank = int(r[RES_COL_INFO])
-                        else:
-                            rank = 'dnf'  # ps only handle did not finish
+                        rank = 'dnf'
 
             if self.scoring == 'madison':
                 laps = r[RES_COL_LAPS]
@@ -502,6 +568,66 @@ class ps:
             time = None
             yield (bib, rank, time, info)
 
+    def data_bridge(self):
+        """Export data bridge fragments, startlists and results"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            # pre-load event data
+            data = self.data_pack()
+
+            # work out if competition, phase or contest
+            path = fragment.split('/')
+            pathlen = len(path)
+            subtype = None
+            if pathlen == 2:  # competition
+                subtype = 'phases'
+            elif pathlen == 3:  # phase
+                subtype = 'contests'
+            elif pathlen == 4:  # contest
+                subtype = 'heats'
+            data[subtype] = {}
+            for s in self.sprints:
+                sid = s[SPRINT_COL_ID]
+                subtitle = s[SPRINT_COL_LABEL]
+                subreq = 4  # default is (5, 3, 2, 1)
+                if s[SPRINT_COL_POINTS]:
+                    subreq = len(s[SPRINT_COL_POINTS])
+                substatus = None
+                sublines = None
+                if sid in self._inters and self._inters[sid]:
+                    sublines = self._inters[sid]
+                    if len(sublines) >= subreq:
+                        substatus = 'provisional'
+                    else:
+                        substatus = 'virtual'
+
+                # load result info & append to detail report
+                subdata = {
+                    'units': 'pt',
+                    'competitionType': 'bunch',
+                    'subtitle': subtitle,
+                    'status': substatus,
+                    'info': None,
+                }
+
+                # add result lines if defined
+                if sublines:
+                    subdata['lines'] = sublines
+
+                # duplicate weather startTime, and startlist from event
+                for k in ('competitors', 'weather', 'startTime'):
+                    if k in data:
+                        subdata[k] = data[k]
+
+                # publish inter to bridge
+                subfrag = '/'.join((fragment, sid))
+                self.meet.db.updateFragment(self.event, subfrag, subdata)
+
+                # save record of subfrag to head object
+                data[subtype][sid] = subtitle
+
+            self.meet.db.updateFragment(self.event, fragment, data)
+
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
         self.recalculate()
@@ -509,23 +635,29 @@ class ps:
         sec = report.section('result')
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+        substr = '\u3000'.join(
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         sec.units = 'Pts'
+        self._reslines = []
         fs = ''
         if self.finish is not None and self.start is not None:
             fs = (self.finish - self.start).rawtime(2)
         fl = None
         ll = None
-        rno = ''
+        pcount = 1
         for r in self.riders:
+            rno = ''
+            dbrno = r[RES_COL_NO]
             if not self.teamnames:
-                rno = r[RES_COL_NO]
+                rno = dbrno
             rname = ''
             rcat = ''
+            rnat = None
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
+                dbrno = rh['no']
                 rname = rh.resname()
+                rnat = rh['nation']
                 rcat = rh['class']
                 if not rcat and self.showcats:
                     rcat = rh.primary_cat()
@@ -564,9 +696,11 @@ class ps:
                     # dnf  or
                     # placed in final sprint
                     sec.lines.append([plstr, rno, rname, rcat, fs, ptstr])
+                    members = None
                     ## TEAM HACKS
                     if self.series.startswith('t') and rh is not None:
-                        for trno in rh['members'].split():
+                        members = rh['members'].split()
+                        for trno in members:
                             trh = self.meet.rdb.fetch_bibstr(trno)
                             if trh is not None:
                                 trname = trh.resname()
@@ -574,6 +708,17 @@ class ps:
                                 sec.lines.append([
                                     None, trno, trname, trinf, None, None, None
                                 ])
+                    self._reslines.append({
+                        'rank': pcount,
+                        'class': plstr,
+                        'competitor': dbrno,
+                        'nation': rnat,
+                        'name': rname,
+                        'info': rcat,
+                        'result': ptstr,
+                        'members': members,
+                    })
+                    pcount += 1
                 fs = ''
 
         if self.onestart:
@@ -718,6 +863,15 @@ class ps:
         self.stat_but.update('idle', 'Idle')
         self.stat_but.set_sensitive(True)
         self.set_elapsed()
+        self._status = None
+        self._weather = None
+        self._startlines = None
+        self._reslines = None
+        self._detail = None
+        self._infoLine = None
+        self._inters = {}
+        self._cursprint = None
+        self._cursprintinfo = None
 
     def armstart(self):
         """Toggle timer arm start state."""
@@ -809,33 +963,42 @@ class ps:
             rankCol = ' '
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+        substr = '\u3000'.join(
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             sec.subheading = substr
         self.reorder_riderno()
         sec.lines = []
+        self._startlines = []
         col2 = []
         cnt = 0
-        if self.inomnium and len(self.riders) > 0:
-            sec.lines.append((' ', ' ', 'The Fence', None, None, None))
-            col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
-        rno = ''
+        inomnium = False  # temp ?
+        #if self.inomnium and len(self.riders) > 0:
+        #sec.lines.append((' ', ' ', 'The Fence', None, None, None))
+        #col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
         for r in self.riders:
+            members = None
+            dbrno = r[RES_COL_NO]
+            rno = ''
             if not self.teamnames:
-                rno = r[RES_COL_NO]
+                rno = dbrno
             rname = ''
+            rnat = None
             inf = ''
+            cls = ''
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
+                dbrno = rh['no']
                 rname = rh.resname()
-                inf = rh['class']
+                rnat = rh['nation']
+                cls = rh['class']
+                inf = cls
                 if not inf and self.showcats:
                     inf = rh.primary_cat()
             if r[RES_COL_INFO] and not self.inomnium:
                 inf = r[RES_COL_INFO]
 
-            if self.inomnium:
+            if inomnium:
                 if r[RES_COL_PLACE].isdigit() or r[RES_COL_PLACE] == '':
                     cnt += 1
                     if cnt % 2 == 1:
@@ -851,6 +1014,7 @@ class ps:
                     # add the black/red entry
                     if rh is not None:
                         tvec = rh['members'].split()
+                        members = tvec
                         if docolour and len(tvec) == 2:
                             trname = ''
                             trinf = ''
@@ -888,6 +1052,13 @@ class ps:
                                     sec.lines.append(
                                         (rankCol, trno, trh.resname(), None,
                                          None, None))
+            self._startlines.append({
+                'competitor': rno,
+                'nation': rnat,
+                'name': rname,
+                'info': inf,
+                'members': members,
+            })
 
         for i in col2:
             sec.lines.append(i)
@@ -943,6 +1114,7 @@ class ps:
                                            coldesc=fmt,
                                            rows=startlist)
         self.meet.scbwin.reset()
+        self.resend_current()
 
     def _getname(self, bib, width=32):
         """Return a name, club and class label for the rider if known"""
@@ -1156,6 +1328,7 @@ class ps:
 
                 self.meet.cmd_announce('leaderboard',
                                        chr(unt4.US[0]).join(leaderboard))
+            self.resend_current()
         return False
 
     def do_places(self):
@@ -1217,6 +1390,8 @@ class ps:
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self._cursprint = None
+        self.resend_current()
         return False
 
     def dnfriders(self, biblist=''):
@@ -1335,11 +1510,14 @@ class ps:
                 self.meet.scbwin.update()
         else:
             self.meet.scbwin.reset()
+        self.resend_current()
 
     def starttrig(self, e, wallstart=None):
         """React to start trigger."""
         if self.timerstat == 'armstart':
             self.set_start(e, wallstart)
+            if self._weather is None:
+                self._weather = self.meet.get_weather()
         elif self.timerstat == 'armsprintstart':
             self.stat_but.update('activity', 'Arm Sprint')
             self.meet.main_timer.arm(1)
@@ -1629,6 +1807,8 @@ class ps:
         sprintid = None
         cur = 1
         firstgap = None
+        self._status = None
+        self._infoLine = None
         for s in self.sprints:
             totcontests += 1
             if s[SPRINT_COL_ID] not in self.laplabels:
@@ -1641,6 +1821,7 @@ class ps:
             cur += 1
         if lastsprint is not None:
             if lastsprint >= totcontests:
+                self._status = 'provisional'
                 ret = 'Result'
                 # check for all places in final sprint?
                 for r in self.riders:
@@ -1649,10 +1830,12 @@ class ps:
                         ret = 'Provisional Result'
                         break
             else:
+                self._status = 'virtual'
                 ret = 'Standings'
                 if lastsprint:
                     if sprintid in self.laplabels:
-                        ret += ' After ' + self.laplabels[sprintid]
+                        self._infoLine = 'After ' + self.laplabels[sprintid]
+                        ret += ' ' + self._infoLine
                     elif totsprints > 0:
                         # it's a "laps to go" sprint
                         lapoft = totcontests - totsprints
@@ -1663,6 +1846,8 @@ class ps:
                         else:
                             ret += ' After Sprint {0} of {1}'.format(
                                 cursprint, totsprints)
+                        self._infoLine = 'After Sprint {0} of {1}'.format(
+                            cursprint, totsprints)
                     else:
                         _log.debug('Total sprints was 0: %r / %r', lastsprint,
                                    totsprints)
@@ -1722,6 +1907,7 @@ class ps:
             i = self.ctrl_place_combo.get_active_iter()
             prevplaces = self.sprints.get_value(i, SPRINT_COL_PLACES)
             self.sprints.set_value(i, SPRINT_COL_PLACES, places)
+            curid = self.sprints.get_value(i, SPRINT_COL_ID)
             sid = int(self.sprints.get_string_from_iter(i))
             sinfo = self.sprints.get_value(i, SPRINT_COL_LABEL)
             self.recalculate()
@@ -1740,6 +1926,9 @@ class ps:
                     delay = SPRINT_PLACE_DELAY_MAX
                 self.oktochangecombo = True
                 GLib.timeout_add_seconds(delay, self.delayed_result)
+                self._cursprint = curid
+                self._cursprintinfo = sinfo
+                self.resend_current()
             elif type(self.meet.scbwin) is scbwin.scbtable:
                 self.do_places()  # overwrite result table?
             GLib.timeout_add_seconds(1, self.delayed_announce)
@@ -1833,12 +2022,19 @@ class ps:
             r[RES_COL_PLACE] = ''
             r[RES_COL_FINAL] = -1  # Negative => Unplaced in final sprint
 
-    def pointsxfer(self, placestr, final=False, index=0, points=None):
+    def pointsxfer(self,
+                   placestr,
+                   final=False,
+                   index=0,
+                   points=None,
+                   sid=None):
         """Transfer points from sprint placings to aggregate."""
         placeset = set()
         if points is None:
             points = [5, 3, 2, 1]  # Default is four places
         self.sprintresults[index] = []
+        self._inters[sid] = []  # List of RESULTLINE objects for bridge
+        bridgeres = self._inters[sid]
         place = 0
         count = 0
         name_w = self.meet.scb.linelen - 9
@@ -1851,7 +2047,18 @@ class ps:
                         _log.info('Adding non-starter: %r', bib)
                         self.addrider(bib)
                         r = self._getrider(bib)
-                    name, club, cls = self._getname(bib, width=name_w)
+                    name = ''
+                    club = ''
+                    cls = ''
+                    nat = ''
+                    rname = ''
+                    dbr = self.meet.rdb.get_rider(bib, self.series)
+                    if dbr is not None:
+                        name = dbr.fitname(name_w)
+                        rname = dbr.resname()
+                        club = dbr['organisation']
+                        cls = dbr['class']
+                        nat = dbr['nation']
                     ptsstr = ''
                     if place < len(points):
                         ptsstr = str(points[place])
@@ -1864,6 +2071,15 @@ class ps:
                     plstr = str(place + 1) + '.'
                     self.sprintresults[index].append(
                         (plstr, r[RES_COL_NO], name, ptsstr, r[RES_COL_NAME]))
+                    bridgeres.append({
+                        'rank': place + 1,
+                        'class': plstr,
+                        'competitor': r[RES_COL_NO],
+                        'name': rname,
+                        'nation': nat,
+                        'info': cls,
+                        'result': ptsstr,
+                    })
                     count += 1
                 else:
                     _log.error('Ignoring duplicate no: %r', bib)
@@ -1944,7 +2160,7 @@ class ps:
         lidx = len(self.sprints) - 1
         for s in self.sprints:
             self.pointsxfer(s[SPRINT_COL_PLACES], idx == lidx, idx,
-                            s[SPRINT_COL_POINTS])
+                            s[SPRINT_COL_POINTS], s[SPRINT_COL_ID])
             idx += 1
 
         if len(self.riders) == 0:
@@ -2038,6 +2254,11 @@ class ps:
                 nr[SPRINT_COL_PLACES] = pv['places']
                 nr[SPRINT_COL_POINTS] = pv['points']
                 _log.debug('Retained previous values for %r: %r', sl, nr)
+            else:
+                # check for defaults
+                if self.evtype == 'tempo':
+                    nr[SPRINT_COL_POINTS] = [1]
+
             self.sprints.append(nr)
             self.sprintresults.append([])
             self.nopts.append('')
@@ -2155,6 +2376,15 @@ class ps:
         self.showcats = False
         self.seedsrc = None
         self._winState = {}  # cache ui settings for headless load/save
+        self._status = None
+        self._weather = None
+        self._startlines = None
+        self._reslines = None
+        self._detail = None
+        self._infoLine = None
+        self._inters = {}
+        self._cursprint = None
+        self._cursprintinfo = None
 
         # data models
         self.sprints = Gtk.ListStore(

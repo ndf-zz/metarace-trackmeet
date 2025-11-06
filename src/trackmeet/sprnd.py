@@ -110,6 +110,96 @@ _CONFIG_SCHEMA = {
 class sprnd:
     """Data handling for sprint rounds."""
 
+    def show_lapscore(self, laps, prev):
+        """Accept laps when idle/running"""
+        ret = False
+        if self.event['laps'] and prev is not None and laps is not None:
+            if prev - laps == 1:  # only announce decrement
+                if self.timerstat in ('idle', 'running'):
+                    ret = True
+        return ret
+
+    def resend_current(self):
+        fragment = self.event.get_fragment()
+        if fragment:
+            contest = None
+            heat = None
+            i = self.current_contest_combo.get_active_iter()
+            if i is not None:
+                cid = self.contests.get_value(i, COL_CONTEST)
+                if self.event['type'] == 'sprint final':
+                    contest = self.contestroot(cid)
+                    heat = self.contestheat(cid)
+                else:
+                    contest = cid
+            data = self.data_pack()
+            if contest is not None:
+                fragment = '/'.join((fragment, contest))
+                data['subtitle'] = contest
+            self.meet.db.sendCurrent(self.event, fragment, data)
+
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['competitionType'] = 'bunch'  # for all sprints
+        ret['status'] = self._status
+        ret['weather'] = self._weather
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if self._infoLine is not None:
+            ret['info'] = self._infoLine  # overrides rules
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
+
+    def data_bridge(self):
+        """Export data bridge fragments, startlists and results"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            # pre-load event data
+            data = self.data_pack()
+
+            # work out if competition, phase or contest
+            path = fragment.split('/')
+            pathlen = len(path)
+            subtype = None
+            if pathlen == 2:  # competition
+                subtype = 'phases'
+            elif pathlen == 3:  # phase
+                subtype = 'contests'
+            elif pathlan == 4:  # contest
+                subtype = 'heats'
+                # in the case of final - this should not be possible
+            data[subtype] = {}  # in parent fragment
+            for cid, contest in self._sprintres.items(
+            ):  # visit filled contests
+                # add the label entry
+                data[subtype][cid] = contest['subtitle']
+                if self.event['type'] == 'sprint final':
+                    _log.debug('TODO: expand heats of contests')
+                else:  # single-heat contests
+                    subdata = {
+                        'competitionType': 'bunch',
+                        'subtitle': contest['subtitle'],
+                        'status': contest['status'],
+                    }
+                    if contest['lines']:
+                        subdata['lines'] = contest['lines']
+                    if contest['competitors']:
+                        subdata['competitors'] = contest['competitors']
+
+                    # duplicate weather from event
+                    if 'weather' in data:
+                        subdata['weather'] = data['weather']
+
+                    # publish inter to bridge
+                    subfrag = '/'.join((fragment, cid))
+                    self.meet.db.updateFragment(self.event, subfrag, subdata)
+            _log.debug('Write main object %s with data=%r', fragment, data)
+            self.meet.db.updateFragment(self.event, fragment, data)
+
     def ridercb(self, rider):
         """Rider change notification"""
         if self.winopen:
@@ -120,9 +210,9 @@ class sprnd:
                     dbr = self.meet.rdb[rider]
                     for cr in self.contests:
                         if cr[COL_A_NO] == rno:
-                            cr[COL_A_STR] = dbr._listname()
+                            cr[COL_A_STR] = dbr.listname()
                         elif cr[COL_B_NO] == rno:
-                            cr[COL_B_STR] = dbr._listname()
+                            cr[COL_B_STR] = dbr.listname()
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -141,11 +231,15 @@ class sprnd:
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
         self._standingstat = ''
+        self._status = None
         self._rescache = {}
         self.finished = False
         ccount = 0
         dcount = 0
+        self._sprintres = {}
+        # !!! collect and update all the subfrag results here
         if self.event['type'] == 'sprint final':
+            ## TODO: sprint res includes heats
             # re-build the result cache
             for cr in self.contests:
                 cid = self.contestroot(cr[COL_CONTEST])
@@ -206,16 +300,76 @@ class sprnd:
             # visit all contests simply
             ccount = len(self.contests)
             for c in self.contests:
+                cid = self.contestroot(c[COL_CONTEST])
+                self._sprintres[cid] = {
+                    'subtitle': cid,
+                    'status': None,
+                    'competitors': [],
+                    'lines': [],
+                }
+                subres = self._sprintres[cid]
+                acompetitor = {}
+                bcompetitor = {}
+                aresult = {}
+                bresult = {}
+                if c[COL_A_NO] and c[COL_A_NO].strip():
+                    acompetitor['competitor'] = c[COL_A_NO]
+                    self._fill_competitor(acompetitor)
+                    subres['competitors'].append(acompetitor)
+                    for k in acompetitor:
+                        aresult[k] = acompetitor[k]
+                if c[COL_B_NO] and c[COL_B_NO].strip():
+                    bcompetitor['competitor'] = c[COL_B_NO]
+                    self._fill_competitor(bcompetitor)
+                    subres['competitors'].append(bcompetitor)
+                    for k in bcompetitor:
+                        bresult[k] = bcompetitor[k]
+                if c[COL_A_QUAL] is not None:
+                    ## data type?
+                    acompetitor['qualTime'] = c[COL_A_QUAL]
+                    _log.debug('Qual type is: %r', c[COL_A_QUAL])
+                if c[COL_B_QUAL] is not None:
+                    ## data type?
+                    bcompetitor['qualTime'] = c[COL_B_QUAL]
+
                 if c[COL_BYE]:
                     ccount -= 1  # one less contest result required
+                    aresult['rank'] = 1
+                    aresult['class'] = '1.'
+                    aresult['result'] = 'bye'
+                    subres['lines'].append(aresult)
+                    subres['status'] = 'provisional'
                 elif c[COL_WINNER]:
                     dcount += 1
+                    # contest has a winner
+                    result = None
+                    if c[COL_200M] is not None:
+                        result = c[COL_200M].rawtime(2)
+                    subres['status'] = 'provisional'
+                    if c[COL_WINNER] == c[COL_A_NO]:
+                        aresult['rank'] = 1
+                        aresult['class'] = '1.'
+                        aresult['result'] = result
+                        bresult['rank'] = 2
+                        bresult['class'] = '2.'
+                        subres['lines'].append(aresult)
+                        subres['lines'].append(bresult)
+                    else:
+                        bresult['rank'] = 1
+                        bresult['class'] = '1.'
+                        bresult['result'] = result
+                        aresult['rank'] = 2
+                        aresult['class'] = '2.'
+                        subres['lines'].append(bresult)
+                        subres['lines'].append(aresult)
         if ccount > 0:
             if dcount:
                 if ccount == dcount:
                     self._standingstat = 'Result'
                     self.finished = True
+                    self._status = 'provisional'
                 else:
+                    self._status = 'virtual'  # contests have sub status
                     if self.event['type'] == 'sprint final':
                         self._standingstat = 'Virtual Standing'
                     else:
@@ -376,6 +530,7 @@ class sprnd:
                 'showinfo': False,
                 'otherstime': def_otherstime,
                 'decisions': [],
+                'weather': None,
             },
             'contests': {}
         })
@@ -385,6 +540,7 @@ class sprnd:
             _log.info('%r not read, loading defaults', self.configfile)
 
         # event metas
+        self._weather = cr.get('event', 'weather')
         self.decisions = cr.get('event', 'decisions')
         self.otherstime = cr.get_bool('event', 'otherstime', def_otherstime)
         self.onestart = False
@@ -544,29 +700,53 @@ class sprnd:
         substr = ' '.join((
             lapstring,
             self.event['distance'],
-            self.event['phase'],
+            self.event['rules'],
         )).strip()
         if substr:
             sec.subheading = substr
 
+        self._startlines = []
+        self._conteststarts = {}
         cidset = set()
         for cr in self.contests:
             cid = self.contestroot(cr[COL_CONTEST])
             if cid not in cidset:
+                self._conteststarts[cid] = []
                 cidset.add(cid)
                 byeflag = None
+
                 ano = cr[COL_A_NO]
-                aname = self._resname(ano)
+                rh = self._get_rider(ano)
+                aname = rh.resname()
+                anat = rh['nation']
+                acls = rh['class']
+
                 bno = cr[COL_B_NO]
-                bname = self._resname(bno)
+                rh = self._get_rider(bno)
+                bname = rh.resname()
+                bnat = rh['nation']
+                bcls = rh['class']
                 aqual = None
+                raqual = None
                 if cr[COL_A_QUAL] is not None:
-                    aqual = cr[COL_A_QUAL].rawtime(2)
+                    raqual = cr[COL_A_QUAL].truncate(2)
+                    aqual = raqual.rawtime(2)
                 bqual = None
+                rbqual = None
                 if cr[COL_B_QUAL] is not None:
-                    bqual = cr[COL_B_QUAL].rawtime(2)
+                    rbqual = cr[COL_B_QUAL].truncate(2)
+                    bqual = rbqual.rawtime(2)
                 timestr = None
                 byemark = None
+                arobj = {
+                    'competitor': ano,
+                    'nation': anat,
+                    'name': aname,
+                    'info': acls,
+                    'qualTime': raqual,
+                }
+                self._startlines.append(arobj)
+                self._conteststarts[cid].append(arobj)
                 if cr[COL_BYE]:
                     timestr = ' '
                     bno = ' '
@@ -574,6 +754,17 @@ class sprnd:
                     bqual = None
                     byeflag = ' '
                     byemark = ' '
+                else:
+                    brobj = {
+                        'competitor': bno,
+                        'nation': bnat,
+                        'name': bname,
+                        'info': bcls,
+                        'qualTime': rbqual,
+                    }
+                    self._startlines.append(brobj)
+                    self._conteststarts[cid].append(brobj)
+
                 if self.event['type'] == 'sprint final':
                     sec.lines.append([
                         cid + ':',
@@ -617,6 +808,7 @@ class sprnd:
             cw.set('event', 'showinfo', self._winState['showinfo'])
         cw.set('event', 'timerstat', self.timerstat)
         cw.set('event', 'decisions', self.decisions)
+        cw.set('event', 'weather', self._weather)
         cw.set('event', 'otherstime', self.otherstime)
         contestset = set()
         contestlist = []
@@ -685,6 +877,9 @@ class sprnd:
         self.meet.main_timer.dearm(self.finchan)
         self.stat_but.update('idle', 'Idle')
         self.stat_but.set_sensitive(True)
+        self._status = None
+        self._weather = None
+        self._infoLine = None
         self.set_elapsed()
 
     def setrunning(self):
@@ -833,6 +1028,8 @@ class sprnd:
         self.standingstr()
         if self.winopen:
             self.meet.delayed_export()
+            if self._weather is None:
+                self._weather = self.meet.get_weather()
 
     def redo_places(self):
         i = self.current_contest_combo.get_active_iter()
@@ -858,6 +1055,7 @@ class sprnd:
                 wno = self.contests.get_value(i, COL_B_NO)
                 lno = self.contests.get_value(i, COL_A_NO)
             self.do_places(cid, wno, wplace, lno, lplace, fstr)
+            self.meet.delayed_export()
 
     def do_places(self, contest, winno, winpl, loseno, losepl, ftime):
         """Show contest result on scoreboard."""
@@ -882,6 +1080,8 @@ class sprnd:
                                            timepfx='200m:',
                                            timestr=ftime)
         self.meet.scbwin.reset()
+        if self._weather is None:
+            self._weather = self.meet.get_weather()
 
     def _getname(self, bib, width=32):
         """Return a name and club for the rider if known"""
@@ -1109,6 +1309,8 @@ class sprnd:
                 GLib.idle_add(self.delayed_announce)
             else:
                 _log.error('Ignored rider not in contest')
+            if self._weather is None:
+                self._weather = self.meet.get_weather()
         else:
             _log.info('No contest selected')
 
@@ -1160,7 +1362,7 @@ class sprnd:
             substr = ' '.join((
                 lapstring,
                 self.event['distance'],
-                self.event['phase'],
+                self.event['rules'],
             )).strip()
             if substr:
                 self.meet.txt_postxt(1, 0, substr.center(80))
@@ -1215,7 +1417,7 @@ class sprnd:
                           strops.truncpad(c[COL_B_STR], 29))
                 self.meet.txt_postxt(lof, 0, ' '.join([cid, lr, sep, rr]))
                 lof += 1
-
+            self.resend_current()
         return False
 
     def result_gen(self):
@@ -1292,6 +1494,48 @@ class sprnd:
             yield (bib, rank, time, info)
             placeoft += 1
 
+    def update_reslines(self):
+        """Pull in final result using result_gen"""
+        self._reslines = []
+        count = 0
+        for res in self.result_gen():
+            count += 1
+            if res[0] and res[1] and res[0].strip():
+                rno = res[0]
+                rname = ''
+                rnat = ''
+                rcls = ''
+                rh = self.meet.rdb.get_rider(rno, self.series)
+                if rh is not None:
+                    rno = rh['no']
+                    rname = rh.resname()
+                    rnat = rh['nation']
+                    rcls = rh['class']
+                rank = count
+                place = str(res[1])
+                if place.isdigit():
+                    place += '.'
+                self._reslines.append({
+                    'rank': rank,
+                    'class': place,
+                    'competitor': rno,
+                    'nation': rnat,
+                    'name': rname,
+                    'info': rcls,
+                })
+
+    def _fill_competitor(self, obj):
+        """Fill in the db infor for a competitor line/result line"""
+        # todo: move to rdb or data bridge and re-use
+        if 'competitor' in obj and obj['competitor']:
+            rno = obj['competitor']
+            rh = self.meet.rdb.get_rider(rno)
+            if rh is not None:
+                obj['nation'] = rh['nation']
+                obj['name'] = rh.resname()
+                obj['info'] = rh['class']
+                # todo: members
+
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
         ret = []
@@ -1305,7 +1549,7 @@ class sprnd:
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         shvec = []
         if substr:
             shvec.append(substr)
@@ -1379,6 +1623,9 @@ class sprnd:
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
 
+        # for sprnd/final use result_gen to rearrange result report
+        self.update_reslines()
+
         return ret
 
     def todstr(self, col, cr, model, iter, data=None):
@@ -1439,6 +1686,14 @@ class sprnd:
         self._rescache = {}
         self.finished = False
         self._winState = {}  # cache ui settings for headless load/save
+        self._status = None
+        self._weather = None
+        self._startlines = None
+        self._conteststarts = None
+        self._reslines = None
+        self._infoLine = None
+        self._cursprint = None
+        self._sprintres = None
 
         self.contests = Gtk.ListStore(
             str,  # COL_CONTEST = 0

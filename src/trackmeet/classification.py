@@ -76,6 +76,10 @@ class classification:
         """Return an event status string for reports and scb."""
         return self._standingstat
 
+    def show_lapscore(self, laps, prev):
+        """Reject lapscore updates"""
+        return False
+
     def loadconfig(self):
         """Load race config from disk."""
         findsource = False
@@ -194,19 +198,28 @@ class classification:
         sec.heading = ' '.join(headvec)
         lapstring = strops.lapstring(self.event['laps'])
         substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             sec.subheading = substr
-        #sec.lines = []
-        #for r in self.riders:
-        #rno = r[COL_NO]
-        #if 't' in self.series:  # Team no hack
-        #rno = ' '  # force name
-        #rh = self.meet.rdb.get_rider(rno, self.series)
-        #rname = ''
-        #if rh is not None:
-        #rname = rh.resname()
-        #sec.lines.append([None, rno, rname, None, None, None])
+
+        self._startlines = []
+        # only write out data bridge starters
+        for r in self.riders:
+            rno = r[COL_NO]
+            rh = self.meet.rdb.get_rider(rno, self.series)
+            rname = ''
+            rnat = None
+            inf = ''
+            if rh is not None:
+                rname = rh.resname()
+                rnat = rh['nation']
+                inf = rh['class']
+            self._startlines.append({
+                'competitor': rno,
+                'name': rname,
+                'nation': rnat,
+                'info': inf,
+            })
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
@@ -264,6 +277,32 @@ class classification:
 
             yield (bib, rank, time, info)
 
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['status'] = self._status
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
+
+    def resend_current(self):
+        """Push an updated current object"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            self.meet.db.sendCurrent(self.event, fragment, data)
+
+    def data_bridge(self):
+        """Export data bridge fragments, startlists and results"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+            self.meet.db.updateFragment(self.event, fragment, data)
+
     def result_report(self, recurse=True):  # by default include inners
         """Return a list of report sections containing the race result."""
         ret = []
@@ -276,7 +315,7 @@ class classification:
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
         substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             subvec.append(substr)
         stat = self.standingstr()
@@ -287,18 +326,23 @@ class classification:
 
         teamnames = self.series.startswith('t')
         prevmedal = ''
+        self._reslines = []
         sec.lines = []
+        pcount = 1
         for r in self.riders:
             rno = r[COL_NO]
+            members = None
             if teamnames:
                 rno = ''
             rname = ''
+            rnat = None
             rcls = ''
             plink = ''
             tlink = []
             rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
             if rh is not None:
                 rname = rh.resname()
+                rnat = rh['nation']
                 rcls = rh['class']
                 if not rcls and self.showcats:
                     rcls = rh.primary_cat()
@@ -313,7 +357,8 @@ class classification:
 
                 if teamnames:
                     # in classification, all members are shown
-                    for trno in rh['members'].split():
+                    members = rh['members'].split()
+                    for trno in members:
                         trh = self.meet.rdb.fetch_bibstr(trno)
                         if trh is not None:
                             trname = trh.resname()
@@ -327,11 +372,14 @@ class classification:
                 rank = rks
                 if rank.isdigit():
                     rank += '.'
+                pcount += 1
 
             medal = ''
             mds = r[COL_MEDAL]
+            badges = None
             if mds:
                 medal = mds
+                badges = [mds.lower()]
             if medal == '' and prevmedal != '':
                 # add empty line
                 sec.lines.append([None, None, None])
@@ -339,6 +387,16 @@ class classification:
 
             nrow = [rank, rno, rname, rcls, None, medal, plink]
             sec.lines.append(nrow)
+            self._reslines.append({
+                'rank': pcount,
+                'class': rank,
+                'competitor': r[COL_NO],
+                'nation': rnat,
+                'name': rname,
+                'info': rcls,
+                'badges': badges,
+                'members': members,
+            })
             if tlink:
                 sec.lines.extend(tlink)
         ret.append(sec)
@@ -356,11 +414,20 @@ class classification:
                         _log.error('Invalid event %r in showplaces', evno)
                         continue
                     r.loadconfig()  # now have queryable event handle
-                    if r.onestart:  # go for result
-                        ret.extend(r.result_report())
-                    else:  # go for startlist
-                        ret.extend(r.startlist_report())
+
+                    # call both startlist and result to ensure data is packed
+                    slist = r.startlist_report()
+                    rlist = r.result_report()
+                    if r.onestart:  # include result content in report
+                        ret.extend(rlist)
+                    else:  # include startlist report
+                        ret.extend(slist)
+
+                    # export sub event to data bridge
+                    if self.meet.eventcode:
+                        r.data_bridge()
                     r = None
+
         return ret
 
     def changerider(self, oldNo, newNo):
@@ -489,6 +556,8 @@ class classification:
 
         # Mark medals/awards if required and determine status
         self._standingstat = ''
+        self._status = None
+        firstplace = False
         medalmap = {}
         placecount = 0
         medalcount = 0
@@ -501,17 +570,23 @@ class classification:
             rks = r[COL_PLACE]
             if rks.isdigit():
                 rank = int(rks)
+                if rank == 1:  # first place assigned
+                    firstplace = True
                 placecount += 1
                 if rank in medalmap:
                     r[COL_MEDAL] = medalmap[rank]
                     medalcount += 1
         if placecount > 0:
-            if medalcount == mtotal:
-                self._standingstat = 'Result'
-            elif medalcount > 0:
-                self._standingstat = 'Provisional Result'
+            if firstplace:
+                if medalcount == mtotal:
+                    self._standingstat = 'Result'
+                    self._status = 'provisional'
+                elif medalcount > 0:
+                    self._standingstat = 'Virtual Standing'
+                    self._status = 'virtual'
             else:
                 self._standingstat = 'Virtual Standing'
+                self._status = 'virtual'
         return
 
     def key_event(self, widget, event):
@@ -570,7 +645,7 @@ class classification:
                 self.meet.txt_postxt(l, posoft,
                                      ' '.join([plstr, bibstr, namestr, medal]))
                 l += 1
-
+            self.resend_current()
         return False
 
     def do_startlist(self):
@@ -627,6 +702,7 @@ class classification:
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.resend_current()
         return False
 
     def recover_start(self):
@@ -715,7 +791,7 @@ class classification:
     def __init__(self, meet, event, ui=True):
         """Constructor."""
         self.meet = meet
-        self.event = event  # Note: now a treerowref
+        self.event = event
         self.evno = event['evid']
         self.evtype = event['type']
         self.series = event['seri']
@@ -735,7 +811,10 @@ class classification:
         self.decisions = []
         self.finished = False
         self._standingstat = ''
+        self._status = None
         self._winState = {}  # cache ui settings for headless load/save
+        self._startlines = None
+        self._reslines = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

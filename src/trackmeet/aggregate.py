@@ -4,6 +4,7 @@
 import os
 import gi
 import logging
+import json
 
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
@@ -116,11 +117,35 @@ _CONFIG_SCHEMA = {
         'subtext': '(places)',
         'default': 1,
     },
+    'showdetail': {
+        'prompt': 'Details:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Include with result?',
+        'hint': 'Include points distribution report with result',
+        'attr': 'showdetail',
+        'default': True,
+    },
+    'seriestally': {
+        'prompt': 'Series:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Separate tally?',
+        'hint': 'Provide a separate round and series tally with result',
+        'attr': 'seriestally',
+        'default': True,
+    },
     'prelabel': {
         'prompt': 'Prev Meet:',
         'attr': 'prelabel',
         'default': None,
         'hint': 'Label for standings at start of meet',
+    },
+    'predata': {
+        'prompt': 'Prev Data:',
+        'attr': 'predata',
+        'default': None,
+        'hint': 'Data file for previous meet tallies',
     },
 }
 
@@ -128,9 +153,79 @@ _CONFIG_SCHEMA = {
 class teamagg(classification.classification):
     """Crude Teams Aggregate - based on organisation field"""
 
+    def ridercb(self, rider):
+        """Rider change notification"""
+        if self.winopen:
+            if rider is not None:
+                rno = rider[0]
+                series = rider[1]
+                if series == self.series:
+                    self._tkcache.clear()
+                    self.recalculate()
+            else:
+                # riders db changed, handled by meet object
+                pass
+
+    def data_bridge(self):
+        """Export round points as result and series as subfrag"""
+        fragment = self.event.get_fragment()
+        if fragment:
+            data = self.data_pack()
+
+            # add series points as sub-fragment
+            if self.seriestally:
+                sid = 'series'
+                subtitle = 'Series Points'
+                path = fragment.split('/')
+                pathlen = len(path)
+                subtype = None
+                if pathlen == 2:  # competition
+                    subtype = 'phases'
+                elif pathlen == 3:  # phase
+                    subtype = 'contests'
+                elif pathlen == 4:  # contest
+                    subtype = 'heats'
+                data[subtype] = {}
+
+                subdata = {
+                    'units': 'pt',
+                    'competitionType': 'bunch',
+                    'subtitle': 'Series Points',
+                    'info': None,
+                    'lines': self._sreslines,
+                }
+
+                # duplicate weather startTime, and startlist from event
+                for k in ('status', 'competitors', 'weather', 'startTime'):
+                    if k in data:
+                        subdata[k] = data[k]
+
+                # publish inter to bridge
+                subfrag = '/'.join((fragment, sid))
+                self.meet.db.updateFragment(self.event, subfrag, subdata)
+
+                # save record of subfrag to head object
+                data[subtype][sid] = subtitle
+
+            self.meet.db.updateFragment(self.event, fragment, data)
+
+    def data_pack(self):
+        """Pack standard values for a current object"""
+        ret = {}
+        ret['units'] = 'pt'
+        ret['status'] = self._status
+        if self._startlines is not None:
+            ret['competitors'] = self._startlines
+        if self._reslines is not None:
+            ret['lines'] = self._reslines
+        if self._detail is not None:
+            ret['detail'] = self._detail
+        if len(self.decisions) > 0:
+            ret['decisions'] = self.meet.decision_list(self.decisions)
+        return ret
+
     def loadconfig(self):
         """Load race config from disk."""
-        _log.debug('teamagg: loadconfig')
         findsource = False
 
         cr = jsonconfig.config({
@@ -167,7 +262,6 @@ class teamagg(classification.classification):
 
     def saveconfig(self):
         """Save race to disk."""
-        _log.debug('teamagg: saveconfig')
         if self.readonly:
             _log.error('Attempt to save readonly event')
             return
@@ -184,10 +278,13 @@ class teamagg(classification.classification):
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
             cw.write(f)
+        if self._status == 'provisional':
+            savefile = 'event_%s_tally.json' % (str(self.evno), )
+            with metarace.savefile(savefile) as f:
+                json.dump(self.ptstally, f)
 
     def result_report(self, recurse=True):  # by default include inners
-        """Return a list of report sections containing the race result."""
-        _log.debug('teamagg: result_report, recurse=%r', recurse)
+        """Team aggregate result"""
         ret = []
 
         # start with the overall result
@@ -198,8 +295,8 @@ class teamagg(classification.classification):
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+        substr = '\u3000'.join(
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             subvec.append(substr)
         stat = self.standingstr()
@@ -209,18 +306,28 @@ class teamagg(classification.classification):
             sec.subheading = ' - '.join(subvec)
 
         teamnames = self.series.startswith('t')
+        self._reslines = []
+        self._sreslines = []
         sec.lines = []
+        tstore = {}
+        pcount = 0
         for r in self.riders:
+            pcount += 1
             rno = r[COL_NO]
+            tsk = rno
+            dbrno, junk = strops.bibstr2bibser(rno)
             if teamnames:
                 rno = ''
             rname = r[COL_NAME]
+            rnat = None
             rcls = ''
             plink = ''
             rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
             # check for info override via rdb
             if rh is not None:
+                dbrno = rh['no']
                 rname = rh.resname()
+                rnat = rh['nation']
                 rcls = rh['class']
                 if not rcls and self.showcats:
                     rcls = rh.primary_cat()
@@ -229,29 +336,130 @@ class teamagg(classification.classification):
             if rks:
                 rank = rks
                 if rank.isdigit():
+                    pcount = int(rank)
                     rank += '.'
-            pts = r[COL_MEDAL]
-            nrow = [rank, rno, rname, rcls, None, pts, plink]
-            sec.lines.append(nrow)
-        ret.append(sec)
 
+            pts = r[COL_MEDAL]
+
+            tstore[tsk] = {
+                'rno': rno,
+                'dbrno': dbrno,
+                'rname': rname,
+                'rnat': rnat,
+                'rcls': rcls,
+                'plink': plink,
+            }
+
+            if pts != '0':  # suppress empty lines
+                sec.lines.append([rank, rno, rname, rcls, None, pts, plink])
+                self._reslines.append({
+                    'rank': pcount,
+                    'class': rank,
+                    'competitor': dbrno,
+                    'nation': rnat,
+                    'name': rname,
+                    'info': rcls,
+                    'result': pts,
+                })
+
+        ret.append(sec)
+        # also show series standings if configured and available
+        if self.seriestally and self._seriespts:
+            secid = 'ev-' + str(self.evno).translate(
+                strops.WEBFILE_UTRANS) + '-spts'
+
+        # also show series standings if configured and available
+        if self.seriestally and self._seriespts:
+            secid = 'ev-' + str(self.evno).translate(
+                strops.WEBFILE_UTRANS) + '-spts'
+            sec = report.section(secid)
+            sec.units = 'pt'
+            sec.nobreak = True  # TODO: check in comp
+            sec.heading = ' '.join((self.event['pref'], 'Series Points'))
+            lapstring = strops.lapstring(self.event['laps'])
+            subvec = []
+            substr = ' '.join((lapstring, self.event['distance'],
+                               self.event['rules'])).strip()
+            if substr:
+                subvec.append(substr)
+            stat = self.standingstr()
+            if stat:
+                subvec.append(stat)
+            if subvec:
+                sec.subheading = ' - '.join(subvec)
+            pcount = 0
+            for r in self._seriespts:
+                pcount += 1
+                tsk = r[COL_NO]
+                iob = tstore[tsk]
+                rank = ''
+                rks = r[COL_PLACE]
+                if rks:
+                    rank = rks
+                    if rank.isdigit():
+                        pcount = int(rank)
+                        rank += '.'
+                pts = r[COL_MEDAL]
+                if pts != '0':
+                    sec.lines.append([
+                        rks, iob['rno'], iob['rname'], iob['rcls'], None, pts,
+                        iob['plink']
+                    ])
+                    self._sreslines.append({
+                        'rank': pcount,
+                        'class': rank,
+                        'competitor': iob['dbrno'],
+                        'nation': iob['rnat'],
+                        'name': iob['rname'],
+                        'info': iob['rcls'],
+                        'result': pts,
+                    })
+            ret.append(sec)
+
+        if self.showdetail:
+            ret.extend(self.detail_report())
+
+        if len(self.decisions) > 0:
+            ret.append(self.meet.decision_section(self.decisions))
+
+        # ignore event recursion in agg
+        return ret
+
+    def detail_report(self):
+        ret = []
+        self._detail = None
         if self.ptstally:
+            self._detail = {}
             first = 'Points Detail'
             for cr in self.riders:
                 cno = cr[COL_NO]
+                dbcno, junk = strops.bibstr2bibser(cno)
                 if cno in self.ptstally:
+                    prevpts = self.prevpts[cno]
+                    self._detail[cno] = {}
+                    cObj = self._detail[cno]
                     # enforce truncation of final tally
-                    total = int(self.ptstally[cno]['total'])
+                    total = self.ptstally[cno]['total']
+                    stotal = prevpts + total
+                    cObj['tally'] = {
+                        'label': 'Tally',
+                        'points': total,
+                    }
+                    if self.seriestally:
+                        cObj['total'] = {
+                            'label': 'Series',
+                            'points': stotal,
+                        }
+
                     details = self.ptstally[cno]['detail']
                     composite = False
                     secid = 'detail-' + cno
                     sec = report.section(secid)
                     sec.units = 'pt'
-                    #sec.nobreak = True  # TODO: check in comp
                     sec.heading = first
                     first = ''
-                    sec.subheading = '%s %s' % (cr[COL_NAME],
-                                                strops.rank2ord(cr[COL_PLACE]))
+                    sec.subheading = cr[COL_NAME]
+
                     # extract an ordered list of events from detail
                     aux = []
                     cnt = 9999
@@ -260,7 +468,10 @@ class teamagg(classification.classification):
                         evname = ''
                         evid = detail['evno']
                         evno = evid
-                        evkey = cnt  # primary sorting key
+                        if evid == 'prev':  # previous round total
+                            evkey = 999999
+                        else:
+                            evkey = cnt  # order by appearence
                         evseries = ''
                         if evid in self.meet.edb:
                             evh = self.meet.edb[evid]
@@ -273,6 +484,7 @@ class teamagg(classification.classification):
                         aux.append(
                             (evkey, cnt, evno, evname, evseries, detail))
                     aux.sort()
+                    dcnt = 1
                     for l in aux:
                         evno = l[2]
                         evname = l[3]
@@ -281,51 +493,90 @@ class teamagg(classification.classification):
                         rno = detail['rno']
                         rseries = detail['series']
                         rname = ''
-                        dbr = self.meet.rdb.get_rider(rno, rseries)
-                        if dbr is not None:
-                            rname = dbr.fitname(3)
-                        if dbr['series'] != evseries:
-                            rname += ' *'
-                            composite = True
-                            _log.debug('Composite team rider in result')
+                        if rno:
+                            dbr = self.meet.rdb.get_rider(rno, rseries)
+                            if dbr is not None:
+                                rname = dbr.fitname(3)
+                                if dbr['series'] != evseries:
+                                    rname += ' *'
+                                    composite = True
+                                    _log.debug(
+                                        'Composite team rider in result')
+                        label = ''
+                        if evname:
+                            label = ': '.join((evname, rname))
+                        rkstr = ''
+                        if detail['place']:
+                            rkstr = strops.rank2ord(str(detail['place']))
+                        ptsval = '%g' % (detail['points'], )
                         sec.lines.append((
                             '',
                             '',
-                            ': '.join((evname, rname)),
+                            label,
                             detail['type'],
-                            strops.rank2ord(str(detail['place'])),
-                            '%.3g' %
-                            (detail['points'], ),  # but display fractions
+                            rkstr,
+                            ptsval,  # but display fractions
                         ))
-                    sec.lines.append(('', '', '', 'Total:', '', str(total)))
+                        cObj[str(dcnt)] = {
+                            'label': label,
+                            'rank': detail['place'],
+                            'elapsed': None,
+                            'interval': None,
+                            'points': detail['points'],
+                        }
+                        dcnt += 1
+                    sec.lines.append(
+                        ('', '', '', 'Tally:', '', '%g' % (total, )))
+                    if self.seriestally:
+                        sec.lines.append(
+                            ('', '', '', 'Series:', '', '%g' % (stotal, )))
                     if composite:
                         sec.footer = '* denotes rider in composite team'
                     ret.append(sec)
-
-        if len(self.decisions) > 0:
-            ret.append(self.meet.decision_section(self.decisions))
-
-        if recurse:  # for now leave in-place unless required
-            # then append each of the specified events
-            for evno in self.showevents.split():
-                if evno:
-                    _log.debug('Including results from event %r', evno)
-                    r = self.meet.get_event(evno, False)
-                    if r is None:
-                        _log.error('Invalid event %r in showplaces', evno)
-                        continue
-                    r.loadconfig()  # now have queryable event handle
-                    if r.onestart:  # go for result
-                        ret.extend(r.result_report())
-                    else:  # go for startlist
-                        ret.extend(r.startlist_report())
-                    r = None
         return ret
 
     def load_startpts(self):
-        """Read initial points tally from CSV."""
-        _log.debug('teamgg: read start points')
-        pass
+        """Read initial points tally."""
+        prelabel = 'Previous Meet:'
+        if self.prelabel is not None:
+            prelabel = self.prelabel
+        if self.predata is not None:
+            if os.path.exists(self.predata):  # in the current folder only
+                pd = None
+                try:
+                    with open(self.predata) as f:
+                        pd = json.load(f)
+                    if pd is not None and isinstance(pd, dict):
+                        for tk in pd:
+                            detail = pd[tk]
+                            # opportunistic name lookup
+                            th = self.meet.rdb.get_rider(tk, self.series)
+                            if th is not None:
+                                detail['name'] = th.resname()
+                            if 'total' in detail:
+                                oldpts = detail['total']
+                                oldname = detail['name']
+                                _log.debug('Prevpts: %s %s = %g', tk, oldname,
+                                           oldpts)
+                                self.add_competitor(tk, oldname)
+                                self.prevpts[tk] = oldpts
+                                self.ptstally[tk]['detail'].append({
+                                    'evno':
+                                    'prev',
+                                    'rno':
+                                    None,
+                                    'series':
+                                    None,
+                                    'place':
+                                    None,
+                                    'points':
+                                    oldpts,
+                                    'type':
+                                    prelabel,
+                                })
+                except Exception as e:
+                    _log.warning('%s loading previous meet points: %s',
+                                 e.__class__.__name__, e)
 
     def load_pointsmap(self, pstr, label):
         """Split points definition string into a place map"""
@@ -350,7 +601,22 @@ class teamagg(classification.classification):
 
     def teamkey(self, teamname):
         """Return a comparison key for a team name"""
-        return teamname.translate(strops.RIDERNO_UTRANS).upper()
+        if teamname in self._tkcache:
+            return self._tkcache[teamname]
+
+        # search teams in riderdb for matching name
+        for t in self.meet.rdb.fromseries(self.series):
+            team = self.meet.rdb[t]
+            if team['name'] == teamname:
+                tk = team['code']
+                break
+        else:
+            # otherwise return the uppercase filtered key
+            tk = teamname.translate(strops.RIDERNO_UTRANS).upper()
+
+        if tk:
+            self._tkcache[teamname] = tk
+        return tk
 
     def lookup_competitor(self, no, series, pts):
         """Determine destinations for given competitor"""
@@ -361,6 +627,8 @@ class teamagg(classification.classification):
             team = dbr['organisation']
             if not team and series.startswith('t'):
                 team = dbr['first']  # Assume team name only
+                # should check each team member, and
+                # overwrite composite/team if there's a deviant rider
             cno = self.teamkey(team)
             if cno == 'COMPOSITE':
                 # riders not all same team
@@ -375,47 +643,50 @@ class teamagg(classification.classification):
                         trrno = trh['no']
                         trseries = trh['series']
                         trcno = self.teamkey(trteam)
-                        if trcno not in self.ptstally:
-                            self.ptstally[trcno] = {
-                                'name': trteam,
-                                'total': 0,
-                                'detail': [],
-                            }
+                        self.add_competitor(trcno, trteam)
                         if trcno not in ret:
                             ret[trcno] = []
                         ret[trcno].append((trrno, trseries, splitpts))
                     else:
                         _log.debug('Missing rider %s in team %s', member, no)
             else:
-                if cno not in self.ptstally:
-                    self.ptstally[cno] = {
-                        'name': team,
-                        'total': 0,
-                        'detail': [],
-                    }
+                self.add_competitor(cno, team)
                 # single rider/all in same team: return original detail
                 ret[cno] = ((no, series, pts), )
         else:
             _log.warning('Unknown competitor %s skipped', no, series)
-        _log.debug('lookup competitor returns: %r', ret)
         return ret
 
+    def add_competitor(self, code, name):
+        """Add team code to points map if required"""
+        if code not in self.ptstally:
+            self.ptstally[code] = {
+                'name': name,
+                'total': 0,
+                'detail': [],
+            }
+        if code not in self.prevpts:
+            self.prevpts[code] = 0
+
     def accumulate_event(self, evno, pmap):
+        """Read event details and return true if event was finished"""
         if evno == self.evno:
             _log.warning('Event %r: Self-reference ignored', evno)
-            return
+            return False
         r = self.meet.get_event(evno, False)
         if r is None:
             _log.warning('Event %r not found for lookup %r', evno,
                          pmap['label'])
-            return
+            return False
         r.loadconfig()  # now have queryable event handle
         bestn = self.bestindiv
         if r.series.startswith('t'):
             bestn = self.bestteam
         _log.debug('Accumulating best %d places from %s', bestn, evno)
         teamcounts = {}
+        ret = False
         if r.finished:
+            _log.debug('Event %s finished... result gen..', evno)
             for res in r.result_gen():
                 if isinstance(res[1], int):
                     pval = pmap['default']
@@ -446,42 +717,54 @@ class teamagg(classification.classification):
                                         'type':
                                         pmap['label'],
                                     })
+            ret = True
         else:
             _log.debug('Event %r skipped: not yet finished', evno)
             self.finished = False
+            ret = False
         r = None
-        return
+        return ret
 
     def recalculate(self):
         """Update internal model."""
-        _log.debug('agg: recalculate')
         # all riders are re-loaded on recalc
         self.riders.clear()
+        self._seriespts.clear()
         self.ptstally = {}
         self.finished = True  # cleared below
 
         # load pre-meet points tally (starting points)
         self.load_startpts()
 
+        sourcecount = 0
         pmap = self.load_pointsmap(self.bheatpts, 'B Heat')
         for evno in self.bheat.split():
+            sourcecount += 1
             self.accumulate_event(evno, pmap)
         pmap = self.load_pointsmap(self.aheatpts, 'A Heat')
         for evno in self.aheat.split():
+            sourcecount += 1
             self.accumulate_event(evno, pmap)
         pmap = self.load_pointsmap(self.bfinalpts, 'B Final')
         for evno in self.bfinal.split():
+            sourcecount += 1
             self.accumulate_event(evno, pmap)
         pmap = self.load_pointsmap(self.afinalpts, 'A Final')
         for evno in self.afinal.split():
+            sourcecount += 1
             self.accumulate_event(evno, pmap)
 
         aux = []
+        sraux = []
         cnt = 0
         for cno, detail in self.ptstally.items():
             cnt += 1
-            total = int(detail['total'])
-            aux.append((-total, cno, cnt, total, detail))
+            total = int(detail['total'])  # discards fractions
+            aux.append((-total, cno, cnt, total, detail['name']))
+            prevpts = self.prevpts[cno]
+            srtotal = int(prevpts + detail['total'])
+            sraux.append(
+                (-srtotal, cno, cnt, srtotal, detail['name'], prevpts))
         if aux:
             aux.sort()
             lv = None
@@ -489,27 +772,39 @@ class teamagg(classification.classification):
             plc = None
             for r in aux:
                 cnt += 1
-                detail = r[4]
+                rname = r[4]
                 total = r[3]
                 if total != lv:
                     plc = cnt
                 lv = total
-                nr = (r[1], detail['name'], '', '', '', str(plc), str(total))
+                nr = (r[1], rname, '', '', '', str(plc), str(total))
                 self.riders.append(nr)
+            sraux.sort()
+            cnt = 0
+            plc = None
+            for r in sraux:
+                cnt += 1
+                rname = r[4]
+                total = r[3]
+                if total != lv:
+                    plc = cnt
+                lv = total
+                nr = (r[1], rname, '', '', '', str(plc), str(total))
+                self._seriespts.append(nr)
 
         if len(self.riders) > 0:  # got at least one result to report
             self.onestart = True
 
-        if self.finished:
+        if self.finished and sourcecount > 0:
             self._standingstat = 'Provisional Result'
+            self._status = 'provisional'
         else:
             self._standingstat = 'Standings'
-
+            self._status = 'virtual'
         return
 
     def do_places(self):
         """Show race result on scoreboard."""
-        _log.debug('agg: do_places')
         # Draw a 'medal ceremony' on the screen
         resvec = []
         count = 0
@@ -543,6 +838,7 @@ class teamagg(classification.classification):
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.resend_current()
         return False
 
     def do_properties(self):
@@ -570,10 +866,8 @@ class teamagg(classification.classification):
 
     def __init__(self, meet, event, ui=True):
         """Constructor."""
-        _log.debug('teamagg: __init__, meet=%r, event=%r, ui=%r', meet, event,
-                   ui)
         self.meet = meet
-        self.event = event  # Note: now a treerowref
+        self.event = event
         self.evno = event['evid']
         self.evtype = event['type']
         self.series = event['seri']
@@ -586,14 +880,12 @@ class teamagg(classification.classification):
         rstr = ''
         if self.readonly:
             rstr = 'readonly '
-        _log.debug('Init %sevent %s', rstr, self.evno)
         self.winopen = ui
         self.placesrc = ''  # leave unused
         self.medals = ''  # leave unused
         self.showevents = ''  # maybe re-used
         self.decisions = []
         self.finished = False
-        self._standingstat = ''
         # aggregate properties
         self.afinal = ''
         self.afinalpts = ''
@@ -605,9 +897,21 @@ class teamagg(classification.classification):
         self.bheatpts = ''
         self.bestindiv = 2
         self.bestteam = 1
+        self.seriestally = False
+        self.showdetail = False
         self.prelabel = None
+        self.predata = None
+        self.prevpts = {}  # points after previous round
         self.ptstally = {}  # cached content for the "detail" report
+        self._seriespts = []  # series summary line sources
         self._winState = {}  # cache ui settings for headless load/save
+        self._startlines = None
+        self._reslines = None  # round (meet) result
+        self._sreslines = None  # series result if enabled
+        self._status = None
+        self._detail = None
+        self._standingstat = ''
+        self._tkcache = {}
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
@@ -663,16 +967,11 @@ class indivagg(teamagg):
             dbr = self.meet.rdb.get_rider(no, series)
             if dbr is not None:
                 cname = dbr.listname()
-            self.ptstally[cno] = {
-                'name': cname,
-                'total': 0,
-                'detail': [],
-            }
+            self.add_competitor(cno, cname)
         return {cno: ((no, series, pts), )}
 
     def do_places(self):
         """Show race result on scoreboard."""
-        _log.debug('indiv agg: do_places')
         resvec = []
         count = 0
         allteamnames = False
@@ -719,11 +1018,11 @@ class indivagg(teamagg):
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.resend_current()
         return False
 
-    def result_report(self, recurse=True):  # by default include inners
-        """Return a list of report sections containing the race result."""
-        _log.debug('indivagg: result_report, recurse=%r', recurse)
+    def result_report(self, recurse=True):
+        """Individual Result - Don't show detail"""
         ret = []
 
         # start with the overall result
@@ -731,22 +1030,11 @@ class indivagg(teamagg):
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.units = 'pt'
-        sec.nobreak = True  # TODO: check in comp
-        if recurse:
-            sec.heading = ' '.join([self.event['pref'],
-                                    self.event['info']]).strip()
-        else:
-            if self.event['evov']:
-                sec.heading = ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-            else:
-                sec.heading = 'Event ' + self.evno + ': ' + ' '.join(
-                    [self.event['pref'], self.event['info']]).strip()
-        sec.lines = []
+        sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
         substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['phase'])).strip()
+            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             subvec.append(substr)
         stat = self.standingstr()
@@ -755,27 +1043,39 @@ class indivagg(teamagg):
         if subvec:
             sec.subheading = ' - '.join(subvec)
 
+        self._reslines = []
+        self._sreslines = []
         sec.lines = []
+        tstore = {}
+        pcount = 0
         for r in self.riders:
+            pcount += 1
             rno = r[COL_NO]
+            tsk = rno
+            members = None
+            dbrno, junk = strops.bibstr2bibser(rno)  # uggh
             rh = None
             rhid = self.meet.rdb.get_id(r[COL_NO])  # rno includes series
             if rhid is not None:
                 rh = self.meet.rdb[rhid]
             rname = ''
+            rnat = None
             plink = ''
             tlink = []
             rcls = ''
             if rh is not None:
+                dbrno = rh['no']
                 rname = rh.resname()
+                rnat = rh['nation']
                 rcls = rh['class']
                 if not rcls and self.showcats:
                     rcat = rh.primary_cat()
 
                 teamnames = rh['series'].startswith('t')
                 if teamnames:
+                    members = rh['members'].split()
                     rno = ''
-                    for trno in rh['members'].split():
+                    for trno in members:
                         trh = self.meet.rdb.fetch_bibstr(trno)
                         if trh is not None:
                             trname = trh.resname()
@@ -784,7 +1084,7 @@ class indivagg(teamagg):
                                 [None, trno, trname, trinf, None, None, None])
                 else:
                     # replace BIB.series with db riderno
-                    rno = rh['no']
+                    rno = dbrno
 
                 # TODO: PARA Pilots
                 #if rh['cat'] and 'tandem' in rh['cat'].lower():
@@ -800,31 +1100,96 @@ class indivagg(teamagg):
             if rks:
                 rank = rks
                 if rank.isdigit():
+                    pcount = int(rank)
                     rank += '.'
 
             pts = r[COL_MEDAL]
 
-            sec.lines.append([rks, rno, rname, rcls, None, pts, plink])
-            if tlink:
-                sec.lines.extend(tlink)
+            # suppress rno on printed report when non-numeric
+            if not rno.isdigit():
+                rno = ''
+
+            tstore[tsk] = {
+                'rno': rno,
+                'dbrno': dbrno,
+                'rname': rname,
+                'rnat': rnat,
+                'rcls': rcls,
+                'tlink': tlink,
+                'plink': plink,
+                'members': members,
+            }
+            if pts != '0':  # suppress empty lines
+                sec.lines.append([rks, rno, rname, rcls, None, pts, plink])
+                self._reslines.append({
+                    'rank': pcount,
+                    'class': rank,
+                    'competitor': dbrno,
+                    'nation': rnat,
+                    'name': rname,
+                    'info': rcls,
+                    'result': pts,
+                    'members': members,
+                })
+                if tlink:
+                    sec.lines.extend(tlink)
         ret.append(sec)
+
+        # also show series standings if configured and available
+        if self.seriestally and self._seriespts:
+            secid = 'ev-' + str(self.evno).translate(
+                strops.WEBFILE_UTRANS) + '-spts'
+            sec = report.section(secid)
+            sec.units = 'pt'
+            sec.heading = ' '.join((self.event['pref'], 'Series Points'))
+            lapstring = strops.lapstring(self.event['laps'])
+            subvec = []
+            substr = ' '.join((lapstring, self.event['distance'],
+                               self.event['rules'])).strip()
+            if substr:
+                subvec.append(substr)
+            stat = self.standingstr()
+            if stat:
+                subvec.append(stat)
+            if subvec:
+                sec.subheading = ' - '.join(subvec)
+
+            pcount = 0
+            for r in self._seriespts:
+                pcount += 1
+                tsk = r[COL_NO]
+                iob = tstore[tsk]
+                rank = ''
+                rks = r[COL_PLACE]
+                if rks:
+                    rank = rks
+                    if rank.isdigit():
+                        pcount = int(rank)
+                        rank += '.'
+                pts = str(r[COL_MEDAL])
+                if pts != '0':
+                    sec.lines.append([
+                        rks, iob['rno'], iob['rname'], iob['rcls'], None, pts,
+                        iob['plink']
+                    ])
+                    self._sreslines.append({
+                        'rank': pcount,
+                        'class': rank,
+                        'competitor': iob['dbrno'],
+                        'nation': iob['rnat'],
+                        'name': iob['rname'],
+                        'info': iob['rcls'],
+                        'result': pts,
+                        'members': iob['members'],
+                    })
+                    if iob['tlink']:
+                        sec.lines.extend(iob['tlink'])
+            ret.append(sec)
+
+        if self.showdetail:
+            ret.extend(self.detail_report())
 
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
 
-        if recurse:  # for now leave in-place unless required
-            # then append each of the specified events
-            for evno in self.showevents.split():
-                if evno:
-                    _log.debug('Including results from event %r', evno)
-                    r = self.meet.get_event(evno, False)
-                    if r is None:
-                        _log.error('Invalid event %r in showplaces', evno)
-                        continue
-                    r.loadconfig()  # now have queryable event handle
-                    if r.onestart:  # go for result
-                        ret.extend(r.result_report())
-                    else:  # go for startlist
-                        ret.extend(r.startlist_report())
-                    r = None
         return ret
