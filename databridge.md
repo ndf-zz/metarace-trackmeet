@@ -1,6 +1,6 @@
 # Trackmeet "Data Bridge" Schema
 
-*Updated: 2025-10-14*
+*Updated: 2025-11-06*
 
 
 ## Overview
@@ -173,6 +173,8 @@ Para event with multiple sport classes:
    - [MEET]: Meet information, list of sessions and list of categories
    - [MEET]/events: Index of events
    - [MEET]/current: Current event information
+   - [MEET]/current/startlist: Startlist for current fragment [TBC]
+   - [MEET]/current/result: Result for current fragment [TBC]
    - [MEET]/[SESSION]: Session information
    - [MEET]/[CATEGORY]:
      Competitor category overview and competitions in meet
@@ -330,23 +332,19 @@ competitorType | string | Competitor type indicator
 competitionType | string | Competition type indicator
 startTime | 8601DT | Rolling clock start time
 endTime | 8601DT | Rolling clock end time
-competitorA | string | "A" Competitor ID (pursuit, tt, 200)
-membersA | array | Team members for A competitor (team pursuit, team sprint)
+competitorA | RESULTLINE | "A" Competitor (pursuit, tt, 200)
 labelA | string | Text prefix for "A" split (pursuit, tt, 200, mass start)
 timeA | 8601I | Elapsed time for "A" split (pursuit, tt, 200, mass start)
 downA | 8601I | Down time for "A" split (pursuit, tt, 200)
 rankA | integer | Ranking or standing for "A" split (pursuit, tt, 200)
 infoA | string | Informative string: catch, caught, abandon, false-start
-nameA | string | Formatted competitor name
-competitorB | string | "B" Competitor ID (pursuit, tt)
-membersB | array | Team members for B competitor (team pursuit, team sprint)
+competitorB | RESULTLINE | "B" Competitor (pursuit, tt)
 labelB | string | Text prefix for "B" split or elapsed time (pursuit, tt)
 timeB | 8601I | Elapsed time for "B" split (pursuit, tt)
 downB | 8601I | Down time for "B" split (pursuit, tt)
 rankB | integer | Ranking or standing for "B" split (pursuit, tt)
 infoB | string | Informative string: catch, caught, abandon, false-start
-nameB | string | Formatted competitor name
-eliminated | string | Competitor ID eliminated (Elimination race only)
+eliminated | RESULTLINE | Competitor eliminated (Elimination race only)
 remain | integer | Number of riders remaining in race (Elimination race only)
 toGo | integer | Laps to go (mass start, sprint, 200)
 laps | integer | Total laps (mass start, sprint, 200)
@@ -604,7 +602,7 @@ info | string | Event information string
 distance | string | Event distance and units (if relevant)
 laps | integer | Event laps (if relevant)
 status | STATUS | Status of the startlist
-type | string | Indication of the type of startlist
+competitionType | string | Indication of the type of startlist
 competitorType | string | Indication of the competitor type
 competitors | array | Ordered list of STARTER objects
 
@@ -618,7 +616,7 @@ Example:
 	 "distance": "2000\u2006m",
 	 "laps": 8,
 	 "status": "final",
-	 "type": "dual",
+	 "competitionType": "dual",
 	 "competitorType": "rider",
 	 "competitors": [
 	  { "competitor": "1", "name": "Oliver SUDDEN (WA)",
@@ -640,7 +638,7 @@ info | string | Event information string
 distance | string | Event distance and units (if relevant)
 laps | integer | Number of laps (if relevant)
 status | STATUS | Status of the result
-type | string | Indication of the type of result
+competitionType | string | Indication of the type of result
 competitorType | string | Indication of the competitor type
 lines | array | Ordered list of RESULTLINE objects
 units | string | Result units if applicable
@@ -659,7 +657,7 @@ Example:
 	 "distance": null,
 	 "laps": null,
 	 "status": "provisional",
-	 "type": "bunch",
+	 "competitionType": "bunch",
 	 "competitorType": "rider",
 	 "lines": [
 	  { "rank": 1, "class": "1.", "competitor": "23",
@@ -684,6 +682,7 @@ Provides information about a starter in an event
 key | type | descr
 --- | --- | ---
 competitor | string | Competitor ID
+nation | string | Competitor's nation ID
 name | string | Competitor's formatted name string
 members | array | ordered list of rider IDs in team (if relevant)
 info | string | Seeding, handicap, sport class or draw indicator
@@ -701,11 +700,13 @@ key | type | descr
 rank | integer | Competitor's ranking in this result
 class | string | Competitor's classification or standing in this result
 competitor | string | Competitor ID
+nation | string | Competitor's nation ID
 name | string | Competitor's formatted name string
 members | array | ordered list of rider IDs in team (if relevant)
 info | string | Optional additional information string for this result line
 badges | array | Array of badges relevant to competitor in this result
 result | string | Formatted text result string
+extra | string | Additional result info string (eg down time)
 
 #### DETAIL
 
@@ -717,7 +718,7 @@ label | string | Label for this split/sprint
 rank | integer | Competitor's ranking at this split - may be null
 elapsed | 8601I | Elapsed time to this split/sprint (if known)
 interval | 8601I | Interval since previous split/sprint (if known)
-points | integer | Points awarded to competitor at this sprint
+points | numeric | Points awarded to competitor at this sprint
 
 Example for a 100m split in a flying 200m time trial:
 
@@ -837,8 +838,8 @@ members | array | Ordered set of team members if competitor was team
      eg: "1996-02-27"
    - 8601DT: ISO8601(4.3.2) Date and time of day string
      eg: "2022-11-01T09:10:11.234567+11:00"
-   - 8601I: ISO8601(4.4.1b) Time interval string
-     eg: "PT1H23M12.345S"
+   - 8601I: ISO8601(4.4.1b) Time interval string, with optional
+     (non-standard) sign prefix: eg: "-PT1H23M12.345S"
    - STATUS: Result status indicator one of:
        - null: Event has not yet started
        - "virtual": Event has begun, rankings indicate a standing only
@@ -875,7 +876,7 @@ members | array | Ordered set of team members if competitor was team
        - "WC4"
        - "MC5"
        - "WC5"
-   - Startlist/result type labels:
+   - Startlist/result competition type labels:
        - "single": Single competitor in each heat (tt, 200)
        - "dual": A/B competitors (tt, pursuit, team sprint, team pursuit)
        - "sprintround": Single round sprint phase [TBC]
