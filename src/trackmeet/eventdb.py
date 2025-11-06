@@ -42,11 +42,18 @@ _EVENT_COLUMNS = {
     'topn': 'Qualifiers',
     'laps': 'Laps',
     'dist': 'Distance',
-    'phas': 'Phase Rules',
+    'rule': 'Rules',
     'spon': 'Sponsor',
     'priz': 'Prizemoney',
     'reco': 'Record',
     'dirt': 'Dirty?',
+    'cate': 'Category',
+    'comp': 'Competiton',
+    'phas': 'Phase',
+    'cont': 'Contest',
+    'heat': 'Heat',
+    'star': 'Start Time',
+    'endt': 'End Time',
 }
 
 # Column strings lookup, and legacy alterations
@@ -55,13 +62,15 @@ _ALT_COLUMNS = {
     'event id': 'evid',
     'no': 'evid',
     'printed': 'prog',  # legacy "Printed Program"
-    'progress': 'phas',  # legacy "Progression Rules"
+    'progress': 'rule',  # legacy "Progression Rules"
+    'phase ru': 'rule',  # legacy "Phase Rules"
     'qualifie': 'topn',
     'qualify': 'topn',
     'top n qu': 'topn',
     'starters': 'auto',  # legacy "Starters"
     'override': 'evov',
     'evoverri': 'evov',  # legacy "EVOverride"
+    'end time': 'endt',  # new est end time
 }
 
 
@@ -91,31 +100,6 @@ _EVENT_COLUMN_CONVERTERS = {
     'auto': _clean_autofield,
 }
 
-_DEFAULT_COLUMN_ORDER = (
-    'sess',
-    'evid',
-    'refe',
-    'evov',
-    'type',
-    'seri',
-    'pref',
-    'info',
-    'laps',
-    'dist',
-    'resu',
-    'inde',
-    'prog',
-    'depe',
-    'auto',
-    'plac',
-    'topn',
-    'phas',
-    'spon',
-    'priz',
-    'reco',
-    'dirt',
-)
-
 _EVENT_ALIASES = {
     'time trial': 'indiv tt',
     'pursuit': 'indiv pursuit',
@@ -126,6 +110,7 @@ _EVENT_ALIASES = {
 }
 
 _EVENT_TYPES = {
+    'session': 'Session',
     'flying 200': 'Flying 200m',
     'flying lap': 'Flying Lap',
     'indiv tt': 'Time Trial',
@@ -296,9 +281,9 @@ _CONFIG_SCHEMA = {
         'defer': True,
         'hint': 'Number of qualifiers to next phase of competition',
     },
-    'phas': {
+    'rule': {
         'prompt': 'Phase rules:',
-        'attr': 'phas',
+        'attr': 'rule',
         'defer': True,
         'default': '',
         'hint':
@@ -334,6 +319,46 @@ _CONFIG_SCHEMA = {
         'defer': True,
         'hint': 'Re-load dependent events on next export',
     },
+    'cate': {
+        'prompt': 'Category:',
+        'control': 'short',
+        'attr': 'cate',
+        'defer': True,
+        'hint': 'Data Bridge category ID',
+        'default': '',
+    },
+    'comp': {
+        'prompt': 'Competition:',
+        'control': 'short',
+        'attr': 'comp',
+        'defer': True,
+        'hint': 'Data Bridge competition ID',
+        'default': '',
+    },
+    'phas': {
+        'prompt': 'Phase:',
+        'control': 'short',
+        'attr': 'phas',
+        'defer': True,
+        'hint': 'Data Bridge phase ID',
+        'default': '',
+    },
+    'cont': {
+        'prompt': 'Contest:',
+        'control': 'short',
+        'attr': 'cont',
+        'defer': True,
+        'hint': 'Data Bridge contest ID',
+        'default': '',
+    },
+    'heat': {
+        'prompt': 'Heat:',
+        'control': 'short',
+        'attr': 'heat',
+        'defer': True,
+        'hint': 'Data Bridge heat ID',
+        'default': '',
+    },
 }
 
 
@@ -357,8 +382,10 @@ def colkey(colstr=''):
     return col
 
 
-def get_header(cols=_DEFAULT_COLUMN_ORDER):
+def get_header(cols=None):
     """Return a row of header strings for the provided cols."""
+    if cols is None:
+        cols = tuple(_EVENT_COLUMNS)
 
     return (_EVENT_COLUMNS[colkey(c)] for c in cols)
 
@@ -418,8 +445,10 @@ class event:
         if newdepend != self['depend']:
             self.set_value('depend', newdepend)
 
-    def get_row(self, coldump=_DEFAULT_COLUMN_ORDER):
+    def get_row(self, coldump=None):
         """Return a row ready to export."""
+        if coldump is None:
+            coldump = tuple(_EVENT_COLUMNS)
         return (str(self[c]) for c in coldump)
 
     def get_info(self, showevno=False):
@@ -440,6 +469,33 @@ class event:
         ret = self['type']
         if ret in _EVENT_TYPES:
             ret = _EVENT_TYPES[ret]
+        return ret
+
+    def competitor_type(self):
+        """Return this event's Data Bridge competitor type."""
+        ret = 'rider'
+        if self['series'].startswith('tm'):
+            ret = 'pair'
+        elif self['series'].startswith('t'):
+            ret = 'team'
+        return ret
+
+    def get_catcomp(self):
+        """Return this event's Data Bridge CAT/comp path."""
+        ret = None
+        if self['category'] and self['competition']:
+            ret = '/'.join((self['category'], self['competition']))
+        return ret
+
+    def get_fragment(self):
+        """Return a base Data Bridge fragment for this event."""
+        ret = None
+        if self['category'] and self['competition']:
+            fl = [self['category'], self['competition']]
+            for k in 'phase', 'contest', 'heat':
+                if self[k]:
+                    fl.append(self[k])
+            ret = '/'.join(fl)
         return ret
 
     def get_evno(self):
@@ -582,6 +638,8 @@ class eventdb:
         for i in range(0, len(colspec)):
             if len(r) > i:  # column data in row
                 val = r[i].translate(strops.PRINT_UTRANS)
+                if val == 'None':  # special-case override invalid none
+                    val = None
                 key = colspec[i]
                 if key in _EVENT_COLUMN_CONVERTERS:
                     val = _EVENT_COLUMN_CONVERTERS[key](val)
@@ -612,7 +670,7 @@ class eventdb:
                             for col in r:
                                 incols.append(colkey(col))
                         else:
-                            incols = _DEFAULT_COLUMN_ORDER  # assume full
+                            incols = tuple(_EVENT_COLUMNS)
                             self._loadrow(r, incols)
         self._notify(None)
 
@@ -738,7 +796,7 @@ class eventdb:
         self._notify = self._def_notify
         self._evno_change_cb = None
 
-        self.include_cols = _DEFAULT_COLUMN_ORDER
+        self.include_cols = tuple(_EVENT_COLUMNS)
         if racetypes is not None:
             self.racetypes = racetypes
         else:
