@@ -11,7 +11,6 @@ import csv
 import os
 import json
 import threading
-from time import sleep
 from datetime import datetime, UTC
 
 gi.require_version("GLib", "2.0")
@@ -35,6 +34,7 @@ from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, OVERLAY_IMAGE, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
+from .lapscore import lapscore
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
 from .databridge import DataBridge, _CONFIG_SCHEMA as _DB_SCHEMA
 from . import uiutil
@@ -243,6 +243,12 @@ _CONFIG_SCHEMA = {
         'hint': 'Numeric display board port eg: /dev/ttyUSB1',
         'defer': True,
         'attr': 'gemport',
+    },
+    'lapport': {
+        'prompt': 'Lap Score:',
+        'hint': 'Lap score data port eg: /dev/ttyUSB2',
+        'defer': True,
+        'attr': 'lapport',
     },
     'secexp': {
         'control': 'section',
@@ -486,6 +492,17 @@ class trackmeet:
         # reset scb and or gemini if required
         if res['scbport'][0] or res['gemport'][0] or scbchange:
             self.menu_scb_connect_activate_cb(None)
+
+        # reset lapspy
+        if res['lapport'][0]:
+            if self.lapspy is not None:
+                self.lapspy.exit()
+                del self.lapspy
+                self.lapspy = None
+            if self.lapport:
+                self.lapspy = lapscore(port=self.lapport)
+                self.lapspy.setcb(self._lapscore_cb)
+                self.lapspy.start()
 
         # always re-set title
         self.set_title()
@@ -1903,6 +1920,8 @@ class trackmeet:
     def shutdown(self, msg=''):
         """Cleanly shutdown threads and close application."""
         self.started = False
+        if self.lapspy is not None:
+            self.lapspy.exit()
         self.announce.exit(msg)
         self.scb.exit(msg)
         self.gemini.exit(msg)
@@ -1940,7 +1959,19 @@ class trackmeet:
                 else:
                     _log.debug('resend blocked')
 
+    def _recv_laps(self, laps=None):
+        """Receive updated lap from direclty connected lapspy"""
+        # TODO: publish to telegraph
+        self.update_lapscore(strops.confopt_posint(laps, None))
+        return False
+
+    def _lapscore_cb(self, laps=None):
+        GLib.idle_add(self._recv_laps, laps)
+
     def _controlcb(self, topic=None, message=None):
+        GLib.idle_add(self.remote_command, topic, message)
+
+    def remote_command(self, topic=None, message=None):
         path = topic.split('/')
         if path:
             cmd = path[-1]
@@ -1948,6 +1979,7 @@ class trackmeet:
                 self.update_lapscore(strops.confopt_posint(message, None))
             else:
                 _log.debug('Unsupported control %r: %r', topic, message)
+        return False
 
     def start(self):
         """Start the timer and scoreboard threads."""
@@ -1958,6 +1990,8 @@ class trackmeet:
             self.main_timer.setcb(self._timercb)
             self.main_timer.start()
             self.gemini.start()
+            if self.lapspy is not None:
+                self.lapspy.start()
             self.weather.start()
             self.db.load()
             self.started = True
@@ -2056,6 +2090,9 @@ class trackmeet:
             self.main_timer.setport(self.timerport)
         if self.gemport:
             self.gemini.setport(self.gemport)
+        if self.lapport:
+            self.lapspy = lapscore(port=self.lapport)
+            self.lapspy.setcb(self._lapscore_cb)
 
         # reset announcer topic
         if self.anntopic:
@@ -3172,6 +3209,8 @@ class trackmeet:
         self.timerprint = False  # enable timer printer?
         self.main_timer = timy()
         self.timerport = ''
+        self.lapport = None
+        self.lapspy = None
         self.gemini = gemini()
         self.weather = Weather()
         self.db = DataBridge(self)

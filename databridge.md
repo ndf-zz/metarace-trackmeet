@@ -1,6 +1,6 @@
 # Trackmeet "Data Bridge" Schema
 
-*Updated: 2025-11-06*
+*Updated: 2025-12-04*
 
 
 ## Overview
@@ -283,6 +283,7 @@ category | string | Competitor category ID
 competition | string | Competition ID
 phase | string | Competition phase ID
 fragments | array | ordered list of meet paths to fragments in this event
+startTime | 8601DT | Rough event start time on the session program
 
 Example:
 
@@ -299,7 +300,8 @@ Example:
 	  "category": "ME",
 	  "competition": "sprint",
 	  "phase": "qualifying",
-	  "fragments": ["ME/sprint/qualifying"]
+	  "fragments": ["ME/sprint/qualifying"],
+          "startTime": ...
 	 }, ...
 	}
 
@@ -330,6 +332,7 @@ contest | string | Contest ID
 heat | string | Heat ID
 competitorType | string | Competitor type indicator
 competitionType | string | Competition type indicator
+eventStart | 8601DT | Rough start time for start of event
 startTime | 8601DT | Rolling clock start time
 endTime | 8601DT | Rolling clock end time
 competitorA | RESULTLINE | "A" Competitor (pursuit, tt, 200)
@@ -879,8 +882,6 @@ members | array | Ordered set of team members if competitor was team
    - Startlist/result competition type labels:
        - "single": Single competitor in each heat (tt, 200)
        - "dual": A/B competitors (tt, pursuit, team sprint, team pursuit)
-       - "sprintround": Single round sprint phase [TBC]
-       - "sprintfinal": Sprint best 2 of 3 rounds [TBC]
        - "bunch": Mass start (scratch, points etc)
        - "classification": Final classification for a competition - includes
          medals and champion badges when relevant. May include lower

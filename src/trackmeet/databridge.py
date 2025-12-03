@@ -272,8 +272,8 @@ class DataBridge():
             #if rank <= topn:
             #qual = True
             #elif k == 'badges':
-            #if qual and 'Q' not in obj['badges']:
-            #obj['badges'].append('Q')
+            #if qual and 'qualified' not in obj['badges']:
+            #obj['badges'].append('qualified')
         return obj
 
     def _lookupCompetitor(self, cid, event):
@@ -337,8 +337,8 @@ class DataBridge():
             if 'competitor' in c:
                 cno = _ornull(c['competitor'])
             if cno is None:
-                _log.warning('Missing competitor no %r for result %s', c,
-                             fragment)
+                _log.debug('Missing competitor no %r for result %s', c,
+                           fragment)
                 continue
             ret.append(self._updateResultLine(c, topn))
         return ret
@@ -359,7 +359,7 @@ class DataBridge():
             if 'competitor' in c:
                 cno = _ornull(c['competitor'])
             if cno is None:
-                _log.warning('Missing competitor no %r for %s', c, fragment)
+                _log.debug('Missing competitor no %r for %s', c, fragment)
                 continue
             obj = {
                 'competitor': None,
@@ -454,7 +454,7 @@ class DataBridge():
         plen = len(path)
         catComp = event.get_catcomp()
         if catComp is None:
-            _log.warning('Missing category or competition: %s', fragment)
+            _log.debug('Missing category or competition: %s', fragment)
         chkComp = '/'.join(path[0:2])
         if chkComp != catComp:
             _log.warning('Data/fragment mismatch ignored: %s not in %s',
@@ -464,7 +464,7 @@ class DataBridge():
         # ensure there is a category to write into
         category = _ornull(event['category'])
         if category not in self._categories:
-            _log.warning('Missing cat %r for %s', category, fragment)
+            _log.debug('Missing cat %r for %s', category, fragment)
             self.addCategory(category)
 
         # patch the fragment elements
@@ -496,7 +496,7 @@ class DataBridge():
         elif plen == 5:  # CAT/comp/phase/contest/heat
             self.updateHeatHead(event, fragment, data)
         else:
-            _log.warning('Invalid fragment ignored: %s', fragment)
+            _log.debug('Invalid fragment ignored: %s', fragment)
 
         self.updateStartlist(event, fragment, data)
         self.updateResult(event, fragment, data)
@@ -532,7 +532,7 @@ class DataBridge():
     def updateCategory(self, cat):
         """Update and publish the category object"""
         if not cat:
-            _log.warning('Ignored empty cat')
+            _log.debug('Ignored empty cat')
             return
 
         self.addCategory(cat)
@@ -595,8 +595,8 @@ class DataBridge():
                 elif redRid is None:
                     redRid = lr['no']
                 else:
-                    _log.warning('Extra madison members ignored for %s',
-                                 c.resname_bib())
+                    _log.debug('Extra madison members ignored for %s',
+                               c.resname_bib())
                     break
             compObj['pairs'][cno] = {
                 'number': cno,
@@ -657,9 +657,20 @@ class DataBridge():
         for k, e in self._events.items():
             dataObj[k] = {}
             dstObj = dataObj[k]
-            for k in ('title', 'subtitle', 'info', 'extra', 'distance', 'laps',
-                      'session', 'category', 'competition', 'phase',
-                      'fragments'):
+            for k in (
+                    'title',
+                    'subtitle',
+                    'info',
+                    'extra',
+                    'distance',
+                    'laps',
+                    'session',
+                    'category',
+                    'competition',
+                    'phase',
+                    'fragments',
+                    'startTime',
+            ):
                 if k in e:
                     dstObj[k] = e[k]
                 else:
@@ -734,6 +745,7 @@ class DataBridge():
                             'competition': competition,
                             'phase': phase,
                             'fragments': [],
+                            'startTime': _ornull(meeteh['start']),
                         }
                         self._events[evid] = evtObj
                     evtObj = self._events[evid]
@@ -818,11 +830,11 @@ class DataBridge():
             plen = len(path)
             catComp = event.get_catcomp()
             if catComp is None:
-                _log.warning('Missing category or competition: %s', fragment)
+                _log.debug('Missing category or competition: %s', fragment)
             chkComp = '/'.join(path[0:2])
             if chkComp != catComp:
-                _log.warning('Data/fragment mismatch ignored: %s not in %s',
-                             fragment, catComp)
+                _log.debug('Data/fragment mismatch ignored: %s not in %s',
+                           fragment, catComp)
                 return
             meetPath = self.getPath(fragment)
 
@@ -836,6 +848,7 @@ class DataBridge():
             self._current['category'] = path[0]
             self._current['competition'] = path[1]
             self._current['phase'] = None
+            self._current['eventStart'] = _ornull(event['start'])
             if len(path) > 2 and path[2]:
                 self._current['phase'] = path[2]
             self._current['contest'] = None
@@ -881,10 +894,11 @@ class DataBridge():
 
         # override values provided by the data object
         for k in ('status', 'title', 'subtitle', 'session', 'info',
-                  'competitionType', 'startTime', 'endTime', 'elapsed',
-                  'competitorA', 'labelA', 'timeA', 'downA', 'rankA', 'infoA',
-                  'competitorB', 'labelB', 'timeB', 'downB', 'rankB', 'infoB',
-                  'eliminated', 'remain', 'toGo', 'record', 'noLaps'):
+                  'competitionType', 'eventStart', 'startTime', 'endTime',
+                  'elapsed', 'competitorA', 'labelA', 'timeA', 'downA',
+                  'rankA', 'infoA', 'competitorB', 'labelB', 'timeB', 'downB',
+                  'rankB', 'infoB', 'eliminated', 'remain', 'toGo', 'record',
+                  'noLaps'):
             if k in data and data[k]:
                 self._current[k] = data[k]
 
@@ -901,11 +915,11 @@ class DataBridge():
         dataObj = {}
         for k in ('path', 'status', 'title', 'subtitle', 'info', 'event',
                   'session', 'category', 'competition', 'phase', 'contest',
-                  'heat', 'competitorType', 'competitionType', 'startTime',
-                  'endTime', 'elapsed', 'competitorA', 'labelA', 'timeA',
-                  'downA', 'rankA', 'infoA', 'competitorB', 'labelB', 'timeB',
-                  'downB', 'rankB', 'infoB', 'eliminated', 'remain', 'toGo',
-                  'laps', 'distance', 'record', 'weather'):
+                  'heat', 'competitorType', 'competitionType', 'eventStart',
+                  'startTime', 'endTime', 'elapsed', 'competitorA', 'labelA',
+                  'timeA', 'downA', 'rankA', 'infoA', 'competitorB', 'labelB',
+                  'timeB', 'downB', 'rankB', 'infoB', 'eliminated', 'remain',
+                  'toGo', 'laps', 'distance', 'record', 'weather'):
 
             if k in self._current:
                 dataObj[k] = self._current[k]
@@ -1003,13 +1017,13 @@ class DataBridge():
         if zone is not None:
             self._tz = zone
         else:
-            _log.warning('Invalid timezone, using UTC')
+            _log.debug('Invalid timezone, using UTC')
             self._tz = UTC
 
         # load basepath from meet
         self._base = _ornull(self._m.eventcode)
         if self._base is None:
-            _log.warning('Invalid meet code, using "meet"')
+            _log.debug('Invalid meet code, using "meet"')
             self._base = 'meet'
 
         # load tracklen from meet
