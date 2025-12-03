@@ -70,6 +70,15 @@ def cmp(x, y):
 class race:
     """Data handling for scratch, handicap, keirin, derby, etc races."""
 
+    def force_running(self, start=None):
+        """Set event timer to running."""
+        if self.timerstat in ('idle', 'armstart') and self.timetype != '200m':
+            if start is None:
+                start = tod.now()
+            self.timerstat = 'armstart'
+            self.starttrig(start, wallstart=start)
+            self.meet.set_event_start(self.event)
+
     def show_lapscore(self, laps, prev):
         """Accept laps when idle/running"""
 
@@ -85,11 +94,9 @@ class race:
                     # check for a missed start
                     stlap = self.event['laps'] - 1
                     if laps == stlap:
-                        self.timerstat = 'armstart'
-                        st = tod.now() - tod.mktod(20)
-                        self.starttrig(st, wallstart=st)
+                        self.force_running(tod.now() - tod.mktod(20))
                     ret = True
-                elif self.timerstat == 'running':
+                elif self.timerstat in ('running', 'armfinish'):
                     ret = True
         return ret
 
@@ -409,7 +416,7 @@ class race:
         self.seedsrc = None  # default is no seed info
         if self.evtype == 'handicap':
             self.seedsrc = 3  # fetch handicap info from autospec
-        if self.evtype in ['sprint', 'keirin']:
+        if self.evtype in ['sprint']:
             deftimetype = '200m'
             defdistunits = 'metres'
             defdistance = '200'
@@ -960,6 +967,7 @@ class race:
                 elif key == key_startlist:
                     if self.evtype in ['keirin', 'sprint']:
                         self._do_draw()
+                        return True
             if key[0] == 'F':
                 if key == key_armstart:
                     self.armstart()

@@ -85,8 +85,12 @@ def cmp(x, y):
 
 class ittt:
 
+    def force_running(self, start=None):
+        """Ignore force start time."""
+        self.meet.set_event_start(self.event)
+
     def show_lapscore(self, laps, prev):
-        """Reject lapscore updates"""
+        """Reject lapscore updates."""
         return False
 
     def ridercb(self, rider):
@@ -2206,6 +2210,7 @@ class ittt:
 
     def showtimerwin(self):
         """Show timer window on scoreboard."""
+        self.meet.set_event_start(self.event)
         self.meet.scbwin = None
         self.meet.scbwin = scbwin.scbtt(self.meet.scb,
                                         self.meet.racenamecat(self.event),

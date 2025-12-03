@@ -47,9 +47,8 @@ COL_100 = 9
 
 # scb function key mappings (also trig announce)
 key_reannounce = 'F4'  # (+CTRL) calls into delayed announce
-key_startlist = 'F3'  # startlist
+key_startlist = 'F6'  # re-show timing window
 key_results = 'F4'  # recalc/show result window
-key_timerwin = 'F6'  # re-show timing window
 
 # timing function key mappings
 key_armstart = 'F5'  # arm for start impulse
@@ -75,8 +74,12 @@ def cmp(x, y):
 class f200:
     """Flying 200 time trial."""
 
+    def force_running(self, start=None):
+        """Ignore force start time."""
+        self.meet.set_event_start(self.event)
+
     def show_lapscore(self, laps, prev):
-        """Reject lapscore updates"""
+        """Reject lapscore updates."""
         return False
 
     def ridercb(self, rider):
@@ -137,11 +140,7 @@ class f200:
                     self.armfinish(self.fs)
                     return True
                 elif key == key_startlist:
-                    GLib.idle_add(self.delayed_announce)
-                    return True
-                elif key == key_timerwin:
                     self.showtimerwin()
-                    GLib.idle_add(self.delayed_announce)
                     return True
                 elif key == key_results:
                     self.do_places()
@@ -1413,6 +1412,7 @@ class f200:
 
     def showtimerwin(self):
         """Show timer window on scoreboard."""
+        self.meet.set_event_start(self.event)
         self.meet.scbwin = None
         self.meet.scbwin = scbwin.scbtt(self.meet.scb,
                                         self.meet.racenamecat(self.event),
@@ -1422,6 +1422,7 @@ class f200:
         self.meet.gemini.show_brt()
         self.timerwin = True
         self.meet.scbwin.reset()
+        self.resend_current()
 
     def toarmstart(self):
         """Set timer to arm start."""
