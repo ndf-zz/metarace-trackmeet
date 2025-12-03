@@ -24,12 +24,14 @@ or first call to update() will emit anything to scb surface.
 """
 
 import logging
+import unicodedata
+import random
 from time import strftime
+from contextlib import suppress
 
 from metarace import strops
 from metarace import unt4
 from metarace import tod
-from .sender import OVERLAY_MATRIX
 
 _log = logging.getLogger('scbwin')
 _log.setLevel(logging.DEBUG)
@@ -50,6 +52,25 @@ def get_dateline(width=32):
     else:
         ret = dpart + ' ' * (width - totlen) + tpart
 
+    return ret
+
+
+def randchar():
+    """Return a randomly chosen printable character."""
+    ret = None
+    cnt = 0
+    min = 0x21
+    max = 0x017f  # Basic Latin, Latin-1 Supplement, Latin Extended-A
+    while ret is None and cnt < 64:
+        cnt += 1
+        if cnt > 5:
+            max = 0x7e  # Restrict search to ASCII
+        with suppress(Exception):
+            cno = random.randint(min, max)
+            ch = chr(cno)
+            cat = unicodedata.category(ch)
+            if cat[0] in 'LNP':  # Letter, Number, Punctuation
+                ret = ch
     return ret
 
 
@@ -153,7 +174,6 @@ class scbclock(scbwin):
         self.scb.setline(0, self.header)
         for i in range(1, self.scb.pagelen):
             self.scb.clrline(i)
-        self.scb.setoverlay(OVERLAY_MATRIX)
 
     def update(self):
         """Animate the clock window.
@@ -300,7 +320,6 @@ class scbtt(scbwin):
         self.nextt2 = ''
         self.curr2 = ''
         self.nextr2 = ''
-        self.scb.setoverlay(OVERLAY_MATRIX)
 
     def setline1(self, line1str=''):
         """Replace the line 1 text."""
@@ -409,7 +428,6 @@ class scbtimer(scbwin):
         self.nexttime = ''
         self.curavg = ''
         self.nextavg = ''
-        self.scb.setoverlay(OVERLAY_MATRIX)
 
     def settime(self, timestr=''):
         """Set the next time speed string."""
@@ -443,17 +461,17 @@ class scbtest(scbwin):
     """A test pattern to check character and line sizes."""
 
     def redraw(self):
-        hdrv = []
-        for i in range(0, self.scb.linelen):
-            hdrv.append('{0:x}'.format(i % 16))
-        self.scb.setline(0, ''.join(hdrv))
-        hdrv[1] = ':'
-        hdrv[2] = ' '
-        hdrv[3] = ' '
-        for i in range(1, self.scb.pagelen):
-            hdrv[0] = '{0:x}'.format(i % 16)
-            self.scb.setline(i, ''.join(hdrv))
-        self.scb.setoverlay(OVERLAY_MATRIX)
+        # line 0 is HEX offset
+        self.scb.setline(
+            0, ''.join(
+                ('{0:x}'.format(i % 16) for i in range(self.scb.linelen))))
+
+        # others are [lineno]: [RANDCHARS]
+        for j in range(1, self.scb.pagelen):
+            l = '{0:x}: {1}'.format(
+                j % 16,
+                ''.join(randchar() for i in range(self.scb.linelen - 3)))
+            self.scb.setline(j, l)
 
     def update(self):
         if not self.paused:
@@ -491,7 +509,6 @@ class scbintsprint(scbwin):
         self.scb.setline(1, self.line2.strip().center(self.scb.linelen))
         for i in range(2, self.scb.pagelen):
             self.scb.clrline(i)
-        self.scb.setoverlay(OVERLAY_MATRIX)
 
     def update(self):
         if self.count % 2 == 0 and self.count > _PAGE_INIT:  # wait ~1/2 sec
@@ -562,7 +579,6 @@ class scbtable(scbwin):
             j = 2
         for i in range(j, self.scb.pagelen):
             self.scb.clrline(i)
-        self.scb.setoverlay(OVERLAY_MATRIX)
 
     def update(self):
         # if time field set and not a round number of rows, append
