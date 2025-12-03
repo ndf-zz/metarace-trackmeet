@@ -75,13 +75,11 @@ _CONFIG_SCHEMA = {
 # Exported overlay messages
 OVERLAY_ON = unt4.unt4(header='OVERLAY ON')
 OVERLAY_OFF = unt4.unt4(header='OVERLAY OFF')
-OVERLAY_CLOCK = unt4.unt4(header='OVERLAY 01')
 OVERLAY_MATRIX = unt4.unt4(header='OVERLAY 00')
+OVERLAY_CLOCK = unt4.unt4(header='OVERLAY 01')
 OVERLAY_IMAGE = unt4.unt4(header='OVERLAY 02')
 OVERLAY_BLANK = unt4.unt4(header='OVERLAY 03')
-OVERLAY_GBLANK = unt4.unt4(header='overlay', text='0')
-OVERLAY_GTITLE = unt4.unt4(header='overlay', text='2')
-OVERLAY_GMATRIX = unt4.unt4(header='overlay', text='1')
+OVERLAY_BRIDGE = unt4.unt4(header='OVERLAY 04')
 
 
 class serialport:
@@ -283,9 +281,7 @@ class basesender(threading.Thread):
 
     def setoverlay(self, newov):
         """Request overlay newov to be displayed on the scoreboard."""
-        if self._curov != newov:
-            self.sendmsg(newov)
-            self._curov = newov
+        self.sendmsg(newov)
 
     def __init__(self, port=None):
         """Constructor."""
@@ -297,7 +293,6 @@ class basesender(threading.Thread):
         self.pagelen = _DEFPAGELEN
 
         self._ignore = False
-        self._curov = None
         self._queue = queue.Queue()
         self._running = False
 
@@ -378,7 +373,6 @@ class basesender(threading.Thread):
                     if m[1] not in [None, '', 'none', 'NULL']:
                         _log.debug('Re-Connect port: %s', m[1])
                         self._port = mkport(m[1])
-                        self._curov = None
                     else:
                         _log.debug('Not connected.')
 
