@@ -402,7 +402,7 @@ class teamagg(classification.classification):
                 pts = r[COL_MEDAL]
                 if pts != '0':
                     sec.lines.append([
-                        rks, iob['rno'], iob['rname'], iob['rcls'], None, pts,
+                        rank, iob['rno'], iob['rname'], iob['rcls'], None, pts,
                         iob['plink']
                     ])
                     self._sreslines.append({
@@ -553,8 +553,13 @@ class teamagg(classification.classification):
                             th = self.meet.rdb.get_rider(tk, self.series)
                             if th is not None:
                                 detail['name'] = th.resname()
-                            if 'total' in detail:
+                            oldpts = None
+                            if 'series' in detail:  # prefer series tally
+                                oldpts = detail['series']
+                            elif 'total' in detail:  # fall back to total if not provided
                                 oldpts = detail['total']
+
+                            if oldpts is not None:
                                 oldname = detail['name']
                                 _log.debug('Prevpts: %s %s = %g', tk, oldname,
                                            oldpts)
@@ -759,10 +764,13 @@ class teamagg(classification.classification):
         cnt = 0
         for cno, detail in self.ptstally.items():
             cnt += 1
-            total = int(detail['total'])  # discards fractions
+            curtotal = detail['total']
+            total = int(curtotal)  # discard fractions on report
             aux.append((-total, cno, cnt, total, detail['name']))
             prevpts = self.prevpts[cno]
-            srtotal = int(prevpts + detail['total'])
+            srtval = prevpts + curtotal
+            detail['series'] = srtval  # retain fractions in export
+            srtotal = int(srtval)  # discard fractions on report
             sraux.append(
                 (-srtotal, cno, cnt, srtotal, detail['name'], prevpts))
         if aux:
@@ -1120,7 +1128,7 @@ class indivagg(teamagg):
                 'members': members,
             }
             if pts != '0':  # suppress empty lines
-                sec.lines.append([rks, rno, rname, rcls, None, pts, plink])
+                sec.lines.append([rank, rno, rname, rcls, None, pts, plink])
                 self._reslines.append({
                     'rank': pcount,
                     'class': rank,
@@ -1169,7 +1177,7 @@ class indivagg(teamagg):
                 pts = str(r[COL_MEDAL])
                 if pts != '0':
                     sec.lines.append([
-                        rks, iob['rno'], iob['rname'], iob['rcls'], None, pts,
+                        rank, iob['rno'], iob['rname'], iob['rcls'], None, pts,
                         iob['plink']
                     ])
                     self._sreslines.append({
