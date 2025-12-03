@@ -7,6 +7,8 @@ import csv
 
 import metarace
 from metarace import strops
+from datetime import datetime
+from contextlib import suppress
 
 _log = logging.getLogger('eventdb')
 _log.setLevel(logging.DEBUG)
@@ -21,6 +23,8 @@ _EVENT_DEFAULTS = {
     'plac': None,
     'topn': None,
     'laps': None,
+    'star': None,
+    'endt': None,
 }
 
 # event column heading and key mappings
@@ -88,6 +92,39 @@ def _clean_autofield(starters):
     return ret
 
 
+def _fromdts(isostr):
+    """Return an aware datetime for the provided ISO8601DT string."""
+    ret = None
+    if isostr:
+        with suppress(Exception):
+            ret = datetime.fromisoformat(isostr).astimezone()
+    return ret
+
+
+def _todts(dt):
+    """Return date time as string."""
+    ret = ''
+    if dt is not None:
+        ret = dt.isoformat(timespec='seconds')
+    return ret
+
+
+def _tointstr(intval):
+    """Return integer as string."""
+    ret = ''
+    if intval is not None:
+        ret = str(intval)
+    return ret
+
+
+def _toboolstr(boolval):
+    """Return true/false value as '1'/''."""
+    ret = ''
+    if boolval:
+        ret = '1'
+    return ret
+
+
 # for any non-strings, types as listed
 _EVENT_COLUMN_CONVERTERS = {
     'resu': strops.confopt_bool,
@@ -98,6 +135,19 @@ _EVENT_COLUMN_CONVERTERS = {
     'laps': strops.confopt_posint,
     'topn': strops.confopt_posint,
     'auto': _clean_autofield,
+    'star': _fromdts,
+    'endt': _fromdts,
+}
+_EVENT_COLUMN_EXPORTERS = {
+    'resu': _toboolstr,
+    'inde': _toboolstr,
+    'prog': _toboolstr,
+    'dirt': _toboolstr,
+    'plac': _tointstr,
+    'laps': _tointstr,
+    'topn': _tointstr,
+    'star': _todts,
+    'endt': _todts,
 }
 
 _EVENT_ALIASES = {
@@ -256,7 +306,8 @@ _CONFIG_SCHEMA = {
         'attr': 'depe',
         'defer': True,
         'default': '',
-        'hint': 'List of other events this event depends on for export',
+        'hint':
+        'List of other events this event depends on for export or "all"',
     },
     'auto': {
         'prompt': 'Auto Starters:',
@@ -445,11 +496,18 @@ class event:
         if newdepend != self['depend']:
             self.set_value('depend', newdepend)
 
+    def _get_colstr(self, col):
+        """Return column value as a string for export."""
+        if col in _EVENT_COLUMN_EXPORTERS:
+            return _EVENT_COLUMN_EXPORTERS[col](self[col])
+        else:
+            return str(self[col])
+
     def get_row(self, coldump=None):
         """Return a row ready to export."""
         if coldump is None:
             coldump = tuple(_EVENT_COLUMNS)
-        return (str(self[c]) for c in coldump)
+        return (self._get_colstr(c) for c in coldump)
 
     def get_info(self, showevno=False):
         """Return a concatenated and stripped event information string."""
