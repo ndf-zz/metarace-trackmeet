@@ -36,8 +36,6 @@ EVENT_ID = 'ps-2.1'
 # Model columns
 SPRINT_COL_ID = 0
 SPRINT_COL_LABEL = 1
-SPRINT_COL_200 = 2
-SPRINT_COL_SPLIT = 3
 SPRINT_COL_PLACES = 4
 SPRINT_COL_POINTS = 5
 
@@ -59,6 +57,7 @@ COMMON_SPRINTS = {
     20: '15 10 5 0',
     30: '25 20 15 10 5 0',
     40: '30 20 10 0',
+    50: '40 30 20 10 0',
     60: '50 40 30 20 10 0',
     80: '70 60 50 40 30 20 10 0',
 }
@@ -97,8 +96,17 @@ def cmp(x, y):
 class ps:
     """Data handling for point score omnium scratch and Madison races."""
 
+    def force_running(self, start=None):
+        """Set event timer to running."""
+        if self.timerstat in ('idle', 'armstart'):
+            if start is None:
+                start = tod.now()
+            self.timerstat = 'armstart'
+            self.starttrig(start, wallstart=start)
+            self.meet.set_event_start(self.event)
+
     def show_lapscore(self, laps, prev):
-        """Accept laps when idle/running"""
+        """Accept laps when idle/running."""
         ret = False
         if self.event['laps'] and prev is not None and laps is not None:
             if prev - laps == 1:  # only announce decrement
@@ -106,27 +114,11 @@ class ps:
                     # check for a missed start
                     stlap = self.event['laps'] - 1
                     if laps == stlap:
-                        self.timerstat = 'armstart'
-                        st = tod.now() - tod.mktod(20)
-                        self.starttrig(st, wallstart=st)
+                        self.force_running(tod.now() - tod.mktod(20))
                     ret = True
-                elif self.timerstat == 'running':
+                elif self.timerstat in ('running', 'armfinish'):
                     ret = True
         return ret
-
-        if self.timerstat == 'idle':
-            # check for a missed start
-            if self.event['laps'] and prev is not None:
-                stlap = self.event['laps'] - 1
-                if laps == stlap and prev - laps == 1:
-                    self.timerstat = 'armstart'
-                    st = tod.now() - tod.mktod(20)
-                    self.starttrig(st, wallstart=st)
-            return True
-        elif self.timerstat == 'running':
-            return True
-        else:
-            return False
 
     def resend_current(self):
         fragment = self.event.get_fragment()
@@ -404,12 +396,6 @@ class ps:
                 if len(places) > 0:
                     oft += 1
             s[SPRINT_COL_PLACES] = places
-            if cr.has_option('sprintplaces', sid + '_200'):
-                s[SPRINT_COL_200] = tod.mktod(
-                    cr.get('sprintplaces', sid + '_200'))
-            if cr.has_option('sprintplaces', sid + '_split'):
-                s[SPRINT_COL_SPLIT] = tod.mktod(
-                    cr.get('sprintplaces', sid + '_split'))
 
         # look up places from event links if present
         if self.sprintsource:
@@ -501,12 +487,6 @@ class ps:
         for s in self.sprints:
             sid = s[SPRINT_COL_ID]
             cw.set('sprintplaces', sid, s[SPRINT_COL_PLACES])
-            if s[SPRINT_COL_200] is not None:
-                cw.set('sprintplaces', sid + '_200',
-                       s[SPRINT_COL_200].rawtime())
-            if s[SPRINT_COL_SPLIT] is not None:
-                cw.set('sprintplaces', sid + '_split',
-                       s[SPRINT_COL_SPLIT].rawtime())
             if s[SPRINT_COL_POINTS] is not None:
                 cw.set('sprintpoints', sid,
                        ' '.join(map(str, s[SPRINT_COL_POINTS])))
@@ -884,18 +864,10 @@ class ps:
             self.stat_but.update('idle', 'Idle')
             self.meet.main_timer.dearm(0)
             self.curtimerstr = ''
-        elif self.timerstat == 'running':
-            self.timerstat = 'armsprintstart'
-            self.stat_but.update('activity', 'Arm Sprint')
-            self.meet.main_timer.arm(0)
-        elif self.timerstat == 'armsprintstart':
-            self.timerstat = 'running'
-            self.stat_but.update('ok', 'Running')
-            self.meet.main_timer.dearm(0)
 
     def armfinish(self):
         """Toggle timer arm finish state."""
-        if self.timerstat in ['running', 'armsprint', 'armsprintstart']:
+        if self.timerstat == 'running':
             self.timerstat = 'armfinish'
             self.stat_but.update('error', 'Arm Finish')
             self.meet.main_timer.arm(1)
@@ -1518,12 +1490,6 @@ class ps:
             self.set_start(e, wallstart)
             if self._weather is None:
                 self._weather = self.meet.get_weather()
-        elif self.timerstat == 'armsprintstart':
-            self.stat_but.update('activity', 'Arm Sprint')
-            self.meet.main_timer.arm(1)
-            self.timerstat = 'armsprint'
-            self.sprintstart = e
-            self.sprintlstart = tod.now()
 
     def fintrig(self, e):
         """React to finish trigger"""
@@ -1534,16 +1500,6 @@ class ps:
                 self.showtimer()
             self.log_elapsed()
             GLib.idle_add(self.delayed_announce)
-        elif self.timerstat == 'armsprint':
-            self.stat_but.update('ok', 'Running')
-            self.timerstat = 'running'
-            if self.sprintstart is not None:
-                elap = (e - self.sprintstart).timestr(2)
-                _log.info('200m: %s', elap)
-                if self.timerwin and type(self.meet.scbwin) is scbwin.scbtimer:
-                    self.meet.scbwin.avgpfx = '200m:'
-                    self.meet.scbwin.setavg(elap)
-            self.sprintstart = None
 
     def recover_start(self):
         """Recover missed start time"""
@@ -1897,9 +1853,45 @@ class ps:
                     ret = False
         return ret
 
+    def lookup_team_member(self, rno):
+        """Attempt to find nominated rider no in current team members"""
+        ret = None
+        for r in self.riders:
+            dbr = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
+            if dbr is not None:
+                members = dbr['members'].split()
+                for m in members:
+                    rbr = self.meet.rdb.fetch_bibstr(m)
+                    if rbr is not None and rbr['no'] == rno:
+                        ret = r[RES_COL_NO]  # replace rider with team
+                        break
+            if ret:
+                break
+        return ret
+
+    def team_member_replace(self, places):
+        """Substitute team member numbers with team id if possible"""
+        ret = []
+        for placegroup in places.split():
+            pg = []
+            for place in placegroup.split('-'):
+                tno = self.lookup_team_member(place)
+                if tno is not None:
+                    _log.debug('Rider %s sub team %s', place, tno)
+                    pg.append(tno)
+                else:
+                    _log.debug('Rider %s not found in teams', place)
+                    pg.append(place)
+            ret.append('-'.join(pg))
+        return ' '.join(ret)
+
     def ps_ctrl_places_activate_cb(self, entry, data=None):
         """Handle places entry"""
         places = strops.reformat_placelist(entry.get_text())
+        #if False and self.series.startswith('t') and not self.series.startswith('tm'):
+        # This does not work as expected. TODO: Consider alternate storage/notation
+        # for riders in a teams event :/
+        #places = self.team_member_replace(places)
         if self.checkplaces(places):
             self.oktochangecombo = False  # cancel existing delayed change
             entry.set_text(places)
@@ -2213,12 +2205,10 @@ class ps:
             self.ctrl_places.set_sensitive(False)
         prev = {}
         if retain:
-            # retain any 200, split, points and places
+            # retain any points and places
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
                 prev[sid] = {
-                    '200': s[SPRINT_COL_200],
-                    'split': s[SPRINT_COL_SPLIT],
                     'places': s[SPRINT_COL_PLACES],
                     'points': s[SPRINT_COL_POINTS],
                 }
@@ -2249,8 +2239,6 @@ class ps:
             nr = [sl, lt, None, None, '', sp]
             if sl in prev:
                 pv = prev[sl]
-                nr[SPRINT_COL_200] = pv['200']
-                nr[SPRINT_COL_SPLIT] = pv['split']
                 nr[SPRINT_COL_PLACES] = pv['places']
                 nr[SPRINT_COL_POINTS] = pv['points']
                 _log.debug('Retained previous values for %r: %r', sl, nr)
@@ -2292,15 +2280,6 @@ class ps:
         pv = model.get_value(iter, SPRINT_COL_POINTS)
         if pv is not None and len(pv) > 0:
             cr.set_property('text', ', '.join(map(str, pv)))
-        else:
-            cr.set_property('text', '')
-
-    def todstr(self, col, cr, model, iter, data=None):
-        """Format tod into text for listview"""
-        st = model.get_value(iter, SPRINT_COL_200)
-        ft = model.get_value(iter, SPRINT_COL_SPLIT)
-        if st is not None and ft is not None:
-            cr.set_property('text', (ft - st).timestr(2))
         else:
             cr.set_property('text', '')
 
@@ -2367,8 +2346,6 @@ class ps:
         self.timerwin = False
         self.timerstat = 'idle'
         self.curtimerstr = ''
-        self.sprintstart = None
-        self.sprintlstart = None
         self.next_sprint_counter = 0
         self.oktochangecombo = False
         self.finished = False
@@ -2390,8 +2367,8 @@ class ps:
         self.sprints = Gtk.ListStore(
             str,  # ID = 0
             str,  # LABEL = 1
-            object,  # 200 = 2
-            object,  # SPLITS = 3
+            object,  # unused (was 200 start)
+            object,  # unused (was 200 end)
             str,  # PLACES = 4
             object)  # POINTS = 5
 
@@ -2452,7 +2429,6 @@ class ps:
                                 SPRINT_COL_LABEL,
                                 self.ps_sprint_cr_label_edited_cb,
                                 expand=True)
-            #uiutil.mkviewcoltod(t, u'200m', cb=self.todstr)
             uiutil.mkviewcoltxt(t,
                                 'Places',
                                 SPRINT_COL_PLACES,
