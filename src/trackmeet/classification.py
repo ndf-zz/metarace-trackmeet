@@ -76,8 +76,12 @@ class classification:
         """Return an event status string for reports and scb."""
         return self._standingstat
 
+    def force_running(self, start=None):
+        """Ignore forced start time."""
+        return False
+
     def show_lapscore(self, laps, prev):
-        """Reject lapscore updates"""
+        """Reject lapscore updates."""
         return False
 
     def loadconfig(self):

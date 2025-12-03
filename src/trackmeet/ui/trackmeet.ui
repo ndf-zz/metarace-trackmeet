@@ -489,12 +489,21 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkMenuItem" id="menu_scb_image">
+                            <property name="visible">True</property>
+                            <property name="tooltip_text" translatable="yes">Show Image Overlay</property>
+                            <property name="label" translatable="yes">_Image</property>
+                            <property name="use_underline">True</property>
+                            <accelerator key="i" signal="activate" modifiers="GDK_CONTROL_MASK"/>
+                            <signal name="activate" handler="menu_scb_image_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkMenuItem" id="menu_scb_test">
                             <property name="visible">True</property>
-                            <property name="tooltip_text" translatable="yes">Show scoreboard testpattern</property>
+                            <property name="tooltip_text" translatable="yes">Show scoreboard text test</property>
                             <property name="label" translatable="yes">_Test</property>
                             <property name="use_underline">True</property>
-                            <accelerator key="F3" signal="activate" modifiers="GDK_CONTROL_MASK"/>
                             <signal name="activate" handler="menu_scb_test_cb"/>
                           </object>
                         </child>

@@ -12,6 +12,7 @@ import os
 import json
 import threading
 from time import sleep
+from datetime import datetime, UTC
 
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
@@ -32,7 +33,7 @@ from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
-from .sender import sender, OVERLAY_CLOCK, _CONFIG_SCHEMA as _SENDER_SCHEMA
+from .sender import sender, OVERLAY_CLOCK, OVERLAY_IMAGE, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
 from .databridge import DataBridge, _CONFIG_SCHEMA as _DB_SCHEMA
@@ -780,12 +781,22 @@ class trackmeet:
         if self.curevent is not None:
             self.curevent.recover_start()
 
+    def set_event_start(self, evh):
+        """Store current datetime in evh start unless already recorded."""
+        if evh['start'] is None:
+            evh['start'] = datetime.now(UTC).astimezone()
+            _log.debug('Event %s started at %s', evh['evid'],
+                       evh['start'].isoformat(timespec='seconds'))
+        else:
+            _log.debug('Event %s already started', evh['evid'])
+
     def menu_race_info_activate_cb(self, menuitem, data=None):
         """Show race information on scoreboard."""
         if self.curevent is not None:
+            self.scb.clrall()
             self.scbwin = None
             eh = self.curevent.event
-            if self.showevno and eh['type'] not in ['break', 'session']:
+            if self.showevno and eh['type'] not in ('break', 'session'):
                 self.scbwin = scbwin.scbclock(self.scb,
                                               'Event ' + eh.get_evno(),
                                               eh['pref'], eh['info'])
@@ -793,6 +804,7 @@ class trackmeet:
                 self.scbwin = scbwin.scbclock(self.scb, eh['pref'], eh['info'])
             self.scbwin.reset()
             self.curevent.delayed_announce()
+            self.set_event_start(self.curevent.event)
 
     def menu_race_properties_activate_cb(self, menuitem, data=None):
         """Edit properties of open race if possible."""
@@ -1082,14 +1094,15 @@ class trackmeet:
         sections = []
         lastsess = None
         for e in self.edb:
-            if e['resu']:  # include in result
+            if e['result']:  # include in result
+                e['dirty'] = True  # force all to be recalculated on next export
                 r = mkrace(self, e, False)
                 nsess = e['sess']
                 if nsess != lastsess:
                     sections.append(
                         report.pagebreak(SESSBREAKTHRESH))  # force break
                 lastsess = nsess
-                if r.evtype in ['break', 'session']:
+                if r.evtype in ('break', 'session'):
                     sec = report.section()
                     sec.heading = ' '.join([e['pref'], e['info']]).strip()
                     sec.subheading = '\t'.join((
@@ -1160,9 +1173,8 @@ class trackmeet:
                             aux.sort()
                             for sr in aux:
                                 rh = sr[2]
-                                sec.lines.append(
-                                    ('', rh['no'], rh.resname(),
-                                     rh.primary_cat(), None, None))
+                                sec.lines.append(('', rh['no'], rh.resname(),
+                                                  rh['class'], None, None))
                             r.add_section(sec)
                             seccount += 1
                     else:
@@ -1390,15 +1402,20 @@ class trackmeet:
         ev = self.edb[evno]
 
         # scan dependencies
-        for dev in ev['depe'].split():
-            if ev['dirty']:
-                break
-            if dev not in checks:
-                dep = self.check_depends_dirty(dev, checks)
-                checks.add(dev)
-                if dep:
-                    ev.set_value('dirty', True)
-                    _log.debug('Event %r dirty by dependency %r', evno, dev)
+        if ev['depe'] == 'all':
+            ev.set_value('dirty', True)
+            _log.debug('Event %r dirty by "all" keyword', evno)
+        else:
+            for dev in ev['depe'].split():
+                if ev['dirty']:
+                    break
+                if dev not in checks:
+                    dep = self.check_depends_dirty(dev, checks)
+                    checks.add(dev)
+                    if dep:
+                        ev.set_value('dirty', True)
+                        _log.debug('Event %r dirty by dependency %r', evno,
+                                   dev)
 
         return ev['dirty']
 
@@ -1527,19 +1544,26 @@ class trackmeet:
             self.db.updateCurrent()
 
     def menu_scb_blank_cb(self, menuitem, data=None):
-        """Select blank scoreboard overlay."""
+        """Blank scoreboards."""
         self.gemini.clear()
         self.scbwin = None
         self.scb.clrall()
-        self.txt_announce(unt4.GENERAL_CLEARING)
-        _log.debug('Blank scoreboard')
+        _log.debug('Blank scoreboards')
         if self.eventcode:
             data = {}
             self.db.clearCurrent()
             self.db.updateCurrent()
 
+    def menu_scb_image_cb(self, menuitem, data=None):
+        """Select image scoreboard overlay."""
+        self.gemini.clear()
+        self.scbwin = None
+        self.scb.clrall()
+        self.scb.sendmsg(OVERLAY_IMAGE)
+        _log.debug('Scoreboard image overlay')
+
     def menu_scb_test_cb(self, menuitem, data=None):
-        """Select test scoreboard overlay."""
+        """Select scoreboard text test."""
         self.scbwin = None
         self.scbwin = scbwin.scbtest(self.scb)
         self.scbwin.reset()
@@ -1578,6 +1602,7 @@ class trackmeet:
     ## Menu button callbacks
     def menu_clock_clicked_cb(self, button, data=None):
         """Handle click on menubar clock."""
+        self.scb.clrall()
         (line1, line2,
          line3) = strops.titlesplit(self.title + ' ' + self.subtitle,
                                     self.scb.linelen)
@@ -1847,17 +1872,33 @@ class trackmeet:
         return False
 
     def key_event(self, widget, event):
-        """Collect key events on main window and send to race."""
+        """Collect key events on main window."""
         if event.type == Gdk.EventType.KEY_PRESS:
+            ##_log.debug('Key: %r', Gdk.keyval_name(event.keyval))
             key = Gdk.keyval_name(event.keyval) or 'None'
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
-                    t = tod.now(chan=str(key), source='MAN')
-                    self._timercb(t)
+                    if key == '9':
+                        # special case: start without arm (for bunch races)
+                        if self.curevent is not None:
+                            self.curevent.force_running()
+                    else:
+                        t = tod.now(chan=str(key), source='MAN')
+                        self._timercb(t)
+                    return True  # Key is handled
+
+                # Note: Fn key accels are matched before Ctrl+Fn, these are
+                # required to intercept Ctrl+F1 and Ctrl+F2
+                elif key == 'F1':
+                    self.menu_scb_clock_cb(None)
                     return True
-            if self.curevent is not None:
+                elif key == 'F2':
+                    self.menu_scb_blank_cb(None)
+                    return True
+            # send function keys to current event if open
+            if key[0] == 'F' and self.curevent is not None:
                 return self.curevent.key_event(widget, event)
-        return False
+        return False  # Key is not handled
 
     def shutdown(self, msg=''):
         """Cleanly shutdown threads and close application."""
@@ -2926,6 +2967,8 @@ class trackmeet:
                         bakfile = conf + '.old'
                         os.rename(conf, bakfile)
                     _log.debug('Reset event %r', evt)
+                    evh = self.edb[evt]
+                    evh['start'] = None
 
             # Re-open curevent if closed
             if wasOpen is not None:
