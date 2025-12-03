@@ -110,6 +110,10 @@ _CONFIG_SCHEMA = {
 class sprnd:
     """Data handling for sprint rounds."""
 
+    def force_running(self, start=None):
+        """Ignore force start time."""
+        self.meet.set_event_start(self.event)
+
     def show_lapscore(self, laps, prev):
         """Accept laps when idle/running"""
         ret = False
@@ -515,6 +519,17 @@ class sprnd:
             _log.warning('Removed rider %r was in event %r result', bib,
                          self.evno)
 
+    def reload_riders(self):
+        self.del_riders()
+        usespec = self.event['auto'].strip()
+        evpart, tailpart = usespec.split(':', 1)
+        if self.ismedalphase():
+            # special case: assignment is 3,1,2,4
+            if evpart in self.meet.edb and tailpart == '1-4':
+                usespec = '%s:3,1,2,4' % (evpart, )
+                _log.debug('Assigning riders for medal finals: %s', usespec)
+        self.meet.autostart_riders(self, usespec, infocol=2)
+
     def loadconfig(self):
         """Load race config from disk."""
         self.contests.clear()
@@ -593,16 +608,7 @@ class sprnd:
                 oft += 1
 
         if not self.onestart and self.event['auto']:
-            self.del_riders()
-            usespec = self.event['auto'].strip()
-            evpart, tailpart = usespec.split(':', 1)
-            if self.ismedalphase():
-                # special case: assignment is 3,1,2,4
-                if evpart in self.meet.edb and tailpart == '1-4':
-                    usespec = '%s:3,1,2,4' % (evpart, )
-                    _log.debug('Assigning riders for medal finals: %s',
-                               usespec)
-            self.meet.autostart_riders(self, usespec, infocol=2)
+            self.reload_riders()
 
         # update the standing status (like placexfer :/)
         self.standingstr()
@@ -964,7 +970,9 @@ class sprnd:
                     self.set_winner('A', wplace='1.', lplace='rel')
                     GLib.idle_add(self.delayed_announce)
                     return True
-                # TODO: next/prev contest
+                elif key == key_startlist:  # re-load starters
+                    self.reload_riders()
+                    return True
             if key[0] == 'F':
                 if key == key_armstart:
                     self.armstart()
