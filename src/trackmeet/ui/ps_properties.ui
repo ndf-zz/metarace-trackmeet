@@ -204,6 +204,40 @@
               </packing>
             </child>
             <child>
+              <object class="GtkLabel" id="race_showinters_label">
+                <property name="visible">True</property>
+                <property name="xalign">0</property>
+                <property name="label" translatable="yes">Show Inters:</property>
+                <property name="single_line_mode">True</property>
+              </object>
+              <packing>
+                <property name="top_attach">6</property>
+                <property name="bottom_attach">7</property>
+                <property name="x_options">GTK_FILL</property>
+                <property name="y_options">GTK_FILL</property>
+                <property name="x_padding">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkCheckButton" id="race_showinters_toggle">
+                <property name="label" translatable="yes">Yes?</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">False</property>
+                <property name="tooltip_text" translatable="yes">Include intermediate sprint results with result</property>
+                <property name="draw_indicator">True</property>
+              </object>
+              <packing>
+                <property name="left_attach">1</property>
+                <property name="right_attach">3</property>
+                <property name="top_attach">6</property>
+                <property name="bottom_attach">7</property>
+                <property name="y_options"></property>
+                <property name="x_padding">2</property>
+                <property name="y_padding">2</property>
+              </packing>
+            </child>
+            <child>
               <object class="GtkLabel" id="race_series_label">
                 <property name="visible">True</property>
                 <property name="xalign">0</property>
@@ -211,8 +245,8 @@
                 <property name="single_line_mode">True</property>
               </object>
               <packing>
-                <property name="top_attach">6</property>
-                <property name="bottom_attach">7</property>
+                <property name="top_attach">7</property>
+                <property name="bottom_attach">8</property>
                 <property name="x_options">GTK_FILL</property>
                 <property name="y_options">GTK_FILL</property>
                 <property name="x_padding">2</property>
@@ -227,8 +261,8 @@
                 <property name="single_line_mode">True</property>
               </object>
               <packing>
-                <property name="top_attach">7</property>
-                <property name="bottom_attach">8</property>
+                <property name="top_attach">8</property>
+                <property name="bottom_attach">9</property>
                 <property name="x_options">GTK_FILL</property>
                 <property name="y_options">GTK_FILL</property>
                 <property name="x_padding">2</property>
@@ -246,8 +280,8 @@
               <packing>
                 <property name="left_attach">1</property>
                 <property name="right_attach">3</property>
-                <property name="top_attach">7</property>
-                <property name="bottom_attach">8</property>
+                <property name="top_attach">8</property>
+                <property name="bottom_attach">9</property>
                 <property name="y_options"></property>
                 <property name="x_padding">2</property>
                 <property name="y_padding">2</property>
@@ -272,8 +306,8 @@
               <packing>
                 <property name="left_attach">1</property>
                 <property name="right_attach">3</property>
-                <property name="top_attach">6</property>
-                <property name="bottom_attach">7</property>
+                <property name="top_attach">7</property>
+                <property name="bottom_attach">8</property>
                 <property name="y_options">GTK_FILL</property>
                 <property name="x_padding">2</property>
                 <property name="y_padding">2</property>
@@ -287,8 +321,8 @@
                 <property name="single_line_mode">True</property>
               </object>
               <packing>
-                <property name="top_attach">8</property>
-                <property name="bottom_attach">9</property>
+                <property name="top_attach">9</property>
+                <property name="bottom_attach">10</property>
                 <property name="x_options">GTK_FILL</property>
                 <property name="y_options">GTK_FILL</property>
                 <property name="x_padding">2</property>
@@ -306,8 +340,8 @@
               <packing>
                 <property name="left_attach">1</property>
                 <property name="right_attach">3</property>
-                <property name="top_attach">8</property>
-                <property name="bottom_attach">9</property>
+                <property name="top_attach">9</property>
+                <property name="bottom_attach">10</property>
                 <property name="y_options"></property>
                 <property name="x_padding">2</property>
                 <property name="y_padding">2</property>

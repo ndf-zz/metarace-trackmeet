@@ -112,7 +112,7 @@ class lapscore(threading.Thread):
                 except Exception as e:
                     self._s = None
                     _log.info('%s[%s]: %s', e.__class__.__name__,
-                               self.native_id, e)
+                              self.native_id, e)
         else:
             _log.debug('Serial port not set')
         _log.debug('Exiting lapscore[%s]', self.native_id)

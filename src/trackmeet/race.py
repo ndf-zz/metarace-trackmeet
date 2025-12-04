@@ -667,7 +667,7 @@ class race:
         sec.nobreak = True
         headvec = self.event.get_info(showevno=True).split()
         if not program:
-            headvec.append('- Start List')
+            headvec.append('Start List')
         else:
             rankcol = ' '
         sec.heading = ' '.join(headvec)
@@ -1525,16 +1525,13 @@ class race:
                     'name': rname,
                     'info': inf,
                 })
+
+        subv = []
+        if substr:
+            subv.append(substr)
         if self.onestart:
-            substr = substr.strip()
-            shvec = []
-            if substr:
-                shvec.append(substr)
-            shvec.append(self.standingstr())
-            sec.subheading = ' - '.join(shvec)
-        else:
-            if substr:
-                sec.subheading = substr
+            subv.append(self.standingstr())
+        sec.subheading = '\u3000'.join(subv)
 
         ret.append(sec)
 

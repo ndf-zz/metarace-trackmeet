@@ -699,7 +699,7 @@ class sprnd:
         sec.nobreak = True
         headvec = self.event.get_info(showevno=True).split()
         if not program:
-            headvec.append('- Start List')
+            headvec.append('Start List')
         sec.heading = ' '.join(headvec)
 
         lapstring = strops.lapstring(self.event['laps'])
@@ -1556,7 +1556,7 @@ class sprnd:
         sec.heading = self.event.get_info(showevno=True)
         sec.lines = []
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
+        substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
         shvec = []
         if substr:
@@ -1565,7 +1565,7 @@ class sprnd:
         if stand:
             shvec.append(stand)
         if shvec:
-            sec.subheading = ' - '.join(shvec)
+            sec.subheading = '\u3000'.join(shvec)
 
         if self.event['type'] == 'sprint final':
             for cid in self._rescache:

@@ -626,11 +626,11 @@ class ittt:
 
         headvec = self.event.get_info(showevno=True).split()
         if not program:
-            headvec.append('- Start List')
+            headvec.append('Start List')
         sec.heading = ' '.join(headvec)
 
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join((
+        substr = '\u3000'.join((
             lapstring,
             self.event['distance'],
             self.event['rules'],
@@ -1073,7 +1073,7 @@ class ittt:
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join((
+        substr = '\u3000'.join((
             lapstring,
             self.event['distance'],
             self.event['rules'],
@@ -1188,7 +1188,7 @@ class ittt:
                 doheats = True
             else:
                 sv.append('Result')
-        sec.subheading = ' - '.join(sv)
+        sec.subheading = '\u3000'.join(sv)
 
         ret.append(sec)
 

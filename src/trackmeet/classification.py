@@ -318,7 +318,7 @@ class classification:
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
-        substr = ' '.join(
+        substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
             subvec.append(substr)
@@ -326,7 +326,7 @@ class classification:
         if stat:
             subvec.append(stat)
         if subvec:
-            sec.subheading = ' - '.join(subvec)
+            sec.subheading = '\u3000'.join(subvec)
 
         teamnames = self.series.startswith('t')
         prevmedal = ''
