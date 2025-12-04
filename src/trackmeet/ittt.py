@@ -359,7 +359,7 @@ class ittt:
             self.difftime = True
 
         self.teampursuit = False
-        if 'team' in self.evtype or self.series.startswith('t'):
+        if self.series.startswith('t') and not self.series.startswith('tm'):
             self.teamnames = True
             if 'pursuit' in self.evtype:
                 self.teampursuit = True
@@ -377,7 +377,6 @@ class ittt:
                 'bsbib': None,
                 'bsstat': 'idle',
                 'showinfo': False,
-                'showcats': False,
                 'decisions': [],
                 'distance': defdistance,
                 'distunits': defdistunits,
@@ -416,7 +415,6 @@ class ittt:
 
         self.set_timetype(cr.get('event', 'timetype'))
         self.autotime = strops.confopt_bool(cr.get('event', 'autotime'))
-        self.showcats = cr.get_bool('event', 'showcats')
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         self.forcedetail = strops.confopt_bool(cr.get('event', 'forcedetail'))
         if self.inomnium:
@@ -551,7 +549,6 @@ class ittt:
         cw.set('event', 'startlist', self.get_startlist())
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'forcedetail', self.forcedetail)
-        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'precision', self.precision)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'weather', self._weather)
@@ -620,8 +617,8 @@ class ittt:
         sec.showheats = True
         if self.timetype == 'single':
             sec.set_single()
-            if self.teamnames and self.series != 'tmsl':
-                # TMSL is for madison support events
+            if self.teamnames or self.series.startswith('tm'):
+                # tm for madison support events
                 sec.showheats = True
 
         headvec = self.event.get_info(showevno=True).split()
@@ -713,35 +710,40 @@ class ittt:
                 info = ''
                 rcls = None
                 nation = None
-                members = None
+                members = []
+                mbnos = None
+                pilot = None
                 rh = self.meet.rdb.get_rider(rno, self.series)
                 if rh is not None:
                     dbrno = rh['no']
                     rname = rh.resname()
                     rcls = rh['class']
                     nation = rh['nation']
-                    info = info
-                    if not info and self.showcats:
-                        info = rh.primary_cat()
-                    if self.teamnames:
-                        # TODO: standardise team members/madison teams
-                        info = []
-                        members = []
+                    info = rcls
+                    pr = self.meet.rdb.get_pilot_line(rh)
+                    if pr:
+                        members.append(pr)
+                        pilot = pr[2]
+                    if self.teamnames or self.series.startswith('tm'):
+                        mbnos = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
+                                tline = trh.get_line()
+                                tline[0] = ' '  # suppress underline
                                 trno = trh['no']
-                                members.append(trno)
-                                trinf = trh['class']
-                                if self.series == 'tmsl':  # TODO: remove
-                                    trno = col
+                                if self.series.startswith('tm'):  # pairs
+                                    tline[1] = col  # override rider no
                                     col = 'red'
-                                info.append([trno, trh.resname(), trinf])
+                                members.append(tline)
+                                mbnos.append(trno)
                 if self.teamnames:  # Team no hack
                     rno = ' '  # force name
-                hlist.append(
-                    [heat, rno, rname, info, dbrno, rcls, nation, members])
+                hlist.append([
+                    heat, rno, rname, info, dbrno, rcls, nation, members,
+                    pilot, mbnos
+                ])
                 # all heats are one up
                 count -= 1
         else:
@@ -756,42 +758,39 @@ class ittt:
                 info = ''
                 rcls = None
                 nation = None
-                members = None
+                members = []
+                mbnos = None
+                pilot = None
                 if rh is not None:
                     dbrno = rh['no']
                     rname = rh.resname()
                     rcls = rh['class']
                     nation = rh['nation']
-                    info = info
-                    if not info and self.showcats:
-                        info = rh.primary_cat()
-                    if self.teamnames:
-                        # TODO: standardise team members/madison teams
-                        info = []
-                        members = []
+                    info = rcls
+                    pr = self.meet.rdb.get_pilot_line(rh)
+                    if pr:
+                        members.append(pr)
+                        pilot = pr[2]
+                    if self.teamnames or self.series.startswith('tm'):
+                        mbnos = []
                         col = 'black'
                         for member in r[COL_MEMBERS].split():
                             trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
+                                tline = trh.get_line()
+                                tline[0] = ' '  # suppress underline
                                 trno = trh['no']
-                                members.append(trno)
-                                trinf = trh['class']
-                                if self.series == 'tmsl':  # TODO: remove
-                                    trno = col
+                                if self.series.startswith('tm'):  # pairs
+                                    tline[1] = col  # override rider no
                                     col = 'red'
-                                info.append([trno, trh.resname(), trinf])
-                    # TODO: PARA Pilots
-                    #if rh.in_cat('tandem') and rh['note']:
-                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                    #if ph is not None:
-                    #info = [[
-                    #' ',
-                    #ph.resname() + ' - Pilot', ph['uciid']
-                    #]]
+                                members.append(tline)
+                                mbnos.append(trno)
                 if self.teamnames:
                     rno = ' '  # force name
-                hlist.append(
-                    [heat, rno, rname, info, dbrno, rcls, nation, members])
+                hlist.append([
+                    heat, rno, rname, info, dbrno, rcls, nation, members,
+                    pilot, mbnos
+                ])
                 lane += 1
                 if lane > 2:
                     hno -= 1
@@ -804,6 +803,8 @@ class ittt:
         lcnt = 0
         rec = []
         for r in hlist:
+            # r: [heat, rno, rname, info, dbrno, rcls, nation, members, pilot, mbnos])
+            #     0     1    2      3     4      5     6       7        8      9
             (h, l) = strops.heatsplit(r[0])
             if lh is not None and (h != lh or lcnt > 1):
                 lcnt = 0
@@ -816,7 +817,7 @@ class ittt:
                 r[1] = ''
                 r[2] = ''
                 r[3] = None
-            rec.extend([heat, r[1], r[2], r[3]])
+            rec.extend([heat, r[1], r[2], r[3], r[7]])
             lcnt += 1
             lh = h
             if r[4]:
@@ -824,8 +825,9 @@ class ittt:
                     'competitor': r[4],
                     'nation': r[6],
                     'name': r[2],
+                    'pilot': r[8],
                     'info': r[5],
-                    'members': r[7],
+                    'members': r[9],
                 })
 
         if len(rec) > 0:
@@ -1099,8 +1101,6 @@ class ittt:
             rname = rh.resname()
             rnat = rh['nation']
             rcls = rh['class']
-            if not rcls and self.showcats:
-                rcls = rh.primary_cat()
             if self.teamnames:
                 rno = ' '  # force name
 
@@ -1151,8 +1151,7 @@ class ittt:
 
                 # then add team members if relevant
                 members = None
-                if self.teamnames:
-                    # todo: remove madison teams from ittt
+                if self.teamnames or self.series.startswith('tm'):
                     col = 'black'
                     members = []
                     for member in r[COL_MEMBERS].split():
@@ -2687,7 +2686,6 @@ class ittt:
         self.onestart = False
         self.winopen = ui
         self.timerwin = False
-        self.showcats = False
         self.timerstat = 'idle'
         self.curstart = None
         self.lstart = None

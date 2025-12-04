@@ -433,7 +433,6 @@ class race:
             'event': {
                 'startlist': '',
                 'id': EVENT_ID,
-                'showcats': False,
                 'ctrl_places': '',
                 'eliminated': [],
                 'start': None,
@@ -457,8 +456,6 @@ class race:
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
-        self.showcats = cr.get_bool('event', 'showcats')
-
         rlist = cr.get('event', 'startlist').upper().split()
         for r in rlist:
             ## TODO: replace rider lines
@@ -692,13 +689,14 @@ class race:
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
             rnat = None
+            pilot = None
             inf = ''
             if rh is not None:
                 rname = rh.resname()
                 rnat = rh['nation']
                 inf = rh['class']
-                if not inf and self.showcats:
-                    inf = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
+
             if r[COL_INFO] and not self.inomnium:
                 inf = r[COL_INFO]
             if self.evtype in ['keirin', 'sprint']:  # encirc draw no
@@ -706,16 +704,26 @@ class race:
             if inomnium:
                 if cnt % 2 == 1:
                     sec.lines.append([rankcol, rno, rname, inf, None, None])
+                    if pilot:
+                        sec.lines.append(pilot)
                 else:
                     col2.append([rankcol, rno, rname, inf, None, None])
+                    if pilot:
+                        col2.append(pilot)
             else:
                 sec.lines.append([rankcol, rno, rname, inf, None, None])
+                if pilot:
+                    sec.lines.append(pilot)
             # team members
+            pname = None
+            if pilot:
+                pname = pilot[2]
             self._startlines.append({
                 'competitor': rno,
                 'nation': rnat,
                 'name': rname,
                 'info': inf,
+                'pilot': pname,
             })
         for i in col2:
             sec.lines.append(i)
@@ -762,7 +770,6 @@ class race:
         cw.set('event', 'timetype', self.timetype)
         cw.set('event', 'weather', self._weather)
         cw.set('event', 'inomnium', self.inomnium)
-        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'decisions', self.decisions)
 
         cw.add_section('riders')
@@ -1483,13 +1490,13 @@ class race:
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
             rnat = None
+            pilot = None
             inf = ''
             if rh is not None:
                 rname = rh.resname()
                 rnat = rh['nation']
                 inf = rh['class']
-                if not inf and self.showcats:
-                    inf = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
             if r[COL_DNF]:
                 if r[COL_INFO] in ('dns', 'dsq', 'abd'):
                     plstr = r[COL_INFO]
@@ -1516,13 +1523,19 @@ class race:
                 else:
                     sec.lines.append([plstr, rno, rname, inf, fs, None])
                     first = False
+                if pilot:
+                    sec.lines.append(pilot)
                 # todo: members + badges
+                pname = None
+                if pilot:
+                    pname = pilot[2]
                 self._reslines.append({
                     'rank': pcount,
                     'class': plstr,
                     'competitor': rno,
                     'nation': rnat,
                     'name': rname,
+                    'pilot': pname,
                     'info': inf,
                 })
 
@@ -1608,7 +1621,6 @@ class race:
         self.units = 'laps'
         self.timetype = 'start/finish'
         self.inomnium = False
-        self.showcats = False
         self.seedsrc = None
         self.doscbplaces = True  # auto show result on scb
         self.reorderflag = 0

@@ -92,7 +92,6 @@ class classification:
             'event': {
                 'id': EVENT_ID,
                 'showinfo': False,
-                'showcats': False,
                 'showevents': '',
                 'decisions': [],
                 'placesrc': '',
@@ -106,7 +105,6 @@ class classification:
         if self.event['info'] == 'Omnium':
             # pre-load source events by searching event db unless config'd
             if not cr.get('event', 'placesrc'):
-                cr.set('event', 'showcats', True)
                 cr.set('event', 'medals', 'Gold Silver Bronze')
                 sources = {
                     'Scratch': None,
@@ -146,7 +144,6 @@ class classification:
                             ecr.add_section('event')
                             ecr.load(config)
                             ecr.set('event', 'inomnium', True)
-                            ecr.set('event', 'showcats', True)
                             stype = revevt[sid]
                             if stype == 'Points':
                                 startevid = sources['Scratch']
@@ -169,7 +166,6 @@ class classification:
             else:
                 _log.debug('Omnium already configured')
 
-        self.showcats = cr.get_bool('event', 'showcats')
         self.showevents = cr.get('event', 'showevents')
         self.placesrc = cr.get('event', 'placesrc')
         self.medals = cr.get('event', 'medals')
@@ -213,14 +209,19 @@ class classification:
             rh = self.meet.rdb.get_rider(rno, self.series)
             rname = ''
             rnat = None
+            pilot = None
             inf = ''
             if rh is not None:
                 rname = rh.resname()
                 rnat = rh['nation']
                 inf = rh['class']
+                ph = self.meet.rdb.get_pilot(rh)
+                if ph is not None:
+                    pilot = ph.resname()
             self._startlines.append({
                 'competitor': rno,
                 'name': rname,
+                'pilot': pilot,
                 'nation': rnat,
                 'info': inf,
             })
@@ -256,7 +257,6 @@ class classification:
             cw.set('event', 'showinfo', self.info_expand.get_expanded())
         else:
             cw.set('event', 'showinfo', self._winState['showinfo'])
-        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
@@ -341,23 +341,14 @@ class classification:
             rname = ''
             rnat = None
             rcls = ''
-            plink = ''
+            pilot = None
             tlink = []
             rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
             if rh is not None:
                 rname = rh.resname()
                 rnat = rh['nation']
                 rcls = rh['class']
-                if not rcls and self.showcats:
-                    rcls = rh.primary_cat()
-
-                # TODO: PARA Pilots
-                #if rh['cat'] and 'tandem' in rh['cat'].lower():
-                #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                #if ph is not None:
-                #plink = [
-                #'', '', ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
-                #]
+                pilot = self.meet.rdb.get_pilot_line(rh)
 
                 if teamnames:
                     # in classification, all members are shown
@@ -389,14 +380,18 @@ class classification:
                 sec.lines.append([None, None, None])
             prevmedal = medal
 
-            nrow = [rank, rno, rname, rcls, None, medal, plink]
-            sec.lines.append(nrow)
+            sec.lines.append([rank, rno, rname, rcls, None, medal])
+            pname = None
+            if pilot:
+                sec.lines.append(pilot)
+                pname = pilot[2]
             self._reslines.append({
                 'rank': pcount,
                 'class': rank,
                 'competitor': r[COL_NO],
                 'nation': rnat,
                 'name': rname,
+                'pilot': pname,
                 'info': rcls,
                 'badges': badges,
                 'members': members,
@@ -803,7 +798,6 @@ class classification:
 
         # race run time attributes
         self.onestart = True  # always true for autospec classification
-        self.showcats = False  # show primary category on result
         self.readonly = not ui
         rstr = ''
         if self.readonly:

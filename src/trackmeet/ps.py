@@ -225,7 +225,6 @@ class ps:
             'event': {
                 'startlist': '',
                 'id': EVENT_ID,
-                'showcats': False,
                 'start': None,
                 'lstart': None,
                 'finish': None,
@@ -253,8 +252,6 @@ class ps:
         self.inomnium = cr.get_bool('event', 'inomnium')
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
-        self.showcats = cr.get_bool('event', 'showcats')
-
         for r in cr.get('event', 'startlist').upper().split():
             nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0]
             if cr.has_option('points', r):
@@ -478,7 +475,6 @@ class ps:
         cw.set('event', 'tenptlaps', self.tenptlaps)
         cw.set('event', 'showinters', self.showinters)
         cw.set('event', 'inomnium', self.inomnium)
-        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'weather', self._weather)
@@ -572,6 +568,8 @@ class ps:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
                 subtitle = s[SPRINT_COL_LABEL]
+                if sid in self.laplabels:
+                    subtitle = self.laplabels[sid]
                 subreq = 4  # default is (5, 3, 2, 1)
                 if s[SPRINT_COL_POINTS]:
                     subreq = len(s[SPRINT_COL_POINTS])
@@ -636,14 +634,14 @@ class ps:
             rname = ''
             rcat = ''
             rnat = None
+            pilot = None
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
                 dbrno = rh['no']
                 rname = rh.resname()
                 rnat = rh['nation']
                 rcat = rh['class']
-                if not rcat and self.showcats:
-                    rcat = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
             plstr = ''
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
@@ -679,6 +677,8 @@ class ps:
                     # dnf  or
                     # placed in final sprint
                     sec.lines.append([plstr, rno, rname, rcat, fs, ptstr])
+                    if pilot:
+                        sec.lines.append(pilot)
                     members = None
                     ## TEAM HACKS
                     if self.series.startswith('t') and rh is not None:
@@ -691,12 +691,16 @@ class ps:
                                 sec.lines.append([
                                     None, trno, trname, trinf, None, None, None
                                 ])
+                    pname = None
+                    if pilot:
+                        pname = pilot[2]
                     self._reslines.append({
                         'rank': pcount,
                         'class': plstr,
                         'competitor': dbrno,
                         'nation': rnat,
                         'name': rname,
+                        'pilot': pname,
                         'info': rcat,
                         'result': ptstr,
                         'members': members,
@@ -744,6 +748,11 @@ class ps:
                                 res['class'], res['competitor'], res['name'],
                                 res['info'], '', res['result']
                             ])
+                            if res['pilot']:
+                                sec.lines.append([
+                                    ' ', '', res['pilot'], 'pilot', None, None
+                                ])
+
                     if sec.lines:  # suppress tie-breaking/zero points entries
                         ret.append(sec)
 
@@ -992,6 +1001,7 @@ class ps:
                 rno = dbrno
             rname = ''
             rnat = None
+            pilot = None
             inf = ''
             cls = ''
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
@@ -1001,8 +1011,8 @@ class ps:
                 rnat = rh['nation']
                 cls = rh['class']
                 inf = cls
-                if not inf and self.showcats:
-                    inf = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
+
             if r[RES_COL_INFO] and not self.inomnium:
                 inf = r[RES_COL_INFO]
 
@@ -1012,11 +1022,18 @@ class ps:
                     if cnt % 2 == 1:
                         sec.lines.append(
                             [rankCol, rno, rname, inf, None, None])
+                        if pilot:
+                            sec.lines.append(pilot)
                     else:
                         col2.append([rankCol, rno, rname, inf, None, None])
+                        if pilot:
+                            col2.lines.append(pilot)
             else:
                 cnt += 1
                 sec.lines.append([rankCol, rno, rname, inf, None, None])
+                if pilot:
+                    sec.lines.append(pilot)
+
                 docolour = self.event['info'].lower() == 'madison'
                 if docolour or self.teamnames:  # was self.evtype == 'madison':
                     # add the black/red entry
@@ -1026,7 +1043,7 @@ class ps:
                         if docolour and len(tvec) == 2:
                             trname = ''
                             trinf = ''
-                            trno = 'Red'
+                            trno = 'Black'
                             trh = self.meet.rdb.fetch_bibstr(tvec[0])
                             if trh is not None:
                                 trname = trh.resname()
@@ -1039,7 +1056,7 @@ class ps:
                             ])
                             trname = ''
                             trinf = ''
-                            trno = 'Black'
+                            trno = 'Red'
                             trh = self.meet.rdb.fetch_bibstr(tvec[1])
                             if trh is not None:
                                 trname = trh.resname()
@@ -1060,10 +1077,14 @@ class ps:
                                     sec.lines.append(
                                         (rankCol, trno, trh.resname(), None,
                                          None, None))
+            pname = None
+            if pilot:
+                pname = pilot[2]
             self._startlines.append({
                 'competitor': rno,
                 'nation': rnat,
                 'name': rname,
+                'pilot': pname,
                 'info': inf,
                 'members': members,
             })
@@ -2083,6 +2104,7 @@ class ps:
                     cls = ''
                     nat = ''
                     rname = ''
+                    pilot = None
                     dbr = self.meet.rdb.get_rider(bib, self.series)
                     if dbr is not None:
                         name = dbr.fitname(name_w)
@@ -2090,6 +2112,9 @@ class ps:
                         club = dbr['organisation']
                         cls = dbr['class']
                         nat = dbr['nation']
+                        ph = self.meet.rdb.get_pilot(dbr)
+                        if ph is not None:
+                            pilot = ph.resname()
                     ptsstr = ''
                     if place < len(points):
                         ptsstr = str(points[place])
@@ -2107,6 +2132,7 @@ class ps:
                         'class': plstr,
                         'competitor': r[RES_COL_NO],
                         'name': rname,
+                        'pilot': pilot,
                         'nation': nat,
                         'info': cls,
                         'result': ptsstr,
@@ -2390,7 +2416,6 @@ class ps:
         self.oktochangecombo = False
         self.finished = False
         self.inomnium = False
-        self.showcats = False
         self.seedsrc = None
         self._winState = {}  # cache ui settings for headless load/save
         self._status = None

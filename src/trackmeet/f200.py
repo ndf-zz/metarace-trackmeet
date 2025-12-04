@@ -493,26 +493,27 @@ class f200:
                 info = None
                 rname = ''
                 rnat = None
+                members = []
+                pilot = None
                 if rh is not None:
                     rname = rh.resname()
                     rnat = rh['nation']
                     info = rh['class']
-                    # TODO: PARA Pilots
-                    #if rh.in_cat('tandem') and rh['note']:
-                    #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                    #if ph is not None:
-                    #info = [[
-                    #' ',
-                    #ph.resname() + ' - Pilot', ph['uciid']
-                    #]]
-                hlist.append([str(count) + '.1', rno, rname, info, rnat])
+                    pr = self.meet.rdb.get_pilot_line(rh)
+                    if pr:
+                        members.append(pr)
+                        pilot = pr[2]
+
+                hlist.append([
+                    str(count) + '.1', rno, rname, info, members, rnat, pilot
+                ])
                 # all f200 heats are one up
                 count -= 1
         else:
             for r in range(0, placeholders):
                 rno = ''
                 rname = ''
-                hlist.append([str(count) + '.1', rno, rname, None, None])
+                hlist.append([str(count) + '.1', rno, rname, None, None, None])
                 count -= 1
 
         # sort the heatlist
@@ -528,14 +529,15 @@ class f200:
                 ret.append(rec)
                 rec = []
             heat = str(h)
-            rec.extend([heat, r[1], r[2], r[3]])
+            rec.extend([heat, r[1], r[2], r[3], r[4]])
             lcnt += 1
             lh = h
             if r[1]:
                 self._startlines.append({
                     'competitor': r[1],
-                    'nation': r[4],
+                    'nation': r[5],
                     'name': r[2],
+                    'pilot': r[6],
                     'info': r[3],
                 })
         if len(rec) > 0:
@@ -793,19 +795,11 @@ class f200:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
-            plink = ''
             rank = None
             rname = rh.resname()
             rcls = rh['class']
             rnat = rh['nation']
-            # TODO: PARA Pilot
-            #if rh.in_cat('tandem') and rh['note']:
-            #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-            #if ph is not None:
-            #plink = [
-            #'', '',
-            #ph.resname() + ' - Pilot', ph['class'], '', '', ''
-            #]
+            pilot = self.meet.rdb.get_pilot_line(rh)
             rtime = None
             rtod = None
             dtime = None
@@ -833,14 +827,19 @@ class f200:
                         rtime = time.rawtime(2) + '\u2007'
 
             if rank:
-                sec.lines.append([rank, rno, rname, rcls, rtime, dtime, plink])
+                sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)
+                pname = None
+                if pilot:
+                    sec.lines.append(pilot)
+                    pname = pilot[2]
                 self._reslines.append({
                     'rank': pcount,
                     'class': rank,
                     'competitor': rno,
                     'nation': rnat,
                     'name': rname,
+                    'pilot': pname,
                     'info': rcls,
                     'result': rtime,
                     'extra': dtime,

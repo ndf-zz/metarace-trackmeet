@@ -687,7 +687,8 @@ key | type | descr
 competitor | string | Competitor ID
 nation | string | Competitor's nation ID
 name | string | Competitor's formatted name string
-members | array | ordered list of rider IDs in team (if relevant)
+pilot | string | Competitor's pilot name if relevant
+members | array | ordered list of rider IDs in team [TBC]
 info | string | Seeding, handicap, sport class or draw indicator
 badges | array | Array of badges relevant to competitor in this startlist
 qualRank | integer | Ranking in qualification phase
@@ -705,7 +706,8 @@ class | string | Competitor's classification or standing in this result
 competitor | string | Competitor ID
 nation | string | Competitor's nation ID
 name | string | Competitor's formatted name string
-members | array | ordered list of rider IDs in team (if relevant)
+pilot | string | Competitor's pilot name if relevant
+members | array | ordered list of rider IDs in team [TBC]
 info | string | Optional additional information string for this result line
 badges | array | Array of badges relevant to competitor in this result
 result | string | Formatted text result string
@@ -853,7 +855,7 @@ members | array | Ordered set of team members if competitor was team
        - null: Competitor type is not relevant, or unknown
        - "rider": Individual riders
        - "team": Teams of riders (team pursuit, team sprint)
-       - "pair": Red/Black pair (Madison)
+       - "pair": Black/Red pair (Madison)
    - Example competition type labels:
        - null: Competition type is not relevant
        - "sprint": Sprint

@@ -726,12 +726,21 @@ class sprnd:
                 aname = rh.resname()
                 anat = rh['nation']
                 acls = rh['class']
+                apilot = None
+                ph = self.meet.rdb.get_pilot(rh)
+                if ph is not None:
+                    apilot = ph.resname()
 
                 bno = cr[COL_B_NO]
                 rh = self._get_rider(bno)
                 bname = rh.resname()
                 bnat = rh['nation']
                 bcls = rh['class']
+                bpilot = None
+                ph = self.meet.rdb.get_pilot(rh)
+                if ph is not None:
+                    bpilot = ph.resname()
+
                 aqual = None
                 raqual = None
                 if cr[COL_A_QUAL] is not None:
@@ -748,6 +757,7 @@ class sprnd:
                     'competitor': ano,
                     'nation': anat,
                     'name': aname,
+                    'pilot': apilot,
                     'info': acls,
                     'qualTime': raqual,
                 }
@@ -765,6 +775,7 @@ class sprnd:
                         'competitor': bno,
                         'nation': bnat,
                         'name': bname,
+                        'pilot': bpilot,
                         'info': bcls,
                         'qualTime': rbqual,
                     }
@@ -1542,6 +1553,11 @@ class sprnd:
                 obj['nation'] = rh['nation']
                 obj['name'] = rh.resname()
                 obj['info'] = rh['class']
+                pname = None
+                ph = self.meet.rdb.get_pilot(rh)
+                if ph is not None:
+                    pname = ph.resname()
+                obj['pilot'] = pname
                 # todo: members
 
     def result_report(self, recurse=False):

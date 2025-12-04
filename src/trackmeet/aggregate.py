@@ -232,7 +232,6 @@ class teamagg(classification.classification):
             'event': {
                 'id': EVENT_ID,
                 'showinfo': False,
-                'showcats': False,
                 'showevents': '',
                 'decisions': [],
                 'placesrc': '',
@@ -244,7 +243,6 @@ class teamagg(classification.classification):
             _log.info('%r not read, loading defaults', self.configfile)
         cr.export_section('event', self)
 
-        self.showcats = cr.get_bool('event', 'showcats')
         self.decisions = cr.get('event', 'decisions')
 
         if self.winopen:
@@ -273,7 +271,6 @@ class teamagg(classification.classification):
             cw.set('event', 'showinfo', self.info_expand.get_expanded())
         else:
             cw.set('event', 'showinfo', self._winState['showinfo'])
-        cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
@@ -321,7 +318,7 @@ class teamagg(classification.classification):
             rname = r[COL_NAME]
             rnat = None
             rcls = ''
-            plink = ''
+            pilot = None
             rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
             # check for info override via rdb
             if rh is not None:
@@ -329,8 +326,7 @@ class teamagg(classification.classification):
                 rname = rh.resname()
                 rnat = rh['nation']
                 rcls = rh['class']
-                if not rcls and self.showcats:
-                    rcls = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
             rank = ''
             rks = r[COL_PLACE]
             if rks:
@@ -347,17 +343,22 @@ class teamagg(classification.classification):
                 'rname': rname,
                 'rnat': rnat,
                 'rcls': rcls,
-                'plink': plink,
+                'pilot': pilot,
             }
 
             if pts != '0':  # suppress empty lines
-                sec.lines.append([rank, rno, rname, rcls, None, pts, plink])
+                sec.lines.append([rank, rno, rname, rcls, None, pts])
+                pname = None
+                if pilot:
+                    sec.lines.append(pilot)
+                    pname = pilot[2]
                 self._reslines.append({
                     'rank': pcount,
                     'class': rank,
                     'competitor': dbrno,
                     'nation': rnat,
                     'name': rname,
+                    'pilot': pname,
                     'info': rcls,
                     'result': pts,
                 })
@@ -402,15 +403,24 @@ class teamagg(classification.classification):
                 pts = r[COL_MEDAL]
                 if pts != '0':
                     sec.lines.append([
-                        rank, iob['rno'], iob['rname'], iob['rcls'], None, pts,
-                        iob['plink']
+                        rank,
+                        iob['rno'],
+                        iob['rname'],
+                        iob['rcls'],
+                        None,
+                        pts,
                     ])
+                    pname = None
+                    if iob['pilot']:
+                        sec.lines.append(iob['pilot'])
+                        pname = iob['pilot'][2]
                     self._sreslines.append({
                         'rank': pcount,
                         'class': rank,
                         'competitor': iob['dbrno'],
                         'nation': iob['rnat'],
                         'name': iob['rname'],
+                        'pilot': pname,
                         'info': iob['rcls'],
                         'result': pts,
                     })
@@ -883,7 +893,6 @@ class teamagg(classification.classification):
 
         # race run time attributes
         self.onestart = True  # always true for autospec classification
-        self.showcats = False  # show primary category on result
         self.readonly = not ui
         rstr = ''
         if self.readonly:
@@ -1034,7 +1043,6 @@ class indivagg(teamagg):
         ret = []
 
         # start with the overall result
-        self.showcats = True  # override cats for indiv result
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.units = 'pt'
@@ -1068,7 +1076,7 @@ class indivagg(teamagg):
                 rh = self.meet.rdb[rhid]
             rname = ''
             rnat = None
-            plink = ''
+            pilot = None
             tlink = []
             rcls = ''
             if rh is not None:
@@ -1076,8 +1084,7 @@ class indivagg(teamagg):
                 rname = rh.resname()
                 rnat = rh['nation']
                 rcls = rh['class']
-                if not rcls and self.showcats:
-                    rcat = rh.primary_cat()
+                pilot = self.meet.rdb.get_pilot_line(rh)
 
                 teamnames = rh['series'].startswith('t')
                 if teamnames:
@@ -1093,15 +1100,6 @@ class indivagg(teamagg):
                 else:
                     # replace BIB.series with db riderno
                     rno = dbrno
-
-                # TODO: PARA Pilots
-                #if rh['cat'] and 'tandem' in rh['cat'].lower():
-                #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-                #if ph is not None:
-                #plink = [
-                #'', '',
-                #ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
-                #]
 
             rank = ''
             rks = r[COL_PLACE]
@@ -1124,17 +1122,22 @@ class indivagg(teamagg):
                 'rnat': rnat,
                 'rcls': rcls,
                 'tlink': tlink,
-                'plink': plink,
+                'pilot': pilot,
                 'members': members,
             }
             if pts != '0':  # suppress empty lines
-                sec.lines.append([rank, rno, rname, rcls, None, pts, plink])
+                sec.lines.append([rank, rno, rname, rcls, None, pts])
+                pname = None
+                if pilot:
+                    sec.lines.append(pilot)
+                    pname = pilot[2]
                 self._reslines.append({
                     'rank': pcount,
                     'class': rank,
                     'competitor': dbrno,
                     'nation': rnat,
                     'name': rname,
+                    'pilot': pname,
                     'info': rcls,
                     'result': pts,
                     'members': members,
@@ -1177,15 +1180,24 @@ class indivagg(teamagg):
                 pts = str(r[COL_MEDAL])
                 if pts != '0':
                     sec.lines.append([
-                        rank, iob['rno'], iob['rname'], iob['rcls'], None, pts,
-                        iob['plink']
+                        rank,
+                        iob['rno'],
+                        iob['rname'],
+                        iob['rcls'],
+                        None,
+                        pts,
                     ])
+                    pname = None
+                    if iob['pilot']:
+                        sec.lines.append(iob['pilot'])
+                        pname = iob['pilot'][2]
                     self._sreslines.append({
                         'rank': pcount,
                         'class': rank,
                         'competitor': iob['dbrno'],
                         'nation': iob['rnat'],
                         'name': iob['rname'],
+                        'pilot': pname,
                         'info': iob['rcls'],
                         'result': pts,
                         'members': iob['members'],
