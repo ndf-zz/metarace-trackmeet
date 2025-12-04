@@ -12,6 +12,54 @@
 
 ### Security
 
+## [1.13.5] - 2025-12-05
+
+### Added
+
+   - log current weather on chronometer trace at start of heat
+   - detail report section on time trial/pursuit events
+   - autotime functionality for ittt handler
+   - add databridge schema reference document
+   - add databridge feilds to event listing
+   - select scoreboard image overlay from SCB menu/hotkey
+   - add dependency 'all' to always recompute on export
+   - add key 'eventStart' to current to mark rough start of event,
+     separate to rolling clock start
+   - save current time of day to event db when event is started or presented
+   - force reload of competitors in sprnd with Ctrl+F3
+   - add lapscore interface to track laps to go via databridge
+
+### Changed
+
+   - write competitor Class Label to info column instead of ucicode
+   - default autotime to True for pursuit/tt events
+   - log interval/split to chronometer trace instead of split/lap
+   - replace Comet with Weather object
+   - re-order event context with add/remove starters first
+   - alter event columns to remove clashes with data bridge fragments
+     meet/category/competition/phase/contest/heat
+   - fill page body of scoreboard test screen with random chars instead
+     of repeated pattern
+   - send general clearing before meet/event info scoreboard is drawn
+   - mark all result events dirty when compiling final result
+   - format event db data types integer, boolean and datetime
+
+### Removed
+
+   - remove intermediate sprint/split timer from points race handler
+   - remove current overlay tracking from sender object
+   - remove set overlay calls from scbwin, allow postxt to select
+     text matrix automatically
+   - remove showcats option in favour of class labels
+
+### Fixed
+
+   - fix typo strops.posint in infoline method
+   - fix type sartswith in ps and teamagg
+   - load points map in team agg only once for each event
+   - Ctrl+F3 in keirin sets random draw but does not trigger startlist
+   - Order madison pairs Black/Red in ps handler
+
 ## [1.13.4] - 2025-09-16
 
 ### Added
@@ -31,6 +79,7 @@
    - use __version__ instead of VERSION
    - Suppress event id/no when not numeric
    - Uppercase scoreboard content for Dak sender when line > 1
+   - Format None, bool and int values in eventdb save
 
 ### Deprecated
 

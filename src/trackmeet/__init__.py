@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.5a1'
+__version__ = '1.13.5'
 
 import sys
 import gi
@@ -47,7 +47,7 @@ from . import sprnd
 from . import classification
 from . import aggregate
 
-PRGNAME = 'org.6_v.trackmeet'
+PRGNAME = 'org._6_v.trackmeet'
 APPNAME = 'Trackmeet'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG

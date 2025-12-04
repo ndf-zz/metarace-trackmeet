@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "metarace-trackmeet"
-version = "1.13.4"
+version = "1.13.5"
 description = "Timing and result application for track cycling events"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "metarace>=2.1.17,<2.2",
+    "metarace>=2.1.20,<2.2",
 ]
 [project.urls]
 homepage = "https://github.com/ndf-zz/metarace-trackmeet"
