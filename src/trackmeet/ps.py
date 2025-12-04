@@ -234,6 +234,7 @@ class ps:
                 'distance': '',
                 'distunits': 'laps',
                 'tenptlaps': deftenptlaps,
+                'showinters': True,
                 'inomnium': definomnium,
                 'showinfo': False,
                 'scoring': defscoretype,
@@ -366,6 +367,7 @@ class ps:
                 else:
                     _log.debug('Sprint source already defined for %r', sid)
 
+        self.showinters = cr.get_bool('event', 'showinters')
         self.tenptlaps = cr.get_bool('event', 'tenptlaps')
         self.reset_lappoints()
         slt = cr.get('event', 'sprintlaps')
@@ -474,6 +476,7 @@ class ps:
         cw.set('event', 'distunits', self.units)
         cw.set('event', 'scoring', self.scoring)
         cw.set('event', 'tenptlaps', self.tenptlaps)
+        cw.set('event', 'showinters', self.showinters)
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'showcats', self.showcats)
         cw.set('event', 'sprintlaps', self.sprintlaps)
@@ -608,7 +611,7 @@ class ps:
 
             self.meet.db.updateFragment(self.event, fragment, data)
 
-    def result_report(self, recurse=False):
+    def result_report(self, recurse=True):
         """Return a list of report sections containing the race result."""
         self.recalculate()
         ret = []
@@ -662,7 +665,7 @@ class ps:
                 if self.scoring == 'madison':
                     laps = r[RES_COL_LAPS]
                     if fl is None:
-                        fl = laps  # anddetermine laps down
+                        fl = laps  # and determine laps down
                     if ll is not None:
                         down = fl - laps
                         if ll != laps:
@@ -701,18 +704,51 @@ class ps:
                     pcount += 1
                 fs = ''
 
+        subv = []
+        if substr:
+            subv.append(substr)
         if self.onestart:
-            sec.subheading = substr + ' - ' + self.standingstr()
-        else:
-            if substr:
-                sec.subheading = substr
+            subv.append(self.standingstr())
+        sec.subheading = '\u3000'.join(subv)
 
         ret.append(sec)
 
+        # output intermediate sprints
+        if self.showinters:
+            for s in self.sprints:
+                sid = s[SPRINT_COL_ID]
+                subtitle = s[SPRINT_COL_LABEL]
+                subreq = 4  # default is (5, 3, 2, 1)
+                if s[SPRINT_COL_POINTS]:
+                    subreq = len(s[SPRINT_COL_POINTS])
+                if sid in self.laplabels:
+                    subtitle = self.laplabels[sid]
+                if sid in self.sprintsource:
+                    # lookups usually have more points than places,
+                    # and are only populated when the source is provisional
+                    subreq = 1
+                if sid in self._inters and self._inters[sid]:
+                    sublines = self._inters[sid]
+                    substatus = ''
+                    if len(sublines) < subreq:
+                        substatus = ' (Virtual)'
+                    _log.debug('sid=%r, label=%r, sublines=%r', sid, subtitle,
+                               sublines)
+                    sec = report.section('inter-' + sid)
+                    sec.nobreak = True
+                    sec.units = 'pt'
+                    sec.subheading = subtitle + substatus
+                    for res in sublines:
+                        if res['result'] and res['result'] != '0':
+                            sec.lines.append([
+                                res['class'], res['competitor'], res['name'],
+                                res['info'], '', res['result']
+                            ])
+                    if sec.lines:  # suppress tie-breaking/zero points entries
+                        ret.append(sec)
+
         if len(self.decisions) > 0:
             ret.append(self.meet.decision_section(self.decisions))
-
-        # output intermediate sprints?
 
         return ret
 
@@ -929,7 +965,7 @@ class ps:
         headvec = self.event.get_info(showevno=True).split()
         rankCol = None
         if not program:
-            headvec.append('- Start List')
+            headvec.append('Start List')
         else:
             sec.nobreak = True
             rankCol = ' '
@@ -1545,6 +1581,8 @@ class ps:
         rle.set_text(self.sprintlaps)
         #if self.onestart:
         #rle.set_sensitive(False)
+        rsi = b.get_object('race_showinters_toggle')  # inters
+        rsi.set_active(self.showinters)
         rsb = b.get_object('race_showbib_toggle')  # tenptlaps
         rsb.set_active(self.tenptlaps)
         rt = b.get_object('race_score_type')
@@ -1577,6 +1615,7 @@ class ps:
                 if self.onestart:
                     _log.warning('Intermediate sprints updated to: %r',
                                  newlaps)
+            self.showinters = rsi.get_active()
             self.tenptlaps = rsb.get_active()
             if rt.get_active() == 0:
                 self.scoring = 'madison'
@@ -2324,6 +2363,7 @@ class ps:
 
         # race property attributes
         self.decisions = []
+        self.showinters = True
         self.tenptlaps = False
         self.lappoints = 20
         self.scoring = 'points'
