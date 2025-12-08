@@ -440,13 +440,11 @@ class timerpane:
         self.doser = doser
         self.precision = 3
 
-        #v = Gtk.VBox(False, 5)
         v = Gtk.Box.new(Gtk.Orientation.VERTICAL, 5)
         v.set_homogeneous(False)
         v.set_border_width(5)
 
         # Bib and name label
-        #h = Gtk.HBox(False, 5)
         h = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 5)
         h.set_homogeneous(False)
         l = Gtk.Label.new('Rider #:')
@@ -482,7 +480,6 @@ class timerpane:
         v.pack_start(self.ck, True, True, 0)
 
         # Timer ctrl/status button
-        #h = Gtk.HBox(False, 5)
         h = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 5)
         h.set_homogeneous(False)
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.5'
+__version__ = '1.13.6a1'
 
 import sys
 import gi
@@ -59,6 +59,7 @@ SESSBREAKTHRESH = 0.075  # forced page break threshold
 ANNOUNCE_LINELEN = 80  # length of lines on text-only DHI announcer
 MAX_AUTORECURSE = 8  # maximum levels of autostart dependency
 RECOVER_TIMEOUT = 8  # ignore previous impulses that are too old
+PROGRAM_INTRO = 'introduction.json'  # Program introduction sections
 
 _log = logging.getLogger('trackmeet')
 _log.setLevel(logging.DEBUG)
@@ -314,7 +315,7 @@ def mkrace(meet, event, ui=True):
     ):
         ret = ittt.ittt(meet=meet, event=event, ui=ui)
     elif etype in (
-            # 'scratch',  # requires some work
+            'scratch',
             'points',
             'madison',
             'omnium',
@@ -1145,6 +1146,28 @@ class trackmeet:
                           doprint=False,
                           exportfile=filebase.translate(strops.WEBFILE_UTRANS))
 
+    def introsections(self, width=None):
+        """Add introduction text to first page of program."""
+        ret = []
+        introfile = metarace.default_file(PROGRAM_INTRO)
+        if os.path.exists(introfile):
+            try:
+                with open(introfile) as f:
+                    jd = json.load(f)
+                    for secid, sec in jd.items():
+                        rs = report.bullet_text(secid)
+                        rs.bullet = None
+                        rs.width = width
+                        rs.heading = sec['heading']
+                        rs.subheading = sec['subheading']
+                        rs.footer = sec['footer']
+                        for l in sec['text'].split('\n'):
+                            rs.lines.append((None, l, None))
+                        ret.append(rs)
+            except Exception as e:
+                _log.debug('%s reading intro: %s', e.__class__.__name__, e)
+        return ret
+
     def printprogram(self):
         self.check_export_path()
         template = metarace.PROGRAM_TEMPLATE
@@ -1157,12 +1180,21 @@ class trackmeet:
         r.strings['subtitle'] = subtitlestr
         r.set_provisional(self.provisional)
 
+        # add introduction section
+        count = 0
+        for s in self.introsections():
+            r.add_section(s)
+            count += 1
+        if count > 0:
+            r.add_section(report.pagebreak(0.01))
+            _log.debug('Added %d intro sections to program', count)
+
         # add rider listing
         if self.riderlist:
             seccount = 0
             for series in self.rdb.listseries():
                 if not series.startswith('t'):
-                    smeta = self.rdb.get_rider(series, 'series')
+                    smeta = self.rdb.get_rider(series.upper(), 'series')
                     if smeta is not None:
                         secid = 'riders'
                         if series:
