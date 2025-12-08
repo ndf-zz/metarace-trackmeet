@@ -34,6 +34,14 @@ _CONFIG_SCHEMA = {
         'prompt': 'Data Bridge',
         'control': 'section',
     },
+    'prefix': {
+        'attr': 'prefix',
+        'prompt': 'Topic Prefix:',
+        'control': 'short',
+        'hint': 'MQTT topic prefix for all bridge objects eg: db',
+        'default': 'db',
+        'defer': True,
+    },
     'timezone': {
         'prompt': 'Timezone:',
         'attr': 'timezone',
@@ -716,8 +724,8 @@ class DataBridge():
             if meeteh['type'] == 'session':
                 # Special case: session marker
                 sessOb = self._sessions[sessionid]
-                sessOb['startTime'] = self._getDateTime(meeteh['start'])
-                sessOb['endTime'] = self._getDateTime(meeteh['endtime'])
+                sessOb['startTime'] = meeteh['start']
+                sessOb['endTime'] = meeteh['endtime']
                 sessOb['label'] = _ornull(meeteh['prefix'])
             else:
                 # fragment, event, break or something else
@@ -747,7 +755,7 @@ class DataBridge():
                             'competition': competition,
                             'phase': phase,
                             'fragments': [],
-                            'startTime': _ornull(meeteh['start']),
+                            'startTime': meeteh['start'],
                         }
                         self._events[evid] = evtObj
                     evtObj = self._events[evid]
@@ -850,7 +858,7 @@ class DataBridge():
             self._current['category'] = path[0]
             self._current['competition'] = path[1]
             self._current['phase'] = None
-            self._current['eventStart'] = _ornull(event['start'])
+            self._current['eventStart'] = event['start']
             if len(path) > 2 and path[2]:
                 self._current['phase'] = path[2]
             self._current['contest'] = None
@@ -1022,6 +1030,9 @@ class DataBridge():
             _log.debug('Invalid timezone, using UTC')
             self._tz = UTC
 
+        # load topic prefix from sysconf
+        self._prefix = _ornull(cr.get_value('databridge', 'prefix'))
+
         # load basepath from meet
         self._base = _ornull(self._m.eventcode)
         if self._base is None:
@@ -1064,6 +1075,7 @@ class DataBridge():
     def __init__(self, meet):
         self._m = meet  # meet handle
         self._tz = UTC
+        self._prefix = None
         self._base = 'meet'
         self._tracklen = None
         self._catlist = []
@@ -1086,6 +1098,8 @@ class DataBridge():
         if path in self._cache:
             del (self._cache[path])
         if not self._pause:
+            if self._prefix:
+                path = '/'.join((self._prefix, path))
             self._m.announce.publish(message=None,
                                      topic=path,
                                      qos=1,
@@ -1113,5 +1127,7 @@ class DataBridge():
         msg = json.dumps(dataObj, cls=PublicEncoder)
 
         # publish to MQTT
+        if self._prefix:
+            path = '/'.join((self._prefix, path))
         self._m.announce.publish(message=msg, topic=path, qos=1, retain=True)
         return True
