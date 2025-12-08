@@ -24,9 +24,6 @@ from metarace import jsonconfig
 from . import uiutil
 from . import scbwin
 
-# temporary
-from functools import cmp_to_key
-
 _log = logging.getLogger('ps')
 _log.setLevel(logging.DEBUG)
 
@@ -49,17 +46,21 @@ RES_COL_PLACE = 8
 RES_COL_FINAL = 9
 RES_COL_INFO = 10
 RES_COL_STPTS = 11
+RES_COL_DNFCODE = 12
 
 # common sprint lap setups (TBC)
 COMMON_SPRINTS = {
     6: '4 2 0',
     12: '9 6 3 0',
-    20: '15 10 5 0',
-    30: '25 20 15 10 5 0',
+    20: '10 0',
+    30: '20 10 0',
     40: '30 20 10 0',
     50: '40 30 20 10 0',
     60: '50 40 30 20 10 0',
+    70: '60 50 40 30 20 10 0',
     80: '70 60 50 40 30 20 10 0',
+    90: '80 70 60 50 40 30 20 10 0',
+    100: '90 80 70 60 50 40 30 20 10 0',
 }
 # Tempo race no sprint laps
 _TEMPO_NOSPRINT = 4
@@ -81,16 +82,6 @@ key_lapdown = 'F11'
 # extended function key mappings
 key_abort = 'F5'
 key_falsestart = 'F6'
-
-
-# temporary
-def cmp(x, y):
-    if x < y:
-        return -1
-    elif x > y:
-        return 1
-    else:
-        return 0
 
 
 class ps:
@@ -134,7 +125,8 @@ class ps:
         """Pack standard values for a current object"""
         ret = {}
         ret['competitionType'] = 'bunch'  # for all points
-        ret['units'] = 'pt'  # for all points
+        if self.evtype != 'scratch':
+            ret['units'] = 'pt'  # for all points
         ret['status'] = self._status
         ret['weather'] = self._weather
         if self._startlines is not None:
@@ -191,18 +183,23 @@ class ps:
         defsprintlaps = ''
         defscoretype = 'points'
         deftenptlaps = 'No'
+        defshowinters = True
         tempopoints = False
         progressivepoints = False
         findsource = False
         if self.evtype == 'madison':
-            defscoretype = 'points'  # no longer lap-based
             deftenptlaps = 'No'
+        elif self.evtype == 'scratch':
+            defscoretype = 'laps'
+            defsprintlaps = '0'
+            defshowinters = False
         elif self.evtype == 'tempo':
             tempopoints = True
         elif self.evtype == 'progressive':
             progressivepoints = True
         elif self.evtype == 'omnium':
             definomnium = True
+            defshowinters = False
             defsprintlaps = 'scr tmp elm'
             if self.event['laps'] and self.event['laps'] in COMMON_SPRINTS:
                 defsprintlaps += ' ' + COMMON_SPRINTS[self.event['laps']]
@@ -233,7 +230,7 @@ class ps:
                 'distance': '',
                 'distunits': 'laps',
                 'tenptlaps': deftenptlaps,
-                'showinters': True,
+                'showinters': defshowinters,
                 'inomnium': definomnium,
                 'showinfo': False,
                 'scoring': defscoretype,
@@ -252,8 +249,10 @@ class ps:
         self.inomnium = cr.get_bool('event', 'inomnium')
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
+
+        _log.debug('load config')
         for r in cr.get('event', 'startlist').upper().split():
-            nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0]
+            nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0, '']
             if cr.has_option('points', r):
                 ril = cr.get('points', r)
                 if len(ril) >= 1:
@@ -269,13 +268,16 @@ class ps:
                     spts = ril[4]
                     if spts.isdigit():
                         nr[RES_COL_STPTS] = int(spts)
+                if len(ril) >= 6:
+                    nr[RES_COL_DNFCODE] = ril[5]
 
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
                 nr[RES_COL_NAME] = dbr.listname()
             self.riders.append(nr)
-        if cr.get('event', 'scoring').lower() == 'madison':
-            self.scoring = 'madison'
+        _log.debug('added riders')
+        if cr.get('event', 'scoring').lower() in ('madison', 'laps'):
+            self.scoring = 'laps'
         else:
             self.scoring = 'points'
 
@@ -294,9 +296,13 @@ class ps:
             # only make changes if sprint points not yet defined
             sp0 = cr.get_value('sprintpoints', '0')
             if sp0 is None:
+                _log.debug('sp0 is none')
                 # Domestic rule: Adjust points when distance < 15km
                 racelen = self.meet.get_distance(self.distance, 'laps')
-                if self.meet.domestic and racelen < 15000:
+                if self.evtype == 'scratch':
+                    _log.debug('Scratch race override')
+                    cr.set('sprintpoints', '0', '0')
+                elif self.meet.domestic and racelen < 15000:
                     _log.debug('< 15km: Gain/Lose 10pts per lap')
                     cr.set('event', 'tenptlaps', True)
                     # may be further overridden by tempo/progressive
@@ -349,6 +355,7 @@ class ps:
                         _log.debug('Sprint points defined, tempo skipped')
 
         if findsource:
+            _log.debug('findsource')
             # search event db for source events unless already config'd
             mycat = self.event['prefix']
             for sid in ('scr', 'tmp', 'elm'):
@@ -382,8 +389,10 @@ class ps:
         for sid in cr.options('sprintsource'):
             self.sprintsource[sid] = cr.get('sprintsource', sid)
 
+        _log.debug('init sprint model')
         self.sprint_model_init()
 
+        _log.debug('load points')
         oft = 0
         for s in self.sprints:
             places = ''
@@ -397,6 +406,7 @@ class ps:
             s[SPRINT_COL_PLACES] = places
 
         # look up places from event links if present
+        _log.debug('load places')
         if self.sprintsource:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
@@ -429,6 +439,7 @@ class ps:
         self.teamnames = (self.series.startswith('t')
                           and self.event['info'].lower() != 'madison')
 
+        _log.debug('recalc')
         self.recalculate()
 
         st = tod.mktod(cr.get('event', 'start'))
@@ -502,7 +513,8 @@ class ps:
                 str(r[RES_COL_POINTS]),
                 str(r[RES_COL_LAPS]),
                 str(r[RES_COL_INFO]),
-                str(r[RES_COL_STPTS])
+                str(r[RES_COL_STPTS]),
+                str(r[RES_COL_DNFCODE])
             ]
             cw.set('points', r[RES_COL_NO], slice)
 
@@ -528,12 +540,12 @@ class ps:
                     if r[RES_COL_PLACE] is not None and r[RES_COL_PLACE] != '':
                         rank = int(r[RES_COL_PLACE])
                 else:
-                    if r[RES_COL_INFO] in ('dns', 'dsq', 'abd'):
-                        rank = r[RES_COL_INFO]
+                    if r[RES_COL_DNFCODE]:
+                        rank = r[RES_COL_DNFCODE]
                     else:
                         rank = 'dnf'
 
-            if self.scoring == 'madison':
+            if self.scoring == 'laps':
                 laps = r[RES_COL_LAPS]
                 if fl is None:
                     fl = laps  # anddetermine laps down
@@ -565,47 +577,48 @@ class ps:
             elif pathlen == 4:  # contest
                 subtype = 'heats'
             data[subtype] = {}
-            for s in self.sprints:
-                sid = s[SPRINT_COL_ID]
-                subtitle = s[SPRINT_COL_LABEL]
-                if sid in self.laplabels:
-                    subtitle = self.laplabels[sid]
-                subreq = 4  # default is (5, 3, 2, 1)
-                if s[SPRINT_COL_POINTS]:
-                    subreq = len(s[SPRINT_COL_POINTS])
-                substatus = None
-                sublines = None
-                if sid in self._inters and self._inters[sid]:
-                    sublines = self._inters[sid]
-                    if len(sublines) >= subreq:
-                        substatus = 'provisional'
-                    else:
-                        substatus = 'virtual'
+            if self.evtype != 'scratch':
+                for s in self.sprints:
+                    sid = s[SPRINT_COL_ID]
+                    subtitle = s[SPRINT_COL_LABEL]
+                    if sid in self.laplabels:
+                        subtitle = self.laplabels[sid]
+                    subreq = 4  # default is (5, 3, 2, 1)
+                    if s[SPRINT_COL_POINTS]:
+                        subreq = len(s[SPRINT_COL_POINTS])
+                    substatus = None
+                    sublines = None
+                    if sid in self._inters and self._inters[sid]:
+                        sublines = self._inters[sid]
+                        if len(sublines) >= subreq:
+                            substatus = 'provisional'
+                        else:
+                            substatus = 'virtual'
 
-                # load result info & append to detail report
-                subdata = {
-                    'units': 'pt',
-                    'competitionType': 'bunch',
-                    'subtitle': subtitle,
-                    'status': substatus,
-                    'info': None,
-                }
+                    # load result info & append to detail report
+                    subdata = {
+                        'units': 'pt',
+                        'competitionType': 'bunch',
+                        'subtitle': subtitle,
+                        'status': substatus,
+                        'info': None,
+                    }
 
-                # add result lines if defined
-                if sublines:
-                    subdata['lines'] = sublines
+                    # add result lines if defined
+                    if sublines:
+                        subdata['lines'] = sublines
 
-                # duplicate weather startTime, and startlist from event
-                for k in ('competitors', 'weather', 'startTime'):
-                    if k in data:
-                        subdata[k] = data[k]
+                    # duplicate weather startTime, and startlist from event
+                    for k in ('competitors', 'weather', 'startTime'):
+                        if k in data:
+                            subdata[k] = data[k]
 
-                # publish inter to bridge
-                subfrag = '/'.join((fragment, sid))
-                self.meet.db.updateFragment(self.event, subfrag, subdata)
+                    # publish inter to bridge
+                    subfrag = '/'.join((fragment, sid))
+                    self.meet.db.updateFragment(self.event, subfrag, subdata)
 
-                # save record of subfrag to head object
-                data[subtype][sid] = subtitle
+                    # save record of subfrag to head object
+                    data[subtype][sid] = subtitle
 
             self.meet.db.updateFragment(self.event, fragment, data)
 
@@ -618,7 +631,8 @@ class ps:
         lapstring = strops.lapstring(self.event['laps'])
         substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
-        sec.units = 'Pts'
+        if self.evtype != 'scratch':
+            sec.units = 'Pts'
         self._reslines = []
         fs = ''
         if self.finish is not None and self.start is not None:
@@ -635,6 +649,7 @@ class ps:
             rcat = ''
             rnat = None
             pilot = None
+            lapstr = None
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
                 dbrno = rh['no']
@@ -645,14 +660,9 @@ class ps:
             plstr = ''
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
-                if r[RES_COL_PLACE].isdigit():
-                    plstr += '.'
-                    if r[RES_COL_INFO] and not self.inomnium:
-                        rcat = r[RES_COL_INFO]
-                elif r[RES_COL_INFO] in ('dns', 'dsq', 'abd'):
-                    plstr = r[RES_COL_INFO]
-                elif r[RES_COL_INFO] and r[RES_COL_INFO].isdigit():
-                    plstr = r[RES_COL_INFO] + '.'  # Why allow manual?
+                if r[RES_COL_INRACE]:
+                    if r[RES_COL_PLACE].isdigit():
+                        plstr += '.'
                 ptstr = ''
                 if r[RES_COL_TOTAL] != 0 and r[RES_COL_INRACE]:
                     ptstr = str(r[RES_COL_TOTAL])
@@ -660,40 +670,61 @@ class ps:
                 if r[RES_COL_FINAL] >= 0:
                     finplace = str(r[RES_COL_FINAL] + 1)
 
-                if self.scoring == 'madison':
-                    laps = r[RES_COL_LAPS]
-                    if fl is None:
-                        fl = laps  # and determine laps down
-                    if ll is not None:
-                        down = fl - laps
+                if self.scoring == 'laps':
+                    laps = -9999
+                    if r[RES_COL_INRACE]:
+                        laps = r[RES_COL_LAPS]
+                        if fl is None:
+                            fl = laps  # and determine laps down
+                        if ll is not None:
+                            down = fl - laps
+                            if self.evtype != 'scratch' and ll != laps:
+                                sec.lines.append([
+                                    None, None,
+                                    str(down) + ' Lap' + strops.plural(down) +
+                                    ' Behind', None, None, None
+                                ])
+                            if down > 0:
+                                lapstr = '%d Lap%s' % (
+                                    -down,
+                                    strops.plural(down),
+                                )
+                            if self.evtype == 'scratch':
+                                ptstr = lapstr
+                    else:
                         if ll != laps:
-                            sec.lines.append([
-                                None, None,
-                                str(down) + ' Lap' + strops.plural(down) +
-                                ' Behind', None, None, None
-                            ])
+                            sec.lines.append([' ', ' ', ''])
                     ll = laps
                 if plstr or finplace or ptstr:  # only output those with points
                     # dnf  or
                     # placed in final sprint
                     sec.lines.append([plstr, rno, rname, rcat, fs, ptstr])
+                    pname = None
                     if pilot:
                         sec.lines.append(pilot)
+                        pname = pilot[2]
+
+                    # add team members
                     members = None
-                    ## TEAM HACKS
                     if self.series.startswith('t') and rh is not None:
-                        members = rh['members'].split()
-                        for trno in members:
-                            trh = self.meet.rdb.fetch_bibstr(trno)
+                        col = 'black'
+                        members = []
+                        for member in rh['members'].split():
+                            trh = self.meet.rdb.fetch_bibstr(member)
                             if trh is not None:
-                                trname = trh.resname()
+                                trno = trh['no']
+                                members.append(trno)  # only add riders in db
                                 trinf = trh['class']
+                                trname = trh.resname()
+                                if self.series.startswith('tm'):  # madison
+                                    trno = col
+                                    col = 'red'
                                 sec.lines.append([
                                     None, trno, trname, trinf, None, None, None
                                 ])
-                    pname = None
-                    if pilot:
-                        pname = pilot[2]
+                    if self.evtype == 'scratch':
+                        # save laps down to db
+                        ptstr = lapstr
                     self._reslines.append({
                         'rank': pcount,
                         'class': plstr,
@@ -790,7 +821,7 @@ class ps:
         bib = bib.upper()
         er = self._getrider(bib)
         if bib == '' or er is None:
-            nr = [bib, '', '', '', True, 0, 0, 0, '', -1, '', 0]
+            nr = [bib, '', '', '', True, 0, 0, 0, '', -1, '', 0, '']
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[RES_COL_NAME] = dbr.listname()
@@ -921,45 +952,32 @@ class ps:
             self.stat_but.update('ok', 'Running')
             self.meet.main_timer.dearm(1)
 
-    def sort_handicap(self, x, y):
-        """Sort by ranking, then info, then riderno"""
-        if x[3] == y[3]:
-            if x[2] != y[2]:
-                if x[2] is None:  # y sorts first
-                    return 1
-                elif y[2] is None:  # x sorts first
-                    return -1
-                else:  # Both should be ints here
-                    return cmp(x[2], y[2])
-            else:  # Defer to rider number
-                if x[1].isdigit() and y[1].isdigit():
-                    return cmp(int(x[1]), int(y[1]))
-                else:
-                    return cmp(x[1], y[1])
-        else:
-            return cmp(x[3], y[3])
-
     def reorder_riderno(self):
-        """Sort the rider list by rider number."""
+        """Sort the rider list by rider number or seeding."""
         if len(self.riders) > 1:
-            auxmap = []
+            aux = []
             cnt = 0
-            intmark = 0
             for r in self.riders:
-                rno = r[RES_COL_NO]
                 seed = strops.confopt_posint(r[RES_COL_INFO], 9999)
+                rno = strops.riderno_key(r[RES_COL_NO])
                 rank = 0
-                if self.inomnium and self.evtype == 'omnium':
-                    # extract rank from current standing
+                if self.evtype == 'omnium':
+                    # this is the omnium itself - standing informs order
+                    # with fall back to seeding
                     if r[RES_COL_PLACE].isdigit() or r[RES_COL_PLACE] == '':
-                        # but only add riders currently ranked, or unplaced
                         rank = strops.confopt_posint(r[RES_COL_PLACE], 9998)
                     else:
                         rank = 9999
-                auxmap.append([cnt, rno, seed, rank])
+                    aux.append((rank, seed, rno, cnt))
+                elif self.inomnium:
+                    # eg tempo - seeding informs order
+                    aux.append((seed, rno, cnt, cnt))
+                else:
+                    # order by rider no
+                    aux.append((rno, cnt, cnt, cnt))
                 cnt += 1
-            auxmap.sort(key=cmp_to_key(self.sort_handicap))
-            self.riders.reorder([a[0] for a in auxmap])
+            aux.sort()
+            self.riders.reorder([a[3] for a in aux])
 
     def startlist_report(self, program=False):
         """Return a startlist report."""
@@ -989,10 +1007,9 @@ class ps:
         self._startlines = []
         col2 = []
         cnt = 0
-        inomnium = False  # temp ?
-        #if self.inomnium and len(self.riders) > 0:
-        #sec.lines.append((' ', ' ', 'The Fence', None, None, None))
-        #col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
+        if self.inomnium and len(self.riders) > 0:
+            sec.lines.append((' ', ' ', 'Sprinters Lane', None, None, None))
+            col2.append((' ', ' ', 'Fence', None, None, None))
         for r in self.riders:
             members = None
             dbrno = r[RES_COL_NO]
@@ -1016,10 +1033,11 @@ class ps:
             if r[RES_COL_INFO] and not self.inomnium:
                 inf = r[RES_COL_INFO]
 
-            if inomnium:
+            if self.inomnium:
+                # standing overrides the startlist ordering
                 if r[RES_COL_PLACE].isdigit() or r[RES_COL_PLACE] == '':
                     cnt += 1
-                    if cnt % 2 == 1:
+                    if cnt % 2 == 0:
                         sec.lines.append(
                             [rankCol, rno, rname, inf, None, None])
                         if pilot:
@@ -1089,14 +1107,20 @@ class ps:
                 'members': members,
             })
 
-        for i in col2:
-            sec.lines.append(i)
+        # correct a mismatch in column length
+        if col2:
+            while len(sec.lines) < len(col2):
+                sec.lines.append([' ', ' ', None])
+            while len(col2) < len(sec.lines):
+                col2.append([' ', ' ', None])
 
-        # placeholders - why was this suppressed?
-        if self.event['plac']:
-            while cnt < self.event['plac']:
-                sec.lines.append([rankCol, None, None, None, None, None])
-                cnt += 1
+            for i in col2:
+                sec.lines.append(i)
+        else:
+            if self.event['plac']:
+                while cnt < self.event['plac']:
+                    sec.lines.append([rankCol, None, None, None, None, None])
+                    cnt += 1
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
@@ -1242,7 +1266,7 @@ class ps:
                 sidstart = 0
             elif sidstart > len(self.sprints) - 10:
                 sidstart = len(self.sprints) - 10
-            if self.scoring == 'madison':
+            if self.scoring == 'laps':
                 leaderboard = []
                 rtype = 'Team '
                 if self.evtype != 'madison':
@@ -1278,7 +1302,10 @@ class ps:
                     if self.onestart and r[RES_COL_PLACE] != '':
                         placestr = strops.truncpad(r[RES_COL_PLACE] + '.', 3)
                     elif not r[RES_COL_INRACE]:
-                        placestr = 'dnf'
+                        if r[RES_COL_DNFCODE]:
+                            placestr = r[RES_COL_DNFCODE]
+                        else:
+                            placestr = 'dnf'
 
                     spstr = ''
                     if r[RES_COL_NO] in self.auxmap:
@@ -1336,7 +1363,10 @@ class ps:
                     if self.onestart and r[RES_COL_PLACE] != '':
                         placestr = strops.truncpad(r[RES_COL_PLACE] + '.', 3)
                     elif not r[RES_COL_INRACE]:
-                        placestr = 'dnf'
+                        if r[RES_COL_DNFCODE]:
+                            placestr = r[RES_COL_DNFCODE]
+                        else:
+                            placestr = 'dnf'
                     bibstr = strops.truncpad(r[RES_COL_NO], 3, 'r')
                     self.meet.txt_postxt(
                         curline, posoft,
@@ -1371,7 +1401,7 @@ class ps:
         resvec = []
         fmt = ''
         hdr = ''
-        if self.scoring == 'madison':
+        if self.evtype != 'scratch' and self.scoring == 'laps':
             name_w = self.meet.scb.linelen - 8
             fmt = ((2, 'r'), ' ', (name_w, 'l'), (2, 'r'), (3, 'r'))
             # does this require special consideration?
@@ -1394,6 +1424,7 @@ class ps:
             fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (4, 'r'))
             #ldr = None
             bstr = ''
+            leadlap = None
             for r in self.riders:
                 if r[RES_COL_INRACE]:
                     name, club, cls = self._getname(r[RES_COL_NO],
@@ -1401,12 +1432,17 @@ class ps:
                     plstr = r[RES_COL_PLACE] + '.'
                     if not self.teamnames:
                         bstr = r[RES_COL_NO]
-                    #if ldr is None and r[RES_COL_TOTAL] > 0:
-                    #ldr = r[RES_COL_TOTAL]	# current leader
                     pstr = str(r[RES_COL_TOTAL])
-                    #if self.inomnium and ldr is not None:
-                    #pstr = '-' + str(ldr - r[RES_COL_TOTAL])
-                    if pstr == '0': pstr = '-'
+                    if self.evtype == 'scratch':
+                        if leadlap is None:
+                            leadlap = r[RES_COL_LAPS]
+                        downlap = leadlap - r[RES_COL_LAPS]
+                        if downlap != 0:
+                            pstr = '-%d' % (downlap, )
+                        else:
+                            pstr = ''
+                    else:
+                        if pstr == '0': pstr = '-'
                     resvec.append((plstr, bstr, name, pstr))
             # cols are: rank, bib, name, pts
         hdr = self.meet.racenamecat(self.event)
@@ -1423,17 +1459,18 @@ class ps:
         self.resend_current()
         return False
 
-    def dnfriders(self, biblist=''):
+    def dnfriders(self, biblist='', dnfcode='dnf'):
         """Remove listed bibs from the race."""
         recalc = False
         for bib in biblist.split():
             r = self._getrider(bib)
             if r is not None:
                 r[RES_COL_INRACE] = False
+                r[RES_COL_DNFCODE] = dnfcode
                 recalc = True
-                _log.info('Rider %r withdrawn', bib)
+                _log.info('Rider %r out: %r', bib, dnfcode)
             else:
-                _log.warning('Did not withdraw %r', bib)
+                _log.warning('Rider %r not in race', bib)
         if recalc:
             self.recalculate()
             self.meet.delayed_export()
@@ -1607,7 +1644,7 @@ class ps:
         rsb = b.get_object('race_showbib_toggle')  # tenptlaps
         rsb.set_active(self.tenptlaps)
         rt = b.get_object('race_score_type')
-        if self.scoring == 'madison':
+        if self.scoring == 'laps':
             rt.set_active(0)
         else:
             rt.set_active(1)
@@ -1639,7 +1676,7 @@ class ps:
             self.showinters = rsi.get_active()
             self.tenptlaps = rsb.get_active()
             if rt.get_active() == 0:
-                self.scoring = 'madison'
+                self.scoring = 'laps'
             else:
                 self.scoring = 'points'
             self.type_lbl.set_text(self.scoring.capitalize())
@@ -1907,9 +1944,10 @@ class ps:
                     ret = False
                 # otherwise club mode allows non-starter in places
             else:
-                # rider still in the race?
+                # rider in the race?
                 if not lr[RES_COL_INRACE]:
-                    _log.error('DNF rider in places: %r', no)
+                    _log.error('Out (%s) rider in places: %r',
+                               lr[RES_COL_DNFCODE], no)
                     ret = False
         return ret
 
@@ -1966,23 +2004,28 @@ class ps:
             self.timerwin = False
             _log.info('%s: %r', sinfo, places)
             if prevplaces == '':
-                fmt = ((2, 'l'), (3, 'r'), ' ', (self.meet.scb.linelen - 9,
-                                                 'l'), ' ', (2, 'r'))
-                self.meet.scbwin = scbwin.scbintsprint(
-                    self.meet.scb, self.meet.racenamecat(self.event),
-                    sinfo.upper(), fmt, self.sprintresults[sid][0:4])
-                self.meet.scbwin.reset()
-                self.next_sprint_counter += 1
-                delay = SPRINT_PLACE_DELAY * len(self.sprintresults[sid]) or 1
-                if delay > SPRINT_PLACE_DELAY_MAX:
-                    delay = SPRINT_PLACE_DELAY_MAX
-                self.oktochangecombo = True
-                GLib.timeout_add_seconds(delay, self.delayed_result)
-                self._cursprint = curid
-                self._cursprintinfo = sinfo
-                self.resend_current()
+                if self.evtype != 'scratch':
+                    # show an inter script
+                    fmt = ((2, 'l'), (3, 'r'), ' ', (self.meet.scb.linelen - 9,
+                                                     'l'), ' ', (2, 'r'))
+                    self.meet.scbwin = scbwin.scbintsprint(
+                        self.meet.scb, self.meet.racenamecat(self.event),
+                        sinfo.upper(), fmt, self.sprintresults[sid][0:4])
+                    self.meet.scbwin.reset()
+                    self.next_sprint_counter += 1
+                    delay = SPRINT_PLACE_DELAY * len(
+                        self.sprintresults[sid]) or 1
+                    if delay > SPRINT_PLACE_DELAY_MAX:
+                        delay = SPRINT_PLACE_DELAY_MAX
+                    self.oktochangecombo = True
+                    GLib.timeout_add_seconds(delay, self.delayed_result)
+                    self._cursprint = curid
+                    self._cursprintinfo = sinfo
+                    self.resend_current()
+                else:
+                    self.do_places()
             elif type(self.meet.scbwin) is scbwin.scbtable:
-                self.do_places()  # overwrite result table?
+                self.do_places()  # overwrite an existing result
             GLib.timeout_add_seconds(1, self.delayed_announce)
             self.meet.delayed_export()
         else:
@@ -2004,8 +2047,17 @@ class ps:
         elif acode == 'lost':
             self.loselap(strops.reformat_biblist(rlist))
             entry.set_text('')
+        elif acode == 'abd':
+            self.dnfriders(strops.reformat_biblist(rlist), 'abd')
+            entry.set_text('')
+        elif acode == 'dns':
+            self.dnfriders(strops.reformat_biblist(rlist), 'dns')
+            entry.set_text('')
         elif acode == 'dnf':
-            self.dnfriders(strops.reformat_biblist(rlist))
+            self.dnfriders(strops.reformat_biblist(rlist), 'dnf')
+            entry.set_text('')
+        elif acode == 'dsq':
+            self.dnfriders(strops.reformat_biblist(rlist), 'dsq')
             entry.set_text('')
         elif acode == 'add':
             rlist = strops.riderlist_split(rlist, self.meet.rdb, self.series)
@@ -2057,6 +2109,10 @@ class ps:
     def ps_result_cr_inrace_toggled_cb(self, cr, path, data=None):
         self.riders[path][RES_COL_INRACE] = not (
             self.riders[path][RES_COL_INRACE])
+        if self.riders[path][RES_COL_INRACE]:
+            self.riders[path][RES_COL_DNFCODE] = ''  # Remove dnfcode
+        else:
+            self.riders[path][RES_COL_DNFCODE] = 'dnf'  # Assume dnf
         self.recalculate()
 
     def ps_result_cr_laps_edited_cb(self, cr, path, new_text, data=None):
@@ -2146,70 +2202,15 @@ class ps:
 
     def retotal(self, r):
         """Update totals"""
-        if self.scoring == 'madison':
+        if self.scoring == 'laps':
             r[RES_COL_TOTAL] = r[RES_COL_STPTS] + r[RES_COL_POINTS]
         else:
             r[RES_COL_TOTAL] = r[RES_COL_STPTS] + r[RES_COL_POINTS] + (
                 self.lappoints * r[RES_COL_LAPS])
 
-    # Sorting performed in-place on aux table with cols:
-    #  0 INDEX		Index in main model
-    #  1 BIB		Rider's bib
-    #  2 INRACE		Bool rider still in race?
-    #  3 LAPS		Rider's laps up/down
-    #  4 TOTAL		Total points scored
-    #  5 FINAL		Rider's place in final sprint (-1 for unplaced)
-
-    # Point score sorting:
-    # inrace / points / final sprint
-    def sortpoints(self, x, y):
-        if x[2] != y[2]:  # compare inrace
-            if x[2]:
-                return -1
-            else:
-                return 1
-        else:  # defer to points
-            return self.sortpointsonly(x, y)
-
-    def sortpointsonly(self, x, y):
-        if x[6] == y[6]:
-            if x[4] > y[4]:
-                return -1
-            elif x[4] < y[4]:
-                return 1
-            else:  # defer to last sprint
-                if x[5] == y[5]:
-                    #_log.warning('Sort could not split riders.')
-                    return 0  # places same - or both unplaced
-                else:
-                    xp = x[5]
-                    if xp < 0: xp = 9999
-                    yp = y[5]
-                    if yp < 0: yp = 9999
-                    return cmp(xp, yp)
-        else:
-            return (cmp(x[6], y[6]))
-
-    def sortmadison(self, x, y):
-        """Lap-based points (old-style Madison)"""
-        if x[2] != y[2]:  # compare inrace
-            if x[2]:
-                return -1
-            else:
-                return 1
-        else:  # defer to distance (laps)
-            if x[3] > y[3]:
-                return -1
-            elif x[3] < y[3]:
-                return 1
-            else:  # defer to points / final sprint
-                return self.sortpointsonly(x, y)
-
-    def sort_riderno(self, x, y):
-        return cmp(strops.riderno_key(x[1]), strops.riderno_key(y[1]))
-
     # result recalculation
     def recalculate(self):
+        _log.debug('recalculate')
         self.zeropoints()
         self.finished = False
         self.auxmap = {}
@@ -2223,43 +2224,74 @@ class ps:
         if len(self.riders) == 0:
             return
 
-        auxtbl = []
+        aux = []
         idx = 0
         for r in self.riders:
-            ptotal = r[RES_COL_TOTAL]
-            ranker = 0
-            if not r[RES_COL_INRACE]:
-                ptotal = 0
-                if r[RES_COL_INFO] and r[RES_COL_INFO].isdigit():
-                    ranker = int(r[RES_COL_INFO])
+            _log.debug('building aux... %r', r[RES_COL_NO])
             self.retotal(r)
-            auxtbl.append([
-                idx, r[RES_COL_NO], r[RES_COL_INRACE], r[RES_COL_LAPS],
-                r[RES_COL_TOTAL], r[RES_COL_FINAL], ranker
-            ])
+            rno = strops.riderno_key(r[RES_COL_NO])
+            ptotal = r[RES_COL_TOTAL]
+            dnfcode = strops.dnfcode_key(None)
+            laps = r[RES_COL_LAPS]
+            lastsprint = r[RES_COL_FINAL]
+            if lastsprint < 0:
+                lastsprint = dnfcode
+            if not r[RES_COL_INRACE]:
+                if r[RES_COL_DNFCODE]:
+                    dnfcode = strops.dnfcode_key(r[RES_COL_DNFCODE])
+                else:
+                    dnfcode = strops.dnfcode_key('dnf')
+                ptotal = -9999
+                laps = -9999
+                lastsprint = dnfcode
+                dnfcode = strops.dnfcode_key(r[RES_COL_DNFCODE])
+            if self.scoring == 'laps':
+                aux.append((
+                    -laps,
+                    -ptotal,
+                    lastsprint,
+                    dnfcode,
+                    rno,
+                    idx,
+                ))
+            else:
+                aux.append((
+                    -ptotal,
+                    lastsprint,
+                    dnfcode,
+                    rno,
+                    idx,
+                    idx,
+                ))
             idx += 1
-        if self.scoring == 'madison':
-            auxtbl.sort(key=cmp_to_key(self.sortmadison))
-        else:
-            auxtbl.sort(key=cmp_to_key(self.sortpoints))
-        self.riders.reorder([a[0] for a in auxtbl])
-        place = 0
+
+        _log.debug('sort aux: %r', aux)
+        aux.sort()
+        _log.debug('reorder model')
+        self.riders.reorder([a[5] for a in aux])
+        place = 1
         idx = 0
+        lr = None
         for r in self.riders:
             if r[RES_COL_INRACE]:
-                if idx == 0:
-                    place = 1
+                nr = aux[idx]
+                if lr is None:
+                    place = idx + 1
                 else:
-                    if self.scoring == 'madison':
-                        if self.sortmadison(auxtbl[idx - 1], auxtbl[idx]) != 0:
+                    if self.scoring == 'points':
+                        if lr[0:2] != nr[0:2]:
                             place = idx + 1
                     else:
-                        if self.sortpoints(auxtbl[idx - 1], auxtbl[idx]) != 0:
+                        if lr[0:3] != nr[0:3]:
                             place = idx + 1
                 r[RES_COL_PLACE] = str(place)
                 idx += 1
+                lr = nr
             else:
-                r[RES_COL_PLACE] = 'dnf'
+                if r[RES_COL_DNFCODE]:
+                    r[RES_COL_PLACE] = r[RES_COL_DNFCODE]
+                else:
+                    r[RES_COL_PLACE] = 'dnf'
         if self.standingstr() == 'Result':
             self.finished = True
 
@@ -2449,7 +2481,8 @@ class ps:
             str,  # PLACE = 8
             int,  # FINAL = 9
             str,  # INFO = 10
-            int)  # STPTS = 11
+            int,  # STPTS = 11
+            str)  # DNFCODE = 12
 
         if ui:
             b = uiutil.builder('ps.ui')
