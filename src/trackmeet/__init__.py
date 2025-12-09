@@ -1972,11 +1972,8 @@ class trackmeet:
         self.announce.join()
 
     def _timercb(self, evt, data=None):
-        _log.debug('Timer: %r %r', evt, data)
         if self.curevent is not None:
-            GLib.idle_add(self.curevent.timercb,
-                          evt,
-                          priority=GLib.PRIORITY_HIGH)
+            GLib.idle_add(self.curevent.timercb, evt)
 
     def update_lapscore(self, laps):
         """Handle lap count control message"""

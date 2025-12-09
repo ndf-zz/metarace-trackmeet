@@ -48,9 +48,13 @@ COL_FINISH = 8
 COL_LASTLAP = 9
 COL_SPLITS = 10
 _VIEWCOL_MEMBERS = 2  # Team member list col
-_HALFLAP_MIN = tod.mktod(5)
-_HALFLAP_MAX = tod.mktod(30)  # check
-_LAP_MIN = tod.mktod(13)
+_HALFLAP_MIN = tod.mktod(6)  # minimum possible half lap
+_LAP_MIN = tod.mktod(12)  # minimum possible full lap
+_HALFLAP_MAX = tod.mktod(20)  # maximum first half lap
+_HALFLAP_MAXCHANGE = tod.mktod(0.8)  # max allowed half lap speed up
+_RIDERS_CLOSE = 0.2  # (s, float) warn when rider ETAs are close
+_REARWHEEL = 0.990  # (m, float) typical wheelbase length
+_REARTHRESH = 0.01  # (s, float) rear wheel proximity threshold
 
 # scb function key mappings
 key_reannounce = 'F4'  # (+CTRL) calls into delayed announce
@@ -59,9 +63,9 @@ key_results = 'F4'  # recalc/show result window
 
 # timing function key mappings
 key_armstart = 'F5'  # arm for start impulse
-key_armlap_A = 'F7'  # arm for lap 'Front'
+key_armlap_A = 'F7'  # arm for lap 'Home'
 key_armlap_B = 'F8'  # arm for lap 'Back'
-key_armfinish_A = 'F9'  # arm for finish impulse 'Front'
+key_armfinish_A = 'F9'  # arm for finish impulse 'Home'
 key_armfinish_B = 'F10'  # arm for finish impulse 'Back'
 key_catch_A = 'F11'  # A rider catches B
 key_catch_B = 'F12'  # B rider catches A
@@ -139,7 +143,7 @@ class ittt:
                 elif key == key_falsestart:  # false start both lanes
                     self.falsestart()
                     return True
-                elif key == key_abort_A:  # abort front straight rider
+                elif key == key_abort_A:  # abort home straight rider
                     self.abortrider(self.fs)
                     return True
                 elif key == key_abort_B:
@@ -310,6 +314,8 @@ class ittt:
             _log.warning('Unable to setup splits: %s', e)
         if event_d is not None and track_l is not None:
             _log.debug('Track lap=%0.1f, Event dist=%0.1f', track_l, event_d)
+            # record the inverse half lap distance for later use (float)
+            self._inv_half = 2.0 / track_l
             # add a dummy entry for the finish passing
             splitid = '{0:0.0f}m'.format(event_d)
             self.splitlist.insert(0, splitid)
@@ -490,7 +496,7 @@ class ittt:
                 lstart = curstart  # can still be None if start not set
             dorejoin = False
 
-            # Front straight
+            # Home straight
             fsstat = cr.get('event', 'fsstat')
             if fsstat in ('running',
                           'load'):  # running with no start gets load
@@ -796,7 +802,7 @@ class ittt:
                     hno -= 1
                     lane = 1
 
-        # sort the heatlist into front/back heat 1, 2, 3 etc
+        # sort the heatlist into home/back heat 1, 2, 3 etc
         hlist.sort(key=cmp_to_key(self.sort_heats))
 
         lh = None
@@ -850,7 +856,7 @@ class ittt:
             self.meet.txt_line(1)
             self.meet.txt_line(7)
 
-            # fill in front straight
+            # fill in home straight
             fbib = self.fs.getrider()
             if fbib:
                 r = self._getrider(fbib)
@@ -868,7 +874,7 @@ class ittt:
                     if r[COL_COMMENT]:
                         cmtstr = strops.truncpad(
                             '[' + r[COL_COMMENT].strip() + ']', 38, 'r')
-                    self.meet.txt_postxt(3, 0, '        Front Straight')
+                    self.meet.txt_postxt(3, 0, '        Home Straight ')
                     self.meet.txt_postxt(4, 0, ' '.join(
                         (placestr, bibstr, namestr)))
                     self.meet.txt_postxt(5, 26,
@@ -1095,23 +1101,14 @@ class ittt:
             if rh is None:
                 self.meet.rdb.add_empty(bib, self.series)
                 rh = self.meet.rdb.get_rider(bib, self.series)
-            plink = ''
             rank = None
             dbrno = rh['no']
             rname = rh.resname()
             rnat = rh['nation']
             rcls = rh['class']
+            pilot = self.meet.rdb.get_pilot_line(rh)
             if self.teamnames:
                 rno = ' '  # force name
-
-            # TODO: PARA Pilots
-            #if rh.in_cat('tandem') and rh['note']:
-            #ph = self.meet.rdb.get_rider(rh['note'], self.series)
-            #if ph is not None:
-            #plink = [
-            #'', '',
-            #ph.resname() + ' - Pilot', ph['uciid'], '', '', ''
-            #]
             rtime = None
             rtod = None
             dtime = None
@@ -1146,8 +1143,12 @@ class ittt:
                     elif r[COL_COMMENT] not in ('abd', 'dns', 'dsq', 'dnf'):
                         rtime = 'ntr'
             if rank:
-                sec.lines.append([rank, rno, rname, rcls, rtime, dtime, plink])
+                sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)
+                pname = None
+                if pilot:
+                    sec.lines.append(pilot)
+                    pname = pilot[2]
 
                 # then add team members if relevant
                 members = None
@@ -1161,7 +1162,8 @@ class ittt:
                             members.append(trno)  # only add riders in db
                             trinf = trh['class']
                             trname = trh.resname()
-                            if self.series == 'tmsl':  # TODO: remove
+                            if self.series.startswith(
+                                    'tm'):  # madison support events
                                 trno = col
                                 col = 'red'
                             sec.lines.append(
@@ -1172,6 +1174,7 @@ class ittt:
                     'competitor': dbrno,
                     'nation': rnat,
                     'name': rname,
+                    'pilot': pname,
                     'members': members,
                     'info': rcls,
                     'result': rtime,
@@ -1217,6 +1220,7 @@ class ittt:
             sec.absolute = True
             sec.showelapsed = False
             sec.colheader = ['', '', '', '', '']
+            sid = None
             for sid in self.splitlist:
                 sec.colheader.append(sid)
             lastsplit = sid
@@ -1268,19 +1272,37 @@ class ittt:
         cb('')
         return False
 
+    def set_rearwheel(self, sp, t):
+        """Save an ETA for this competitor's rear wheel."""
+        if sp.split > 0 and self._inv_half is not None:
+            halfstart = sp.getsplit(sp.split - 1)
+            if halfstart is not None:
+                ht = float((t - halfstart).timeval)
+                rt = _REARWHEEL * ht * self._inv_half
+                sp.rearwheel = t + tod.mktod(rt)
+                sp.rearwheel.chan = t.chan
+                _log.debug('%s: %s set rearwheel %s %s +%ss', sp.label,
+                           sp.getrider(), t.chan, sp.rearwheel.rawtime(3),
+                           (sp.rearwheel - t).as_seconds(3))
+
     def auto_trig(self, sp, t):
         """Handle an accepted passing for the nominated lane"""
+        self.set_rearwheel(sp, t)
         if sp.split < len(self.splitlist) - 1:
-            _log.info('Intermediate split %r', sp.split)
+            _log.debug('%s: %s intermediate %s', sp.label, sp.getrider(),
+                       sp.get_sid())
             self.halflap_trig(sp, t)
         else:
-            _log.info('Finishing rider split %r', sp.split)
+            _log.debug('%s: %s finishing %s', sp.label, sp.getrider(),
+                       sp.get_sid())
             self.fin_trig(sp, t)
 
     def halflap_trig(self, sp, t):
         """Register half-lap trigger."""
+        lane = 'A' if sp is self.fs else 'B'
         sid = sp.get_sid()  # might be None
         elap = (t - self.curstart).truncate(self.precision)
+        downtod = None
         rank = self.insert_split(sid, elap, sp.getrider())
 
         # log to chronometer trace
@@ -1300,10 +1322,15 @@ class ittt:
         sp.intermed(t)
         sp.split_up()
 
-        # !!! save to current stats
-        # diff will be to "other"
+        if lane == 'A':
+            self._timeA = elap
+            self._rankA = rank + 1
+        else:
+            self._timeB = elap
+            self._rankB = rank + 1
 
         if self.difftime:
+            # downtime is to other lane
             if self.diffstart is None or self.difflane is sp:
                 self.diffstart = t
                 self.difflane = sp
@@ -1311,11 +1338,35 @@ class ittt:
                 # 'other' lane has previously completed this lap
                 so = self.t_other(sp)
                 if so.split == sp.split and self.diffstart is not None:
-                    dt = t - self.diffstart
+                    dt = (t - self.diffstart).truncate(2)
+                    downtod = dt
                     if dt < 4:
                         sp.difftime(dt)
                     self.difflane = None
                     self.diffstart = None
+        else:
+            if sid is not None:
+                splitdata = self.splitmap[sid]['data']
+                if len(splitdata) > 1:  # at least two entries
+                    if rank == 0:  # leader
+                        nt = tod.agg(elap)
+                        ot = splitdata[1][0]
+                        downtod = (nt - ot).truncate(2)
+                    else:
+                        ot = splitdata[0][0]
+                        downtod = (elap - ot).truncate(2)
+
+        if sid is not None:
+            sdist = self.splitmap[sid]['dist']
+            slbl = '%d\u2006m' % (sdist, )
+            if lane == 'A':
+                self._labelA = slbl
+                self._downA = downtod
+            else:
+                self._labelB = slbl
+                self._downB = downtod
+            GLib.timeout_add_seconds(4, self.clear_splitrank, lane, slbl)
+
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
             if rank is not None:
                 rlbl = '({}) {}:'.format(rank + 1, sid)
@@ -1573,109 +1624,201 @@ class ittt:
         else:
             _log.info('Unable to recover start')
 
-    def estimate_arrival(self, elap, split, sp, e):
-        """Determine if e is valid arrival and return expected time"""
-        # Temp: assume one-up and just sanitize lap time
-        prev = self.curstart
+    def accept_first(self, elap, asplit, bsplit, e):
+        """Choose most likely arrival based on previous lap time."""
+        felap = float(elap.timeval)
+        # A rider
+        ad0 = -1
+        astart = self.curstart
+        if asplit > 3:
+            ad0 = asplit - 4
+            astart = self.fs.getsplit(ad0)
+        ad1 = asplit - 1
+        afin = self.fs.getsplit(ad1)
+        add = ad1 - ad0
+        alap = afin - astart
+        ahlt = float(alap.timeval) / add
+        aelap = afin - self.curstart  # elapsed time at previous split
+        aeta = float(aelap.timeval) + ahlt
+        #_log.debug(
+        #'A: d0=%d d1=%d dd=%d dt=%s hlt=%0.1fs eta=%0.1fs elap=%0.1fs',
+        #ad0, ad1, add, alap.rawtime(1), ahlt, aeta, felap)
+
+        # B rider
+        bd0 = -1
+        bstart = self.curstart
+        if bsplit > 3:
+            bd0 = bsplit - 4
+            bstart = self.bs.getsplit(bd0)
+        bd1 = bsplit - 1
+        bfin = self.bs.getsplit(bd1)
+        bdd = bd1 - bd0
+        blap = bfin - bstart
+        bhlt = float(blap.timeval) / bdd
+        belap = bfin - self.curstart  # elapsed time at previous split
+        beta = float(belap.timeval) + bhlt
+        #_log.debug(
+        #'B: d0=%d d1=%d dd=%d dt=%s hlt=%0.1fs eta=%0.1fs elap=%0.1fs',
+        #bd0, bd1, bdd, blap.rawtime(1), bhlt, beta, felap)
+
+        # warn when close
+        ridergap = abs(beta - aeta)
+        if ridergap < _RIDERS_CLOSE:
+            _log.warning('Riders close ~%0.1fs: Check Passings', ridergap)
+
+        if aeta < beta:
+            _log.debug('%s: %s ETA:%0.1f [%0.1f] < %s: %s ETA:%0.1f',
+                       self.fs.label, self.fs.getrider(), aeta, aeta - felap,
+                       self.bs.label, self.bs.getrider(), beta)
+            return self.fs
+        else:
+            _log.debug('%s: %s ETA:%0.1f [%0.1f] < %s: %s ETA:%0.1f',
+                       self.bs.label, self.bs.getrider(), beta, beta - felap,
+                       self.fs.label, self.fs.getrider(), aeta)
+            return self.bs
+
+        # unable to choose
+        return None
+
+    def accept_arrival(self, elap, split, sp, e):
+        """Return True if e is valid/possible arrival based on split times."""
+        prevlap = None
+        prevhalf = self.curstart
+        if split > 0:
+            prevhalf = sp.getsplit(split - 1)
         if split > 1:
-            prev = sp.getsplit(split - 2)
-        if prev is not None:
-            pt = e - prev
-            if pt < _LAP_MIN:
-                _log.debug('Early arrival %s', pt.rawtime(1))
+            prevlap = sp.getsplit(split - 2)
+
+        # check half lap
+        ht = None
+        if prevhalf is not None:
+            ht = e - prevhalf
+
+            # special case: check max elap over first half lap:
+            if split == 0 and ht > _HALFLAP_MAX:
+                _log.debug('%s: %s late arrival at half lap %s', sp.label,
+                           sp.getrider(), ht.rawtime(1))
                 return False
-        # TODO: track speed over last full lap
-        # Estimate rear wheel
-        # Predict arrival
+
+            if ht < _HALFLAP_MIN:
+                _log.debug('%s: %s early arrival at half lap %s', sp.label,
+                           sp.getrider(), ht.rawtime(1))
+                return False
+
+            #_log.debug('%s: %s halfcheck=%s', sp.label, sp.getrider(),
+            #ht.rawtime(1))
+
+        # check min elap over full lap
+        if prevlap is not None:
+            ph = prevhalf - prevlap
+            pt = e - prevlap
+            if pt < _LAP_MIN:
+                _log.debug('%s: %s early arrival at lap %s', sp.label,
+                           sp.getrider(), pt.rawtime(1))
+                return False
+
+            # compare this half lap to previous, ignoring slowdown
+            if ht is not None and ph > ht:
+                speedup = ph - ht
+                if speedup > _HALFLAP_MAXCHANGE:
+                    _log.debug('%s: %s excessive speedup %ss', sp.label,
+                               sp.getrider(), speedup.as_seconds(1))
+                    return False
+
+            #_log.debug('%s: %s lapcheck=%s prevhalfcheck=%s', sp.label, sp.getrider(),
+            #pt.rawtime(1), ph.rawtime(1))
+
         return True
 
-    def autotime_home(self, e):
-        """Handle auto timer impulse on home straight"""
-        asplit = None  # A splits will be even
-        bsplit = None  # B splits will be odd
-        if self.fs.getstatus() == 'running':
-            if not self.fs.on_halflap():
-                asplit = self.fs.split
-        if self.bs.getstatus() == 'running':
-            if self.bs.on_halflap():
-                bsplit = self.bs.split
-        if asplit is None and bsplit is None:
-            _log.debug('Spurious home trigger ignored')
-            return
+    def autotime_rearwheel(self, e):
+        """Return true if this passing matches a rear wheel and delete."""
+        if self.fs.rearwheel is not None:
+            if e.chan == self.fs.rearwheel.chan:
+                difftime = abs(
+                    float(e.timeval) - float(self.fs.rearwheel.timeval))
+                if difftime < _REARTHRESH:
+                    _log.debug('%s %s Rear wheel ~%0.3fs', self.fs.label,
+                               self.fs.getrider(), difftime)
+                    self.fs.rearwheel = None
+                    return True
+        if self.bs.rearwheel is not None:
+            if e.chan == self.bs.rearwheel.chan:
+                difftime = abs(
+                    float(e.timeval) - float(self.bs.rearwheel.timeval))
+                if difftime < _REARTHRESH:
+                    _log.debug('%s %s Rear wheel ~%0.3fs', self.bs.label,
+                               self.bs.getrider(), difftime)
+                    self.bs.rearwheel = None
+                    return True
+        return False
 
+    def autotime_arrival(self, asplit, bsplit, e):
+        """Check passing for validity and assign."""
         elap = e - self.curstart
-        _log.debug('Front: a=%r, b=%r, elap=%s', asplit, bsplit,
-                   elap.rawtime(1))
-        if bsplit == 0:
-            # special case: first half-lap, assume A does not catch B
-            if elap >= _HALFLAP_MIN and elap < _HALFLAP_MAX:
-                self.auto_trig(self.bs, e)
-        elif asplit == 1:
-            # special case: end of first full lap
-            if elap > _LAP_MIN:
-                self.auto_trig(self.fs, e)
-            else:
-                _log.debug('Early arrival A')
-        else:
-            if asplit is None:
-                if self.estimate_arrival(elap, bsplit, self.bs, e):
-                    self.auto_trig(self.bs, e)  # B on half lap
-            elif bsplit is None:
-                if self.estimate_arrival(elap, asplit, self.fs, e):
-                    self.auto_trig(self.fs, e)  # A on full lap
-            else:
-                _log.debug('TODO: pick first compatable arrival')
+        #_log.debug('%s: a=%r, b=%r, elap=%s', e.chan, asplit, bsplit, elap.rawtime(1))
 
-    def autotime_back(self, e):
-        """Handle auto timer impulse on back straight"""
-        _log.debug('autotime back')
-        asplit = None  # A splits will be odd
-        bsplit = None  # B splits will be even
-        if self.fs.getstatus() == 'running':
-            if self.fs.on_halflap():
-                asplit = self.fs.split
-        if self.bs.getstatus() == 'running':
-            if not self.bs.on_halflap():
-                bsplit = self.bs.split
+        # reject rearwheel passings
+        if self.autotime_rearwheel(e):
+            return False
+
+        # reject impossible splits
+        if asplit is not None:
+            if not self.accept_arrival(elap, asplit, self.fs, e):
+                asplit = None
+        if bsplit is not None:
+            if not self.accept_arrival(elap, bsplit, self.bs, e):
+                bsplit = None
+
         if asplit is None and bsplit is None:
-            _log.debug('Spurious back trigger ignored')
-            return
-
-        elap = e - self.curstart
-        _log.debug('Back: a=%r, b=%r, elap=%s', asplit, bsplit,
-                   elap.rawtime(1))
-        if asplit == 0:
-            # special case: first half-lap, assume B does not catch A
-            if elap > _HALFLAP_MIN and elap < _HALFLAP_MAX:
-                self.auto_trig(self.fs, e)
-        elif bsplit == 1:
-            # special case: end of first full lap
-            if elap > _LAP_MIN:
-                self.auto_trig(self.bs, e)
-            else:
-                _log.debug('Early arrival B')
+            #_log.debug('No match')
+            pass
         else:
+            # take the easy way out if possible
             if bsplit is None:
-                if self.estimate_arrival(elap, asplit, self.bs, e):
-                    self.auto_trig(self.fs, e)  # A on half lap
+                self.auto_trig(self.fs, e)  # Home rider
             elif asplit is None:
-                if self.estimate_arrival(elap, bsplit, self.fs, e):
-                    self.auto_trig(self.bs, e)  # B on full lap
+                self.auto_trig(self.bs, e)  # Back rider
             else:
-                _log.debug('TODO: pick first compatable arrival')
+                sp = self.accept_first(elap, asplit, bsplit, e)
+                if sp is not None:
+                    self.auto_trig(sp, e)
+
+    def autotime_passing(self, lane, e):
+        """Handle auto timer impulse on nominated lane."""
+        asplit = None
+        bsplit = None
+        if lane == 'home':
+            if self.fs.getstatus() == 'running':
+                if not self.fs.on_halflap():  # A splits are full lap
+                    asplit = self.fs.split
+            if self.bs.getstatus() == 'running':
+                if self.bs.on_halflap():  # B splits are half lap
+                    bsplit = self.bs.split
+        else:  # back straight
+            if self.fs.getstatus() == 'running':
+                if self.fs.on_halflap():  # A splits are half lap
+                    asplit = self.fs.split
+            if self.bs.getstatus() == 'running':
+                if not self.bs.on_halflap():  # B splits are full lap
+                    bsplit = self.bs.split
+
+        if asplit is None and bsplit is None:
+            #_log.debug('Spurious %s trigger ignored', lane)
+            return
+
+        self.autotime_arrival(asplit, bsplit, e)
 
     def timercb(self, e):
         """Handle a timer event."""
         chan = strops.chan2id(e.chan)
-        _log.debug('timerstat=%s', self.timerstat)
         if self.timerstat == 'armstart':
             if chan == self.chan_S:
                 self.torunning(e)
         elif self.timerstat == 'autotime':
             if chan == self.chan_A:
-                self.autotime_home(e)
+                self.autotime_passing('home', e)
             elif chan == self.chan_B:
-                self.autotime_back(e)
+                self.autotime_passing('back', e)
         elif self.timerstat == 'running':
             if chan == self.chan_A or (self.timetype == 'single'
                                        and self.chan_B):
@@ -1794,7 +1937,7 @@ class ittt:
                 del self.traces[bib]
         elif 'fsbib' in self._winState and self._winState['fsbib'].upper(
         ) == bib:
-            _log.warning('Removed rider %r in event %r front timer', bib,
+            _log.warning('Removed rider %r in event %r home timer', bib,
                          self.evno)
         elif 'bsbib' in self._winState and self._winState['bsbib'].upper(
         ) == bib:
@@ -1987,11 +2130,11 @@ class ittt:
 
     def insert_split(self, sid, st, bib):
         """Insert a rider split into correct lap."""
-        _log.debug('insert split: sid=%r, st=%r, bib=%r', sid, st, bib)
         ret = None
         if sid in self.splitmap:
             self.splitmap[sid]['data'].insert(st, None, bib)
             ret = self.splitmap[sid]['data'].rank(bib)
+            _log.debug('Split: %s @ %s %s [%r]', bib, sid, st.rawtime(1), ret)
         else:
             _log.debug('No ranking for rider %r at unknown split %r', bib, sid)
         return ret
@@ -2028,13 +2171,6 @@ class ittt:
             elif sp.getstatus() == 'armint':
                 sp.torunning()
                 self.meet.main_timer.dearm(cid)
-
-    def lanestr(self, sp):
-        """Return f for front and b for back straight."""
-        ret = 'f'
-        if sp is self.bs:
-            ret = 'b'
-        return ret
 
     def abortrider(self, sp):
         """Abort the selected lane."""
@@ -2632,7 +2768,7 @@ class ittt:
             else:
                 self.bs.frame.show()
                 self.bs.show_splits()
-                self.fs.frame.set_label('Front Straight')
+                self.fs.frame.set_label('Home Straight')
                 self.fs.show_splits()
 
     def show(self):
@@ -2675,6 +2811,7 @@ class ittt:
         self.bsvec = None
         self.fslog = None
         self.bslog = None
+        self._inv_half = None  # 1 / half lap len
         self._winState = {}
 
         # race run time attributes
@@ -2747,7 +2884,7 @@ class ittt:
 
             # Timer Panes
             mf = b.get_object('race_timer_pane')
-            self.fs = uiutil.timerpane('Front Straight', doser=False)
+            self.fs = uiutil.timerpane('Home Straight', doser=False)
             self.fs.bibent.connect('activate', self.bibent_cb, self.fs)
             self.bs = uiutil.timerpane('Back Straight', doser=False)
             self.bs.urow = 6  # scb row for timer messages

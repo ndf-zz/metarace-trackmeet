@@ -385,6 +385,7 @@ class timerpane:
         self.starttod = None
         self.recovtod = tod.tod(0)  # timeval is manipulated
         self.finishtod = None
+        self.rearwheel = None
         self.set_time()
         self.splits = {}
         self.set_split()
@@ -422,6 +423,7 @@ class timerpane:
         self.starttod = None
         self.recovtod = tod.tod(0)
         self.finishtod = None
+        self.rearwheel = None
         self.split = -1  # next expected passing
         self.splits = {}  # map of split ids to split data
         self.set_split()
@@ -433,6 +435,7 @@ class timerpane:
         """Constructor."""
         _log.debug('Building timerpane: %r', label)
         self.label = label
+        self.rearwheel = None
         s = Gtk.Frame.new(label)
         s.set_border_width(5)
         s.set_shadow_type(Gtk.ShadowType.IN)
