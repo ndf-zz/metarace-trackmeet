@@ -2913,34 +2913,36 @@ class trackmeet:
                                  sections=sections)
         if res['action'] == 0:  # OK
             adds = res['starters']['adds'][2]
-            for evid in elist:
-                if evid in self.edb:
-                    ev = self.edb[evid]
-                    series = ev['series']
-                    slist = strops.riderlist_split(adds, self.rdb, series)
-                    if ev['type'] not in ('classification', 'indiv aggregate',
-                                          'team aggregate'):
-                        _log.debug('%s %r %r to %s', action, adds, slist,
-                                   ev['evid'])
-                        if self.curevent is not None and self.curevent.evno == evid:
-                            for rno in slist:
-                                if action == 'add':
-                                    self.curevent.addrider(rno)
-                                else:
-                                    self.curevent.delrider(rno)
-                            self.curevent.event.set_value('dirty', True)
-                        else:
-                            r = mkrace(meet=self, event=ev, ui=False)
-                            r.readonly = False
-                            r.loadconfig()
-                            for rno in slist:
-                                if action == 'add':
-                                    r.addrider(rno)
-                                else:
-                                    r.delrider(rno)
-                            r.saveconfig()
-                            r = None
-                        ev.set_value('dirty', True)
+            if adds:
+                for evid in elist:
+                    if evid in self.edb:
+                        ev = self.edb[evid]
+                        series = ev['series']
+                        slist = strops.riderlist_split(adds, self.rdb, series)
+                        if ev['type'] not in ('classification',
+                                              'indiv aggregate',
+                                              'team aggregate'):
+                            _log.debug('%s %r %r to %s', action, adds, slist,
+                                       ev['evid'])
+                            if self.curevent is not None and self.curevent.evno == evid:
+                                for rno in slist:
+                                    if action == 'add':
+                                        self.curevent.addrider(rno)
+                                    else:
+                                        self.curevent.delrider(rno)
+                                self.curevent.event.set_value('dirty', True)
+                            else:
+                                r = mkrace(meet=self, event=ev, ui=False)
+                                r.readonly = False
+                                r.loadconfig()
+                                for rno in slist:
+                                    if action == 'add':
+                                        r.addrider(rno)
+                                    else:
+                                        r.delrider(rno)
+                                r.saveconfig()
+                                r = None
+                            ev.set_value('dirty', True)
 
     def event_popup_duplicate_cb(self, menuitem, data=None):
         """Duplicate selected event program entries"""

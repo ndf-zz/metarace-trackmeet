@@ -78,7 +78,7 @@ class classification:
 
     def force_running(self, start=None):
         """Ignore forced start time."""
-        return False
+        self.resend_current()
 
     def show_lapscore(self, laps, prev):
         """Reject lapscore updates."""

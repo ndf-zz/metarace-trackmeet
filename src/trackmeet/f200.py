@@ -77,6 +77,7 @@ class f200:
     def force_running(self, start=None):
         """Ignore force start time."""
         self.meet.set_event_start(self.event)
+        self.resend_current()
 
     def show_lapscore(self, laps, prev):
         """Reject lapscore updates."""

@@ -113,6 +113,7 @@ class sprnd:
     def force_running(self, start=None):
         """Ignore force start time."""
         self.meet.set_event_start(self.event)
+        self.resend_current()
 
     def show_lapscore(self, laps, prev):
         """Accept laps when idle/running"""
