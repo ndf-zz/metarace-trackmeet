@@ -1168,6 +1168,107 @@ class trackmeet:
                 _log.debug('%s reading intro: %s', e.__class__.__name__, e)
         return ret
 
+    def numbercollect(self):
+        self.check_export_path()
+        r = report.report()
+        subtitlestr = 'Number Collection'
+        if self.subtitle:
+            subtitlestr = self.subtitle + ' - ' + subtitlestr
+        self.report_strings(r)
+        r.strings['docstr'] = ''
+        r.strings['subtitle'] = subtitlestr
+        r.set_provisional(False)
+
+        # collect a map of riders in events
+        inmap = set()
+        for ev in self.edb:
+            if ev['type'] not in ('session', 'break', 'classification',
+                                  'team aggregate', 'indiv aggregate'):
+                series = ev['series'].lower()
+                if not series.startswith('t'):  # skip team events
+                    rl = mkrace(meet=self, event=ev, ui=False)
+                    rl.loadconfig()
+                    for rno in rl.get_startlist().split():
+                        rno = rno.upper()
+                        bibser = strops.bibser2bibstr(rno, series)
+                        inmap.add(bibser)
+        _log.debug('Marked %d riders listed on meet program', len(inmap))
+
+        seccount = 0
+        for series in self.rdb.listseries():
+            if not series.startswith('t'):
+                smeta = self.rdb.get_rider(series.upper(), 'series')
+                if smeta is not None:
+                    secid = 'riders'
+                    if series:
+                        secid += series
+                    # add all riders - mark those not at this meet
+
+                    sec = report.twocol_startlist(secid)
+                    sec.heading = smeta['title']
+                    sec.grey = True
+                    sec.subheading = smeta['subtitle']
+                    sec.footer = smeta['footer']
+                    if inmap:
+                        if sec.footer:
+                            sec.footer += '\u3000'
+                        sec.footer += '\u2715 indicates not on meet program'
+                    aux = []
+                    count = 0
+                    for rid in self.rdb.biblistfromseries(series):
+                        nr = self.rdb.get_rider(rid)
+                        if nr is not None and nr['series'] not in (
+                                'spare', 'cat', 'team', 'ds', 'series',
+                                'pilot'):
+                            namekey = ''.join(
+                                (nr['last'].lower(), nr['first'].lower()[0:2]))
+                            inevt = ''  # todo
+                            aux.append((namekey, count, inevt, nr))
+                            count += 1
+                        else:
+                            _log.warning('Missing details for rider %s', rid)
+                    if aux:
+                        aux.sort()
+                        for sr in aux:
+                            nr = sr[3]
+                            clist = []
+                            pc = nr.primary_cat()
+                            if pc is not None:
+                                clist.append(pc)
+                            if nr['class']:
+                                clist.append(nr['class'])
+                            if nr['nation']:
+                                clist.append(nr['nation'])
+                            rname = nr.regname()
+                            missflag = None
+                            if nr.get_bibstr() not in inmap:
+                                missflag = '\u2715'
+                            sec.lines.append(
+                                (nr['no'], missflag, rname, ', '.join(clist),
+                                 None, None, False))
+                        if seccount > 0:
+                            r.add_section(report.pagebreak(threshold=0.1))
+                        r.add_section(sec)
+                        seccount += 1
+                else:
+                    _log.debug('Skipping series %r in rider listing', series)
+
+        filebase = 'number_colllect'
+        r.canonical = os.path.join(self.linkbase, filebase + '.json')
+        ofile = os.path.join(EXPORTPATH, filebase + '.pdf')
+        with metarace.savefile(ofile, mode='b') as f:
+            r.output_pdf(f, docover=True)
+            _log.info('Exported pdf program to %r', ofile)
+        ofile = os.path.join(EXPORTPATH, filebase + '.html')
+        with metarace.savefile(ofile) as f:
+            r.output_html(f)
+        ofile = os.path.join(EXPORTPATH, filebase + '.xlsx')
+        with metarace.savefile(ofile, mode='b') as f:
+            r.output_xlsx(f)
+        ofile = os.path.join(EXPORTPATH, filebase + '.json')
+        with metarace.savefile(ofile) as f:
+            r.output_json(f)
+
     def printprogram(self):
         self.check_export_path()
         template = metarace.PROGRAM_TEMPLATE
@@ -1266,6 +1367,14 @@ class trackmeet:
         """Export race program."""
         try:
             self.printprogram()
+        except Exception as e:
+            _log.error('%s writing report: %s', e.__class__.__name__, e)
+            raise
+
+    def menu_data_collect_activate_cb(self, menuitem, data=None):
+        """Export race program."""
+        try:
+            self.numbercollect()
         except Exception as e:
             _log.error('%s writing report: %s', e.__class__.__name__, e)
             raise

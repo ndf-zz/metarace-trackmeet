@@ -441,6 +441,14 @@
                             <signal name="activate" handler="menu_data_program_activate_cb"/>
                           </object>
                         </child>
+                        <child>
+                          <object class="GtkMenuItem" id="menu_data_collect">
+                            <property name="label">_Number Collection</property>
+                            <property name="visible">True</property>
+                            <property name="use_underline">True</property>
+                            <signal name="activate" handler="menu_data_collect_activate_cb"/>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
