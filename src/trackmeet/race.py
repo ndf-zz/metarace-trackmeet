@@ -24,14 +24,11 @@ from metarace import jsonconfig
 from . import uiutil
 from . import scbwin
 
-# temporary
-from functools import cmp_to_key
-
 _log = logging.getLogger('race')
 _log.setLevel(logging.DEBUG)
 
 # config version string
-EVENT_ID = 'race-2.1'
+EVENT_ID = 'race-2.2'
 
 # race model column constants
 COL_NO = 0
@@ -39,8 +36,9 @@ COL_NAME = 1
 COL_RSVD1 = 2
 COL_RSVD2 = 3
 COL_INFO = 4
-COL_DNF = 5
+COL_INRACE = 5
 COL_PLACE = 6
+COL_DNFCODE = 7
 
 # scb function key mappings
 key_startlist = 'F3'  # show starters in table
@@ -57,27 +55,22 @@ key_abort = 'F5'  # + ctrl for clear/abort
 key_falsestart = 'F6'  # + ctrl for false start
 
 
-# temporary
-def cmp(x, y):
-    if x < y:
-        return -1
-    elif x > y:
-        return 1
-    else:
-        return 0
-
-
 class race:
-    """Data handling for scratch, handicap, keirin, derby, etc races."""
+    """Data handling for elimination, handicap, keirin, derby, etc races."""
 
     def force_running(self, start=None):
         """Set event timer to running."""
+        if start is None:
+            start = tod.now()
         if self.timerstat in ('idle', 'armstart') and self.timetype != '200m':
-            if start is None:
-                start = tod.now()
             self.timerstat = 'armstart'
             self.starttrig(start, wallstart=start)
             self.meet.set_event_start(self.event)
+        elif self.timerstat in ('running', 'armfinish'):
+            if self.start is not None:
+                self.timerstat = 'armfinish'
+                self.fintrig(start)
+        self.resend_current()
 
     def show_lapscore(self, laps, prev):
         """Accept laps when idle/running"""
@@ -93,7 +86,7 @@ class race:
                 if self.timerstat == 'idle':
                     # check for a missed start
                     stlap = self.event['laps'] - 1
-                    if laps == stlap:
+                    if laps == stlap and self.timetype != '200m':
                         self.force_running(tod.now() - tod.mktod(20))
                     ret = True
                 elif self.timerstat in ('running', 'armfinish'):
@@ -127,11 +120,6 @@ class race:
                 # re-draw summary line
                 self.update_expander_lbl_cb()
 
-    def clearplaces(self):
-        """Clear places from data model."""
-        for r in self.riders:
-            r[COL_PLACE] = ''
-
     def changerider(self, oldNo, newNo):
         """Update rider no in event"""
         oldNo = oldNo.upper()
@@ -159,7 +147,7 @@ class race:
                         nelim.append(r)
                 self.eliminated = nelim
                 newPlaces = []
-                oldPlaces = self.placestr.upper()
+                oldPlaces = self.places.upper()
                 for placeGroup in oldPlaces.split():
                     ng = []
                     for r in placeGroup.split('-'):
@@ -205,7 +193,7 @@ class race:
         if self.reorderflag > 1:
             self.reorderflag -= 1
         elif self.reorderflag == 1:
-            self.reorder_handicap()
+            self.reorder_riders()
             self.reorderflag = 0
         else:
             self.reorderflag = 0  # clamp negatives
@@ -216,7 +204,7 @@ class race:
         bib = bib.upper()
         er = self._getrider(bib)
         if not bib or er is None:
-            nr = [bib, '', '', '', '', False, '']
+            nr = [bib, '', '', '', '', True, '', '']
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
@@ -236,15 +224,21 @@ class race:
                     if not er[COL_INFO] and info:  # don't overwrite if set
                         er[COL_INFO] = str(info)
 
-    def dnfriders(self, biblist=''):
+    def dnfriders(self, biblist='', dnfcode='dnf'):
         """Remove listed bibs from the race."""
+        recalc = False
         for bib in biblist.split():
             r = self._getrider(bib)
             if r is not None:
-                r[COL_DNF] = True
-                _log.info('Rider %r withdrawn', bib)
+                r[COL_INRACE] = False
+                r[COL_DNFCODE] = dnfcode
+                recalc = True
+                _log.info('Rider %r out: %r', bib, dnfcode)
             else:
-                _log.warn('Did not withdraw rider %r', bib)
+                _log.warning('Rider %r not in race', bib)
+        if recalc:
+            self.recalculate()
+            self.meet.delayed_export()
         return False
 
     def delrider(self, bib):
@@ -256,7 +250,7 @@ class race:
             self.eliminated.remove(bib)
             inRes = True
         newPlaces = []
-        oldPlaces = self.placestr.upper()
+        oldPlaces = self.places.upper()
         for placeGroup in oldPlaces.split():
             ng = []
             for r in placeGroup.split('-'):
@@ -274,6 +268,7 @@ class race:
         i = self._getiter(bib)
         if i is not None:
             self.riders.remove(i)
+            self.recalculate()
 
     def _getresname(self, bib):
         """Return resline style name"""
@@ -297,34 +292,36 @@ class race:
             cls = dbr['class']
         return name, club, cls
 
-    def placexfer(self, placestr=None):
-        """Transfer places in placestr to model."""
-        if placestr is not None:
-            self.placestr = placestr
+    def recalculate(self):
+        self.placexfer()
+        return False
+
+    def placexfer(self, places=None):
+        """Transfer places to model."""
+        if places is not None:
+            self.places = places
         self.finished = False
-        self.clearplaces()
         self.results = []
         placeset = set()
         # 12.456_[name]_123M
         resname_w = self.meet.scb.linelen - 12  # (3 + 3 + 1 + 5)
 
-        # TODO: Replace riders.swap with single reorder
-
-        # move dnf riders to bottom of list and count inriders
+        # reset places and dnf codes, count riders
         cnt = 0
         incnt = 0
-        reorddnf = []
         if len(self.riders) > 0:
             for r in self.riders:
-                if r[COL_DNF]:
-                    reorddnf.append(cnt)
-                else:
+                if r[COL_INRACE]:
+                    r[COL_PLACE] = ''
                     incnt += 1
-                    reorddnf.insert(0, cnt)
+                else:
+                    # transfer dnfcode to place string
+                    if not r[COL_DNFCODE]:
+                        r[COL_DNFCODE] = 'dnf'
+                    r[COL_PLACE] = r[COL_DNFCODE]
                 cnt += 1
-            self.riders.reorder(reorddnf)
 
-        # update eliminated rider ranks
+        # update withdrawn/eliminated rider places
         outriders = []
         for bib in self.eliminated:
             r = self._getrider(bib)
@@ -336,22 +333,20 @@ class race:
             name, club, nfo = self._getname(bib, width=resname_w)
             rank = incnt
             r[COL_PLACE] = str(rank)
-            if len(club) != 3:
-                club = ''
             if r[COL_INFO]:
-                nfo = r[COL_INFO]
-            if not nfo:  # TBC nation
-                nfo = club
+                if self.evtype not in (
+                        'sprint',
+                        'keirin',
+                ) and not self.inomnium:
+                    nfo = r[COL_INFO]
             outriders.insert(0, [str(rank) + '.', bib, name, nfo])
-            i = self._getiter(bib)
             incnt -= 1
-            self.riders.swap(self.riders.get_iter(incnt), i)
 
         # overwrite eliminations from placed riders
         place = 1
         count = 0
         clubmode = self.meet.get_clubmode()
-        for placegroup in self.placestr.split():
+        for placegroup in self.places.split():
             for bib in placegroup.split('-'):
                 if bib not in placeset:
                     if count >= incnt and not clubmode:
@@ -368,15 +363,13 @@ class race:
                     rank = place
                     r[COL_PLACE] = str(rank)
                     name, club, nfo = self._getname(bib, width=resname_w)
-                    if len(club) != 3:
-                        club = ''
                     if r[COL_INFO]:
-                        nfo = r[COL_INFO]
-                    if not nfo:
-                        nfo = club
+                        if self.evtype not in (
+                                'sprint',
+                                'keirin',
+                        ) and not self.inomnium:
+                            nfo = r[COL_INFO]
                     self.results.append([str(rank) + '.', bib, name, nfo])
-                    i = self._getiter(bib)
-                    self.riders.swap(self.riders.get_iter(count), i)
                     count += 1
                 else:
                     _log.error('Ignoring duplicate no: %r', bib)
@@ -388,6 +381,27 @@ class race:
             else:
                 _log.info('Eliminated rider %s placed', rno)
                 self.eliminated.remove(rno)
+
+        # re-order model
+        if len(self.riders) > 0:
+            aux = []
+            for cnt, r in enumerate(self.riders):
+                rno = strops.riderno_key(r[COL_NO])
+                dnfcode = strops.dnfcode_key(None)
+                rank = 9998
+                if not r[COL_INRACE]:
+                    if r[COL_DNFCODE]:
+                        dnfcode = strops.dnfcode_key(r[COL_DNFCODE])
+                    else:
+                        dnfcode = strops.dnfcode_key('dnf')
+                    rank = 9999
+                else:
+                    if r[COL_PLACE] and r[COL_PLACE].isdigit():
+                        rank = int(r[COL_PLACE])
+                aux.append((rank, dnfcode, rno, cnt))
+            aux.sort()
+            self.riders.reorder([a[3] for a in aux])
+
         if count > 0 or len(outriders) > 0:
             self.onestart = True
         self._status = None
@@ -416,7 +430,7 @@ class race:
         self.seedsrc = None  # default is no seed info
         if self.evtype == 'handicap':
             self.seedsrc = 3  # fetch handicap info from autospec
-        if self.evtype in ['sprint']:
+        if self.evtype in ('sprint', 'keirin'):
             deftimetype = '200m'
             defdistunits = 'metres'
             defdistance = '200'
@@ -459,10 +473,10 @@ class race:
         rlist = cr.get('event', 'startlist').upper().split()
         for r in rlist:
             ## TODO: replace rider lines
-            nr = [r, '', '', '', '', False, '']
+            nr = [r, '', '', '', '', True, '', '']
             if cr.has_option('riders', r):
                 ril = cr.get('riders', r)
-                for i in range(0, 3):
+                for i in range(4):
                     if len(ril) > i:
                         nr[i + 4] = ril[i]
             # Re-patch name
@@ -486,18 +500,18 @@ class race:
         self.set_finish(cr.get('event', 'finish'))
         self.set_elapsed()
         self.eliminated = cr.get('event', 'eliminated')
-        places = strops.reformat_placelist(cr.get('event', 'ctrl_places'))
+        self.places = strops.reformat_placelist(cr.get('event', 'ctrl_places'))
 
         if self.winopen:
             self.update_expander_lbl_cb()
             self.info_expand.set_expanded(
                 strops.confopt_bool(cr.get('event', 'showinfo')))
-            self.ctrl_places.set_text(places)
+            self.ctrl_places.set_text(self.places)
         else:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
-        self.placexfer(places)
-        if places:
+        self.recalculate()
+        if self.places:
             self.doscbplaces = False  # only show places on board if not set
             self.setfinished()
         else:
@@ -507,42 +521,44 @@ class race:
                                            self.event['auto'],
                                            infocol=self.seedsrc)
             if self.evtype in ('handicap', 'keirin') or self.inomnium:
-                self.reorder_handicap()
+                self.reorder_riders()
 
         # After load complete - check config and report.
         eid = cr.get('event', 'id')
         if eid and eid != EVENT_ID:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
 
-    def sort_riderno(self, x, y):
-        """Sort riders by rider no."""
-        return cmp(strops.riderno_key(x[1]), strops.riderno_key(y[1]))
-
-    def sort_handicap(self, x, y):
-        """Sort function for handicap marks."""
-        if x[2] != y[2]:
-            if x[2] is None:  # y sorts first
-                return 1
-            elif y[2] is None:  # x sorts first
-                return -1
-            else:  # Both should be ints here
-                return cmp(x[2], y[2])
-        else:  # Defer to rider number
-            return cmp(strops.riderno_key(x[1]), strops.riderno_key(y[1]))
-
-    def reorder_handicap(self):
-        """Reorder rider model according to the handicap marks."""
+    def reorder_riders(self):
+        """Reorder rider model according to seeding or handicap marks."""
         if len(self.riders) > 1:
             auxmap = []
             cnt = 0
             for r in self.riders:
-                auxmap.append([cnt, r[COL_NO], strops.mark2int(r[COL_INFO])])
+                seed = strops.mark2int(r[COL_INFO])
+                if seed is None:
+                    seed = 9999
+                rno = strops.riderno_key(r[COL_NO])
+                if self.evtype == 'handicap':
+                    auxmap.append((
+                        -seed,
+                        rno,
+                        cnt,
+                    ))
+                elif self.inomnium:
+                    auxmap.append((
+                        seed,
+                        rno,
+                        cnt,
+                    ))
+                else:
+                    auxmap.append((
+                        rno,
+                        cnt,
+                        cnt,
+                    ))
                 cnt += 1
-            if self.inomnium or self.evtype == 'handicap':
-                auxmap.sort(key=cmp_to_key(self.sort_handicap))
-            else:
-                auxmap.sort(key=cmp_to_key(self.sort_riderno))
-            self.riders.reorder([a[0] for a in auxmap])
+            auxmap.sort()
+            self.riders.reorder([a[2] for a in auxmap])
 
     def set_timetype(self, data=None):
         """Update state and ui to match timetype."""
@@ -625,15 +641,14 @@ class race:
                         inf = strops.drawno_encirc(inf)
                     xtra = strops.truncpad(inf, 4, 'r')
                 namestr = strops.truncpad(r[COL_NAME], 25)
-                placestr = '   '
+                places = '   '
                 if r[COL_PLACE] != '':
-                    placestr = strops.truncpad(r[COL_PLACE] + '.', 3)
-                elif r[COL_DNF]:
-                    placestr = 'dnf'
+                    places = strops.truncpad(r[COL_PLACE] + '.', 3)
+                elif not r[COL_INRACE]:
+                    places = r[COL_DNFCODE]
                 bibstr = strops.truncpad(r[COL_NO], 3, 'r')
-                self.meet.txt_postxt(
-                    curline, posoft,
-                    ' '.join([placestr, bibstr, namestr, xtra]))
+                self.meet.txt_postxt(curline, posoft,
+                                     ' '.join([places, bibstr, namestr, xtra]))
                 curline += 1
 
             tp = ''
@@ -675,14 +690,13 @@ class race:
             sec.subheading = substr
 
         self._startlines = []
-        self.reorder_handicap()
+        self.reorder_riders()
         sec.lines = []
         cnt = 0
         col2 = []
-        inomnium = False  # temp ?
-        #if self.inomnium and len(self.riders) > 0:
-        #sec.lines.append((' ', ' ', 'The Fence', None, None, None))
-        #col2.append((' ', ' ', 'Sprinters Lane', None, None, None))
+        if self.inomnium and len(self.riders) > 0:
+            sec.lines.append((' ', ' ', 'Sprinters Lane', None, None, None))
+            col2.append((' ', ' ', 'Fence', None, None, None))
         for r in self.riders:
             cnt += 1
             rno = r[COL_NO]
@@ -701,8 +715,8 @@ class race:
                 inf = r[COL_INFO]
             if self.evtype in ['keirin', 'sprint']:  # encirc draw no
                 inf = strops.drawno_encirc(inf)
-            if inomnium:
-                if cnt % 2 == 1:
+            if self.inomnium:
+                if cnt % 2 == 0:
                     sec.lines.append([rankcol, rno, rname, inf, None, None])
                     if pilot:
                         sec.lines.append(pilot)
@@ -725,12 +739,21 @@ class race:
                 'info': inf,
                 'pilot': pname,
             })
-        for i in col2:
-            sec.lines.append(i)
-        if self.event['plac']:
-            while cnt < self.event['plac']:
-                sec.lines.append([rankcol, None, None, None, None, None])
-                cnt += 1
+
+        # correct a mismatch in column length
+        if col2:
+            while len(sec.lines) < len(col2):
+                sec.lines.append([' ', ' ', None])
+            while len(col2) < len(sec.lines):
+                col2.append([' ', ' ', None])
+
+            for i in col2:
+                sec.lines.append(i)
+        else:
+            if self.event['plac']:
+                while cnt < self.event['plac']:
+                    sec.lines.append([rankcol, None, None, None, None, None])
+                    cnt += 1
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
@@ -758,7 +781,7 @@ class race:
         cw.set('event', 'start', self.start)
         cw.set('event', 'lstart', self.lstart)
         cw.set('event', 'finish', self.finish)
-        cw.set('event', 'ctrl_places', self.placestr)
+        cw.set('event', 'ctrl_places', self.places)
         cw.set('event', 'eliminated', self.eliminated)
         cw.set('event', 'startlist', self.get_startlist())
         if self.winopen:
@@ -775,7 +798,7 @@ class race:
         cw.add_section('riders')
         for r in self.riders:
             cw.set('riders', r[COL_NO],
-                   [r[COL_INFO], r[COL_DNF], r[COL_PLACE]])
+                   [r[COL_INFO], r[COL_INRACE], r[COL_PLACE], r[COL_DNFCODE]])
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
         with metarace.savefile(self.configfile) as f:
@@ -837,7 +860,7 @@ class race:
                     if nspec:
                         self.meet.autostart_riders(self, nspec, self.seedsrc)
                     if self.evtype == 'handicap':
-                        self.reorder_handicap()
+                        self.reorder_riders()
 
             # xfer starters if not empty
             slist = strops.riderlist_split(
@@ -845,6 +868,8 @@ class race:
                 self.series)
             for s in slist:
                 self.addrider(s)
+            # recalculate
+            self.recalculate()
             GLib.idle_add(self.delayed_announce)
         else:
             _log.debug('Edit event properties cancelled')
@@ -953,13 +978,13 @@ class race:
         """Clear, shuffle and re-draw for sprint/keirin"""
         tot = 0
         for r in self.riders:
-            if not r[COL_DNF]:
+            if r[COL_INRACE]:
                 tot += 1
         draw = [d for d in range(1, tot + 1)]
         shuffle(draw)
         idx = 0
         for r in self.riders:
-            if not r[COL_DNF]:
+            if r[COL_INRACE]:
                 r[COL_INFO] = str(draw[idx])
                 idx += 1
 
@@ -991,7 +1016,7 @@ class race:
                     return True
                 elif key == key_results:
                     self.doscbplaces = True  # override if already clear
-                    self.do_places()
+                    self.do_places()  # also triggers recalc
                     GLib.idle_add(self.delayed_announce)
                     return True
         return False
@@ -1032,13 +1057,13 @@ class race:
     def do_startlist(self):
         """Show start list on scoreboard."""
 
-        self.reorder_handicap()
+        self.reorder_riders()
         self.meet.scbwin = None
         self.timerwin = False
         startlist = []
         name_w = self.meet.scb.linelen - 9
         for r in self.riders:
-            if not r[COL_DNF]:
+            if r[COL_INRACE]:
                 name, club, nfo = self._getname(r[COL_NO], width=name_w)
                 if len(club) != 3:
                     club = ''
@@ -1114,7 +1139,7 @@ class race:
                 # otherwise club mode allows non-starter in places
             else:
                 # rider still in the race?
-                if lr[COL_DNF]:
+                if not lr[COL_INRACE]:
                     _log.error('DNF rider in places: %r', no)
                     ret = False
         return ret
@@ -1123,10 +1148,10 @@ class race:
         """Respond to activate on place entry."""
         places = strops.reformat_placelist(entry.get_text())
         if self.checkplaces(places):
-            self.placestr = places
-            _log.debug('Event %r places updated: %r', self.evno, self.placestr)
-            entry.set_text(self.placestr)
-            self.do_places()
+            self.places = places
+            _log.debug('Event %r places updated: %r', self.evno, self.places)
+            entry.set_text(self.places)
+            self.do_places()  # triggers recalculate
             GLib.idle_add(self.delayed_announce)
             self.meet.delayed_export()
         else:
@@ -1137,8 +1162,17 @@ class race:
         rlist = entry.get_text()
         acode = self.action_model.get_value(
             self.ctrl_action_combo.get_active_iter(), 1)
-        if acode == 'dnf':
-            self.dnfriders(strops.reformat_biblist(rlist))
+        if acode == 'abd':
+            self.dnfriders(strops.reformat_biblist(rlist), 'abd')
+            entry.set_text('')
+        elif acode == 'dns':
+            self.dnfriders(strops.reformat_biblist(rlist), 'dns')
+            entry.set_text('')
+        elif acode == 'dnf':
+            self.dnfriders(strops.reformat_biblist(rlist), 'dnf')
+            entry.set_text('')
+        elif acode == 'dsq':
+            self.dnfriders(strops.reformat_biblist(rlist), 'dsq')
             entry.set_text('')
         elif acode == 'add':
             rlist = strops.riderlist_split(rlist, self.meet.rdb, self.series)
@@ -1176,7 +1210,7 @@ class race:
         ret = False
         r = self._getrider(bib)
         if r is not None:
-            if not r[COL_DNF]:
+            if r[COL_INRACE]:
                 if bib in self.eliminated:
                     self.eliminated.remove(bib)
                     self.placexfer()
@@ -1199,7 +1233,7 @@ class race:
         ret = False
         r = self._getrider(bib)
         if r is not None:
-            if not r[COL_DNF]:
+            if r[COL_INRACE]:
                 if bib not in self.eliminated:
                     # ensure event is started
                     if self.start is None:
@@ -1309,9 +1343,23 @@ class race:
             self.view.scroll_to_cell(self.riders.get_path(i))
             self.view.set_cursor_on_cell(self.riders.get_path(i))
 
-    def dnf_cb(self, cell, path, col):
-        """Toggle rider dnf flag."""
-        self.riders[path][col] = not self.riders[path][col]
+    def inrace_cb(self, cell, path, col):
+        """Toggle rider inrace flag."""
+
+        # refuse to update placed rider
+        if self.riders[path][COL_PLACE].isdigit():
+            _log.info('Rider %s in places - ignored',
+                      self.riders[path][COL_NO])
+            self.riders[path][COL_INRACE] = True
+            return
+
+        # otherwise toggle and update
+        self.riders[path][COL_INRACE] = not (self.riders[path][COL_INRACE])
+        if self.riders[path][COL_INRACE]:
+            self.riders[path][COL_DNFCODE] = ''  # Remove dnfcode
+        else:
+            self.riders[path][COL_DNFCODE] = 'dnf'  # Assume dnf
+        self.recalculate()
 
     def starttrig(self, e, wallstart=None):
         """React to start trigger."""
@@ -1439,15 +1487,13 @@ class race:
                 # include handicap and previous win info
                 info = r[COL_INFO].strip()
             if self.onestart:
-                if not r[COL_DNF]:
+                if r[COL_INRACE]:
                     if r[COL_PLACE]:
                         rank = int(r[COL_PLACE])
                 else:
-                    inft = r[COL_INFO]
-                    if inft in ('dns', 'dsq', 'abd'):
-                        rank = inft
-                    else:
-                        rank = 'dnf'
+                    if not r[COL_DNFCODE]:
+                        r[COL_DNFCODE] = 'dnf'  # patch any missing codes
+                    rank = r[COL_DNFCODE]
             time = None
             if self.finish is not None and ft is None:
                 time = (self.finish - self.start).rawtime(2)
@@ -1463,7 +1509,7 @@ class race:
 
     def result_report(self, recurse=False):
         """Return a list of report sections containing the race result."""
-        self.placexfer()
+        self.recalculate()
         ret = []
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
@@ -1497,26 +1543,27 @@ class race:
                 rnat = rh['nation']
                 inf = rh['class']
                 pilot = self.meet.rdb.get_pilot_line(rh)
-            if r[COL_DNF]:
-                if r[COL_INFO] in ('dns', 'dsq', 'abd'):
-                    plstr = r[COL_INFO]
-                    pcount = rtot + 1
-                else:
-                    plstr = 'dnf'
-                    pcount = rtot
-            else:
-                if r[COL_INFO]:
-                    inf = r[COL_INFO]
+
+            if r[COL_INRACE]:
                 if self.onestart and r[COL_PLACE] != '':
-                    plstr = r[COL_PLACE] + '.'
+                    plstr = r[COL_PLACE]
                     if r[COL_PLACE].isdigit():
+                        plstr += '.'
                         pcount = int(r[COL_PLACE])
                     else:
                         pcount += 1
-            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
-                inf = strops.drawno_encirc(inf)
-            #if self.inomnium:
-            #inf = None
+            else:
+                plstr = r[COL_DNFCODE]
+                if r[COL_DNFCODE] in ('dns', 'dsq', 'abd'):
+                    pcount = rtot + 1
+                else:
+                    pcount = rtot
+
+            if r[COL_INFO]:
+                if self.evtype not in ('keirin',
+                                       'sprint') and not self.inomnium:
+                    inf = r[COL_INFO]
+
             if plstr:  # don't emit a row for unplaced riders
                 if not first:
                     sec.lines.append([plstr, rno, rname, inf, None, None])
@@ -1561,7 +1608,7 @@ class race:
             pcount = 0
             winner = False
             for r in self.riders:
-                if r[COL_DNF]:
+                if not r[COL_INRACE]:
                     pcount += 1
                 elif r[COL_PLACE] != '':
                     if r[COL_PLACE] == '1':
@@ -1609,7 +1656,7 @@ class race:
         _log.debug('Init %sevent %s', rstr, self.evno)
         self.decisions = []
         self.eliminated = []
-        self.placestr = ''
+        self.places = ''
         self.onestart = False
         self.start = None
         self.lstart = None
@@ -1643,7 +1690,8 @@ class race:
             str,  # 3 reserved
             str,  # 4 xtra info
             bool,  # 5 DNF/DNS
-            str)  # 6 placing
+            str,  # 6 placing
+            str)  # 7 dnfcode
 
         # start timer and show window
         if ui:
@@ -1689,7 +1737,7 @@ class race:
                                 self._editname_cb,
                                 expand=True)
             uiutil.mkviewcoltxt(t, 'Info', COL_INFO, self.editinfo_cb)
-            uiutil.mkviewcolbool(t, 'DNF', COL_DNF, self.dnf_cb)
+            uiutil.mkviewcolbool(t, 'In', COL_INRACE, self.inrace_cb)
             uiutil.mkviewcoltxt(t, 'Place', COL_PLACE, halign=0.5, calign=0.5)
             t.show()
             b.get_object('race_result_win').add(t)

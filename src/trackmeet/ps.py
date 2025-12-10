@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Point score, madison and omnium handler for trackmeet."""
+"""Point score, scratch, madison and omnium handler for trackmeet."""
 
 import os
 import gi
@@ -28,7 +28,7 @@ _log = logging.getLogger('ps')
 _log.setLevel(logging.DEBUG)
 
 # config version string
-EVENT_ID = 'ps-2.1'
+EVENT_ID = 'ps-2.2'
 
 # Model columns
 SPRINT_COL_ID = 0
@@ -89,12 +89,17 @@ class ps:
 
     def force_running(self, start=None):
         """Set event timer to running."""
+        if start is None:
+            start = tod.now()
         if self.timerstat in ('idle', 'armstart'):
-            if start is None:
-                start = tod.now()
             self.timerstat = 'armstart'
             self.starttrig(start, wallstart=start)
             self.meet.set_event_start(self.event)
+        elif self.timerstat in ('running', 'armfinish'):
+            if self.start is not None:
+                self.timerstat = 'armfinish'
+                self.fintrig(start)
+        self.resend_current()
 
     def show_lapscore(self, laps, prev):
         """Accept laps when idle/running."""
@@ -526,7 +531,6 @@ class ps:
     def result_gen(self):
         """Generator function to export a final result."""
         fl = None
-        ll = None
         for r in self.riders:
             bib = r[RES_COL_NO]
             rank = None
@@ -549,13 +553,10 @@ class ps:
                 laps = r[RES_COL_LAPS]
                 if fl is None:
                     fl = laps  # anddetermine laps down
-                if ll is not None:
-                    down = fl - laps
-                    if ll != laps:
-                        yield ('', ' ', str(down) + ' Lap' +
-                               strops.plural(down) + ' Behind', '')
-                ll = laps
-
+                down = laps - fl
+                info = None
+                if down > 0:
+                    info = '-%d Lap%s' % (-down, strops.plural(down))
             time = None
             yield (bib, rank, time, info)
 
@@ -767,8 +768,6 @@ class ps:
                     substatus = ''
                     if len(sublines) < subreq:
                         substatus = ' (Virtual)'
-                    _log.debug('sid=%r, label=%r, sublines=%r', sid, subtitle,
-                               sublines)
                     sec = report.section('inter-' + sid)
                     sec.nobreak = True
                     sec.units = 'pt'
@@ -2227,7 +2226,6 @@ class ps:
         aux = []
         idx = 0
         for r in self.riders:
-            _log.debug('building aux... %r', r[RES_COL_NO])
             self.retotal(r)
             rno = strops.riderno_key(r[RES_COL_NO])
             ptotal = r[RES_COL_TOTAL]
@@ -2265,7 +2263,6 @@ class ps:
                 ))
             idx += 1
 
-        _log.debug('sort aux: %r', aux)
         aux.sort()
         _log.debug('reorder model')
         self.riders.reorder([a[5] for a in aux])

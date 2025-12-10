@@ -11,8 +11,20 @@
     </columns>
     <data>
       <row>
-        <col id="0" translatable="yes">Did not Finish</col>
+        <col id="0" translatable="yes">Did Not Start</col>
+        <col id="1" translatable="yes">dns</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">Did Not Finish</col>
         <col id="1" translatable="yes">dnf</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">Abandon</col>
+        <col id="1" translatable="yes">abd</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">Disqualify</col>
+        <col id="1" translatable="yes">dsq</col>
       </row>
       <row>
         <col id="0" translatable="yes">Add Starters</col>
