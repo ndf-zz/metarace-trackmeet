@@ -17,6 +17,9 @@ from metarace.riderdb import riderdb
 _log = logging.getLogger('databr')
 _log.setLevel(logging.DEBUG)
 
+# Exported Constants
+# TODO: type enums and badges
+
 # Internal Constants
 _CACHEPATH = '.db.cache'  # object hash cache
 
@@ -271,18 +274,9 @@ class DataBridge():
                     obj[k] = members
                 elif k == 'badges':
                     if isinstance(line[k], (set, list, tuple)):
-                        obj[k] = sorted(set(line[k]))
+                        obj[k] = sorted(line[k])
                 else:
                     obj[k] = line[k]
-
-            # check qualifying - TODO revisit this in event
-            #if k == 'rank' and topn and obj[k]:
-            #rank = obj[k]
-            #if rank <= topn:
-            #qual = True
-            #elif k == 'badges':
-            #if qual and 'qualified' not in obj['badges']:
-            #obj['badges'].append('qualified')
         return obj
 
     def _lookupCompetitor(self, cid, event):
