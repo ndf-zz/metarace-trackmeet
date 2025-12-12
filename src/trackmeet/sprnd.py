@@ -110,6 +110,10 @@ _CONFIG_SCHEMA = {
 class sprnd:
     """Data handling for sprint rounds."""
 
+    def get_startlist(self):
+        """Return startlist - TODO."""
+        return ''
+
     def force_running(self, start=None):
         """Ignore force start time."""
         self.meet.set_event_start(self.event)
@@ -138,7 +142,10 @@ class sprnd:
                 else:
                     contest = cid
             data = self.data_pack()
-            if contest is not None:
+            if heat is not None:
+                fragment = '/'.join((fragment, contest, heat))
+                data['subtitle'] = ' '.join((contest, 'Heat', heat))
+            elif contest is not None:
                 fragment = '/'.join((fragment, contest))
                 data['subtitle'] = contest
             self.meet.db.sendCurrent(self.event, fragment, data)
@@ -1458,20 +1465,21 @@ class sprnd:
                 lr = False
                 if cm['a'] > 1:
                     win = cm['ano']
-                    wtime = cm['aqual']
+                    wtime = tod.mktod(cm['aqual'])
                     lose = cm['bno']
-                    ltime = cm['bqual']
+                    ltime = tod.mktod(cm['bqual'])
                 elif cm['b'] > 1:
                     win = cm['bno']
-                    wtime = cm['bqual']
+                    wtime = tod.mktod(cm['bqual'])
                     lose = cm['ano']
-                    ltime = cm['aqual']
+                    ltime = tod.mktod(cm['aqual'])
                 if win is not None:
                     rank = placeoft
                     lr = True  # include rank on loser rider
                 if not cm['bye']:
                     if ltime is None or not self.otherstime:
                         ltime = tod.MAX
+                    _log.debug('Other ltime = %r', ltime)
                     others.append((ltime, -placeoft, lose, lr))
                     #cstack.insert(0, (lose, lr, ltime))
                 time = None
