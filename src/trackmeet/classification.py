@@ -165,6 +165,14 @@ class classification:
                 cr.set('event', 'showinfo', False)
             else:
                 _log.debug('Omnium already configured')
+        else:
+            # try to pre-load the places and showevents
+            if self.event['depends']:
+                if not cr.get('event', 'showevents'):
+                    cr.set('event', 'showevents', self.event['depends'])
+            if self.event['auto']:
+                if not cr.get('event', 'placesrc'):
+                    cr.set('event', 'placesrc', self.event['auto'])
 
         self.showevents = cr.get('event', 'showevents')
         self.placesrc = cr.get('event', 'placesrc')
