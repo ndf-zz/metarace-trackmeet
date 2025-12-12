@@ -1178,6 +1178,7 @@ class trackmeet:
         r.set_provisional(False)
 
         # collect a map of riders in events
+        onex = False
         inmap = set()
         for ev in self.edb:
             if ev['type'] not in ('session', 'break', 'classification',
@@ -1207,10 +1208,6 @@ class trackmeet:
                     sec.grey = True
                     sec.subheading = smeta['subtitle']
                     sec.footer = smeta['footer']
-                    if inmap:
-                        if sec.footer:
-                            sec.footer += '\u3000'
-                        sec.footer += '\u2715 indicates not on meet program'
                     aux = []
                     count = 0
                     for rid in self.rdb.biblistfromseries(series):
@@ -1242,6 +1239,7 @@ class trackmeet:
                             missflag = None
                             if nr.get_bibstr() not in inmap:
                                 missflag = '\u2715'
+                                onex = True
                             sec.lines.append(
                                 (nr['no'], missflag, rname, ', '.join(clist),
                                  None, None, False))
@@ -1249,6 +1247,10 @@ class trackmeet:
                             r.add_section(report.pagebreak(threshold=0.1))
                         r.add_section(sec)
                         seccount += 1
+                    if onex and inmap:
+                        if sec.footer:
+                            sec.footer += '\u3000'
+                        sec.footer += '\u2715 indicates not on meet program'
                 else:
                     _log.debug('Skipping series %r in rider listing', series)
 
