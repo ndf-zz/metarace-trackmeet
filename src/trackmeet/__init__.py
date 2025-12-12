@@ -1172,11 +1172,9 @@ class trackmeet:
         self.check_export_path()
         r = report.report()
         subtitlestr = 'Number Collection'
-        if self.subtitle:
-            subtitlestr = self.subtitle + ' - ' + subtitlestr
         self.report_strings(r)
-        r.strings['docstr'] = ''
-        r.strings['subtitle'] = subtitlestr
+        r.strings['docstr'] = subtitlestr
+        r.strings['subtitle'] = self.subtitle
         r.set_provisional(False)
 
         # collect a map of riders in events
@@ -1220,13 +1218,14 @@ class trackmeet:
                         if nr is not None and nr['series'] not in (
                                 'spare', 'cat', 'team', 'ds', 'series',
                                 'pilot'):
-                            namekey = ''.join(
-                                (nr['last'].lower(), nr['first'].lower()[0:2]))
-                            inevt = ''  # todo
-                            aux.append((namekey, count, inevt, nr))
-                            count += 1
-                        else:
-                            _log.warning('Missing details for rider %s', rid)
+                            nokey = strops.confopt_posint(nr['no'], 2000)
+                            if nokey < 2000:
+                                namekey = ''.join((nr['last'].lower(),
+                                                   nr['first'].lower()[0:2]))
+                                aux.append(
+                                    (namekey, strops.riderno_key(nr['no']),
+                                     count, nr))
+                                count += 1
                     if aux:
                         aux.sort()
                         for sr in aux:
@@ -1253,7 +1252,7 @@ class trackmeet:
                 else:
                     _log.debug('Skipping series %r in rider listing', series)
 
-        filebase = 'number_colllect'
+        filebase = 'number_collect'
         r.canonical = os.path.join(self.linkbase, filebase + '.json')
         ofile = os.path.join(EXPORTPATH, filebase + '.pdf')
         with metarace.savefile(ofile, mode='b') as f:
@@ -1310,12 +1309,13 @@ class trackmeet:
                         for rid in self.rdb.biblistfromseries(series):
                             nr = self.rdb.get_rider(rid)
                             if nr is not None:
-                                rno = strops.bibstr_key(nr['no'])
-                                aux.append((
-                                    rno,
-                                    count,
-                                    nr,
-                                ))
+                                if nr['no'] and nr['last']:
+                                    rno = strops.bibstr_key(nr['no'])
+                                    aux.append((
+                                        rno,
+                                        count,
+                                        nr,
+                                    ))
                             else:
                                 _log.warning('Missing details for rider %s',
                                              rid)
@@ -1323,8 +1323,11 @@ class trackmeet:
                             aux.sort()
                             for sr in aux:
                                 rh = sr[2]
+                                pc = rh.primary_cat()
+                                if not pc and rh['class']:
+                                    pc = rh['class']
                                 sec.lines.append(('', rh['no'], rh.resname(),
-                                                  rh['class'], None, None))
+                                                  pc, None, None))
                             r.add_section(sec)
                             seccount += 1
                     else:
@@ -1481,7 +1484,8 @@ class trackmeet:
                 if eh['refe']:  # overwrite ref no, even on specials
                     referno = eh['refe']
                     if referno != evno:
-                        target = 'ev-' + str(evno).translate(
+                        evanchor = evno.split('.')[0]
+                        target = 'ev-' + str(evanchor).translate(
                             strops.WEBFILE_UTRANS)
                 linkfile = None
                 if referno:
