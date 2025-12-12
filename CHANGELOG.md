@@ -12,6 +12,50 @@
 
 ### Security
 
+## [1.13.6]
+
+### Added
+
+   - include optional inrtroduction sections to printed program
+   - add prefix to data bridge telegraph topics
+   - add dnf, abd, dns, dsq handling on points and race handler
+   - add pursuit dual lane autotime
+   - number collection report
+
+### Changed
+
+   - convert stat button to use symbolic svg icon
+   - handle scratch race as points race with single sprint
+   - rename lap-based scoring type in points race from madison to laps
+   - suppress sub-fragments and intermediates in points handler when
+     type is scratch
+   - update race handler to use "In" and dnf codes instead of "DNF"
+   - start macro button also forces event finish and updates current
+   - suppress draw no on keirin/sprint result reports
+   - re-order riders in generic race after assigning places
+   - suppress heat numbers on sprint final anchor
+   - allow repeated/duplicate badges on data bridge rider records
+   - classification imports depends and autospec from event listing to
+     showevents and placesrc
+
+### Deprecated
+
+### Removed
+
+   - remove cmp() based sorters from points and race handler
+
+### Fixed
+
+   - uppercase rider series ID for rider listing
+   - fix broken data bridge session start time
+   - fix madison team listing on result report
+   - fix rider no reporting on team members in result report
+   - update and correct laps-down reporting in points race when scoring
+     type is laps-based.
+   - fix sorting of others by qualifying time in result gen
+
+### Security
+
 ## [1.13.5] - 2025-12-05
 
 ### Added
