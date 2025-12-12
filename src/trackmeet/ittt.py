@@ -1100,8 +1100,8 @@ class ittt:
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             if rh is None:
-                self.meet.rdb.add_empty(bib, self.series)
-                rh = self.meet.rdb.get_rider(bib, self.series)
+                self.meet.rdb.add_empty(rno, self.series)
+                rh = self.meet.rdb.get_rider(rno, self.series)
             rank = None
             dbrno = rh['no']
             rname = rh.resname()
@@ -1114,9 +1114,11 @@ class ittt:
             rtod = None
             dtime = None
             dtod = None
+            qualified = False
             if self.onestart:
                 pls = r[COL_PLACE]
                 if pls:
+                    qualified = self.qualified(pls)
                     if pls.isdigit():
                         rank = pls + '.'
                     else:
@@ -1146,6 +1148,9 @@ class ittt:
             if rank:
                 sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)
+                badges = []
+                if qualified:
+                    badges.append('qualified')
                 pname = None
                 if pilot:
                     sec.lines.append(pilot)
@@ -1180,6 +1185,7 @@ class ittt:
                     'info': rcls,
                     'result': rtime,
                     'extra': dtime,
+                    'badges': badges,
                 })
         doheats = False
         sv = []
@@ -1487,6 +1493,18 @@ class ittt:
                     strops.truncpad(rlbl, 17) + ' ' + self.bs.get_time())
         self.resend_current()
 
+
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        # qualification is based on place, not rank
+        ret = False
+        if self.event['topn'] and self._remcount is not None:  # integer
+            if place and place.isdigit():
+                qrank = int(place) + self._remcount
+                if qrank <= self.event['topn']:
+                    ret = True
+        return ret
+
     def fin_trig(self, sp, t):
         """Register a manual finish trigger."""
         lane = 'A' if sp is self.fs else 'B'
@@ -1567,6 +1585,8 @@ class ittt:
             compObj['result'] = elap.rawtime(self.precision)
             if downtod is not None:
                 compObj['extra'] = downtod.rawtime(2)
+            if self.qualified(place):
+                self._competitorA['badges'].append('qualified')
 
         # then report to scb, announce and result
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
@@ -2039,6 +2059,7 @@ class ittt:
         """Transfer places into model."""
         self.finished = False
         self.clearplaces()
+        self._remcount = None
         count = 0
         place = 1
         for t in self.results:
@@ -2072,6 +2093,7 @@ class ittt:
         self._standingstr = ''
         self._status = None
         if tcount > 0 and count > 0:
+            self._remcount = tcount - count
             if tcount == count:
                 self._standingstr = 'Result'
                 self.finished = True
@@ -2511,6 +2533,7 @@ class ittt:
             'info': rcls,
             'result': None,
             'extra': None,
+            'badges': [],
         }
         if lane == 'A':
             self._competitorA = dataObj
@@ -2854,6 +2877,7 @@ class ittt:
         self._endB = None
         self._eventlen = None
         self._weather = None
+        self._remcount = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

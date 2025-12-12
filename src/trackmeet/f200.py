@@ -805,9 +805,11 @@ class f200:
             rtod = None
             dtime = None
             dtod = None
+            qualified = False
             if self.onestart:
                 pls = r[COL_PLACE]
                 if pls:
+                    qualified = self.qualified(pls)
                     if pls.isdigit():
                         rank = pls + '.'
                     else:
@@ -830,6 +832,9 @@ class f200:
             if rank:
                 sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)
+                badges = []
+                if qualified:
+                    badges.append('qualified')
                 pname = None
                 if pilot:
                     sec.lines.append(pilot)
@@ -844,6 +849,7 @@ class f200:
                     'info': rcls,
                     'result': rtime,
                     'extra': dtime,
+                    'badges': badges,
                 })
 
         doheats = False
@@ -945,6 +951,17 @@ class f200:
             self.armfinish(sp)
         self.resend_current()
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        # qualification is based on place, not rank
+        ret = False
+        if self.event['topn'] and self._remcount is not None:  # integer
+            if place and place.isdigit():
+                qrank = int(place) + self._remcount
+                if qrank <= self.event['topn']:
+                    ret = True
+        return ret
+
     def fin_trig(self, sp, t):
         """Register finish trigger."""
         sp.finish(t)
@@ -979,6 +996,8 @@ class f200:
             self._competitorA['result'] = self._timeA.rawtime(3)
             if self._rankA > 1:
                 self._competitorA['extra'] = '+' + self._downA.rawtime(2)
+            if self.qualified(place):
+                self._competitorA['badges'].append('qualified')
 
         self.log_elapsed(sp.getrider(), self.curstart, t, split)
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
@@ -1205,6 +1224,7 @@ class f200:
         self.finished = False
         self.clearplaces()
         self._detail = {}
+        self._remcount = None
         count = 0
         place = 1
         for t in self.results:
@@ -1263,6 +1283,7 @@ class f200:
         self._standingstr = ''
         self._status = None
         if tcount > 0 and count > 0:
+            self._remcount = tcount - count
             if tcount == count:
                 self._standingstr = 'Result'
                 self.finished = True
@@ -1516,6 +1537,7 @@ class f200:
             'info': rcls,
             'result': None,
             'extra': None,
+            'badges': [],
         }
 
     def bibent_cb(self, entry, tp):
@@ -1813,6 +1835,7 @@ class f200:
         self._finlen = None
         self._lenlabel = None
         self._weather = None
+        self._remcount = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
