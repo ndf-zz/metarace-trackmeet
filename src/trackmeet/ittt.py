@@ -1493,7 +1493,6 @@ class ittt:
                     strops.truncpad(rlbl, 17) + ' ' + self.bs.get_time())
         self.resend_current()
 
-
     def qualified(self, place):
         """Indicate qualification if possible."""
         # qualification is based on place, not rank

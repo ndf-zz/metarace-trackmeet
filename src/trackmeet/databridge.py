@@ -340,8 +340,8 @@ class DataBridge():
             if 'competitor' in c:
                 cno = _ornull(c['competitor'])
             if cno is None:
-                _log.debug('Missing competitor no %r for result %s', c,
-                           fragment)
+                #_log.debug('Missing competitor no %r for result %s', c,
+                #fragment)
                 continue
             ret.append(self._updateResultLine(c, topn))
         return ret
@@ -362,7 +362,7 @@ class DataBridge():
             if 'competitor' in c:
                 cno = _ornull(c['competitor'])
             if cno is None:
-                _log.debug('Missing competitor no %r for %s', c, fragment)
+                #_log.debug('Missing competitor no %r for %s', c, fragment)
                 continue
             obj = {
                 'competitor': None,

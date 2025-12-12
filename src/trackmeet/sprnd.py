@@ -123,9 +123,8 @@ class sprnd:
         """Accept laps when idle/running"""
         ret = False
         if self.event['laps'] and prev is not None and laps is not None:
-            if prev - laps == 1:  # only announce decrement
-                if self.timerstat in ('idle', 'running'):
-                    ret = True
+            if prev - laps == 1 and laps < self.event['laps']:
+                ret = True
         return ret
 
     def resend_current(self):
@@ -179,37 +178,54 @@ class sprnd:
             subtype = None
             if pathlen == 2:  # competition
                 subtype = 'phases'
+                heattype = 'contests'
             elif pathlen == 3:  # phase
                 subtype = 'contests'
+                heattype = 'heats'
             elif pathlan == 4:  # contest
                 subtype = 'heats'
+                heattype = 'heats'
                 # in the case of final - this should not be possible
             data[subtype] = {}  # in parent fragment
             for cid, contest in self._sprintres.items(
             ):  # visit filled contests
                 # add the label entry
                 data[subtype][cid] = contest['subtitle']
+                subdata = {
+                    'competitionType': 'bunch',
+                    'subtitle': contest['subtitle'],
+                    'status': contest['status'],
+                }
                 if self.event['type'] == 'sprint final':
-                    _log.debug('TODO: expand heats of contests')
-                else:  # single-heat contests
-                    subdata = {
-                        'competitionType': 'bunch',
-                        'subtitle': contest['subtitle'],
-                        'status': contest['status'],
-                    }
-                    if contest['lines']:
-                        subdata['lines'] = contest['lines']
-                    if contest['competitors']:
-                        subdata['competitors'] = contest['competitors']
+                    subdata[heattype] = {}
+                    for hid, heat in contest['heats'].items():
+                        subdata[heattype][hid] = heat['subtitle']
+                        heatdata = {
+                            'competitionType': 'bunch',
+                            'subtitle': heat['subtitle'],
+                            'status': heat['status'],
+                        }
+                        if heat['lines']:
+                            heatdata['lines'] = heat['lines']
+                        if heat['competitors']:
+                            heatdata['competitors'] = heat['competitors']
+                        # publish heat to bridge
+                        subfrag = '/'.join((fragment, cid, hid))
+                        self.meet.db.updateFragment(self.event, subfrag,
+                                                    heatdata)
 
-                    # duplicate weather from event
-                    if 'weather' in data:
-                        subdata['weather'] = data['weather']
+                if contest['lines']:
+                    subdata['lines'] = contest['lines']
+                if contest['competitors']:
+                    subdata['competitors'] = contest['competitors']
 
-                    # publish inter to bridge
-                    subfrag = '/'.join((fragment, cid))
-                    self.meet.db.updateFragment(self.event, subfrag, subdata)
-            _log.debug('Write main object %s with data=%r', fragment, data)
+                # duplicate weather from event
+                if 'weather' in data:
+                    subdata['weather'] = data['weather']
+
+                # publish inter to bridge
+                subfrag = '/'.join((fragment, cid))
+                self.meet.db.updateFragment(self.event, subfrag, subdata)
             self.meet.db.updateFragment(self.event, fragment, data)
 
     def ridercb(self, rider):
@@ -255,7 +271,59 @@ class sprnd:
             # re-build the result cache
             for cr in self.contests:
                 cid = self.contestroot(cr[COL_CONTEST])
+
+                # duplicate sprnd from below
+                if cid not in self._sprintres:
+                    self._sprintres[cid] = {
+                        'subtitle': cid,
+                        'status': None,
+                        'competitors': [],
+                        'lines': [],
+                        'heats': {},
+                        'acompetitor': {},
+                        'bcompetitor': {},
+                        'aresult': {},
+                        'bresult': {},
+                    }
+                    subres = self._sprintres[cid]
+                    if cr[COL_A_NO] and cr[COL_A_NO].strip():
+                        subres['acompetitor']['competitor'] = cr[COL_A_NO]
+                        self._fill_competitor(subres['acompetitor'])
+                        subres['competitors'].append(subres['acompetitor'])
+                        for k in subres['acompetitor']:
+                            subres['aresult'][k] = subres['acompetitor'][k]
+                        subres['aresult']['badges'] = []
+                    if cr[COL_B_NO] and cr[COL_B_NO].strip():
+                        subres['bcompetitor']['competitor'] = cr[COL_B_NO]
+                        self._fill_competitor(subres['bcompetitor'])
+                        subres['competitors'].append(subres['bcompetitor'])
+                        for k in subres['bcompetitor']:
+                            subres['bresult'][k] = subres['bcompetitor'][k]
+                        subres['bresult']['badges'] = []
+                    if cr[COL_A_QUAL] is not None:
+                        subres['acompetitor']['qualTime'] = cr[COL_A_QUAL]
+                    if cr[COL_B_QUAL] is not None:
+                        subres['bcompetitor']['qualTime'] = cr[COL_B_QUAL]
+                subres = self._sprintres[cid]
                 heat = self.contestheat(cr[COL_CONTEST])
+                subres['heats'][heat] = {
+                    'subtitle': cid + ' Heat ' + heat,
+                    'status': None,
+                    'competitors': [],
+                    'lines': [],
+                }
+                heatres = subres['heats'][heat]
+                acompetitor = subres['acompetitor'].copy()
+                acompetitor['badges'] = []
+                heatres['competitors'].append(acompetitor)
+                aresult = subres['aresult'].copy()
+                aresult['badges'] = []
+                bcompetitor = subres['bcompetitor'].copy()
+                heatres['competitors'].append(bcompetitor)
+                bcompetitor['badges'] = []
+                bresult = subres['bresult'].copy()
+                bresult['badges'] = []
+
                 if cid not in self._rescache:
                     aqual = None
                     if cr[COL_A_QUAL] is not None:
@@ -286,20 +354,68 @@ class sprnd:
                     }
                 if cr[COL_WINNER]:
                     # heat has a winner
+                    result = None
+                    if cr[COL_200M] is not None:
+                        result = c[COL_200M].rawtime(2)
+                    heatres['status'] = 'provisional'
+
                     if cr[COL_WINNER] == cr[COL_A_NO]:
                         self._rescache[cid]['a'] += 1
+                        subres['aresult']['badges'].append('win')
                         if cr[COL_200M] is not None:
                             self._rescache[cid]['ares'][heat] = cr[
                                 COL_200M].rawtime(2)
                         else:
                             self._rescache[cid]['ares'][heat] = 'win'
+
+                        aresult['rank'] = 1
+                        aresult['class'] = '1.'
+                        aresult['result'] = result
+                        if self._rescache[cid][
+                                'a'] == 2:  # result has one extra win
+                            aresult['badges'].append('win')
+                            aresult['badges'].append('win')
+                            acompetitor['badges'].append('win')  # prev heat
+                        else:
+                            aresult['badges'].append('win')
+                        heatres['lines'].append(aresult)
+
+                        if not cr[COL_BYE]:
+                            bresult['rank'] = 2
+                            bresult['class'] = '2.'
+                            if self._rescache[cid]['b']:  # from previous heat
+                                bresult['badges'].append('win')
+                                bcompetitor['badges'].append('win')
+                            heatres['lines'].append(bresult)
                     else:
                         self._rescache[cid]['b'] += 1
+                        subres['bresult']['badges'].append('win')
                         if cr[COL_200M] is not None:
                             self._rescache[cid]['bres'][heat] = cr[
                                 COL_200M].rawtime(2)
                         else:
                             self._rescache[cid]['bres'][heat] = 'win'
+
+                        bresult['rank'] = 1
+                        bresult['class'] = '1.'
+                        bresult['result'] = result
+                        if self._rescache[cid][
+                                'b'] == 2:  # result has one extra win
+                            bresult['badges'].append('win')
+                            bresult['badges'].append('win')
+                            bcompetitor['badges'].append('win')  # prev heat
+                        else:
+                            bresult['badges'].append('win')
+                        heatres['lines'].append(bresult)
+
+                        if not cr[COL_BYE]:
+                            aresult['rank'] = 2
+                            aresult['class'] = '2.'
+                            if self._rescache[cid]['a']:  # from previous heat
+                                aresult['badges'].append('win')
+                                acompetitor['badges'].append('win')
+                            heatres['lines'].append(aresult)
+
             # count up resolved contests
             ccount = len(self._rescache)
             for cid in self._rescache:
@@ -308,6 +424,9 @@ class sprnd:
                     ccount -= 1  # one less contest result required
                 elif max(cm['a'], cm['b']) > 1:
                     dcount += 1  # this contest is decided
+
+            # TODO: fill in contest result when known
+            # fill a/b as below again in the contest - badges are already filled
         else:
             # visit all contests simply
             ccount = len(self.contests)
@@ -337,11 +456,8 @@ class sprnd:
                     for k in bcompetitor:
                         bresult[k] = bcompetitor[k]
                 if c[COL_A_QUAL] is not None:
-                    ## data type?
                     acompetitor['qualTime'] = c[COL_A_QUAL]
-                    _log.debug('Qual type is: %r', c[COL_A_QUAL])
                 if c[COL_B_QUAL] is not None:
-                    ## data type?
                     bcompetitor['qualTime'] = c[COL_B_QUAL]
 
                 if c[COL_BYE]:
@@ -1479,9 +1595,7 @@ class sprnd:
                 if not cm['bye']:
                     if ltime is None or not self.otherstime:
                         ltime = tod.MAX
-                    _log.debug('Other ltime = %r', ltime)
                     others.append((ltime, -placeoft, lose, lr))
-                    #cstack.insert(0, (lose, lr, ltime))
                 time = None
                 yield (win, rank, wtime, info)
                 placeoft += 1
