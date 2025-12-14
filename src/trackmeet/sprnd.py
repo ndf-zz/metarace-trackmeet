@@ -356,7 +356,7 @@ class sprnd:
                     # heat has a winner
                     result = None
                     if cr[COL_200M] is not None:
-                        result = c[COL_200M].rawtime(2)
+                        result = cr[COL_200M].rawtime(2)
                     heatres['status'] = 'provisional'
 
                     if cr[COL_WINNER] == cr[COL_A_NO]:
