@@ -53,6 +53,7 @@
    - update and correct laps-down reporting in points race when scoring
      type is laps-based.
    - fix sorting of others by qualifying time in result gen
+   - don't issue a downtime to a dns, dnf, abd or dsq rider (f200/ittt)
 
 ### Security
 
