@@ -1358,10 +1358,12 @@ class ittt:
                     if rank == 0:  # leader
                         nt = tod.agg(elap)
                         ot = splitdata[1][0]
-                        downtod = (nt - ot).truncate(2)
+                        if ot > nt:
+                            downtod = (nt - ot).truncate(2)
                     else:
                         ot = splitdata[0][0]
-                        downtod = (elap - ot).truncate(2)
+                        if elap >= ot:
+                            downtod = (elap - ot).truncate(2)
 
         if sid is not None:
             sdist = self.splitmap[sid]['dist']
@@ -1535,7 +1537,7 @@ class ittt:
             _log.warning('Last lap data not available for %r', sp.getrider())
 
         # update model with result
-        bib = sp.getrider().upper()  # just in casE?
+        bib = sp.getrider().upper()  # just in case?
         ri = self._getiter(bib)
         if ri is not None:
             self.settimes(ri, self.curstart, t, prev, sp.splits)
@@ -1549,7 +1551,8 @@ class ittt:
 
         # patch downtime for qualifying / non-race
         if downtod is None:
-            if len(self.results) > 1:  # at least two entries
+            if len(self.results) > 1 and self.results.istime(1):
+                # there are at least two real times in the list
                 if rank == 0:  # leader
                     nt = tod.agg(elap)
                     ot = self.results[1][0]
@@ -2632,7 +2635,9 @@ class ittt:
                 sec = report.preformat_text(secid)
                 sec.nobreak = True
                 sec.lines = self.traces[bib]
-                self.meet.print_report([sec], 'Timing Trace')
+                self.meet.print_report([sec],
+                                       'Timing Trace',
+                                       exportfile='timing_trace')
 
     def now_button_clicked_cb(self, button, entry=None):
         """Set specified entry to the current time."""

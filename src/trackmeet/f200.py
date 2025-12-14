@@ -981,7 +981,7 @@ class f200:
         if place.isdigit():
             self._rankA = int(place)
         self._downA = None
-        if len(self.results) > 1:
+        if len(self.results) > 1 and self.results.istime(1):
             # show a down/up time
             if self._rankA == 1:  # new leader
                 nt = tod.agg(elap)
@@ -1631,7 +1631,9 @@ class f200:
                 sec = report.preformat_text(secid)
                 sec.nobreak = True
                 sec.lines = self.traces[bib]
-                self.meet.print_report([sec], 'Timing Trace')
+                self.meet.print_report([sec],
+                                       'Timing Trace',
+                                       exportfile='timing_trace')
 
     def now_button_clicked_cb(self, button, entry=None):
         """Set specified entry to the current time."""
