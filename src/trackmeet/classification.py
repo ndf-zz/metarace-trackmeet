@@ -102,30 +102,32 @@ class classification:
         if not cr.load(self.configfile):
             _log.info('%r not read, loading defaults', self.configfile)
 
-        if self.event['info'] == 'Omnium':
+        if 'omnium' in self.event['competition']:
             # pre-load source events by searching event db unless config'd
             if not cr.get('event', 'placesrc'):
                 cr.set('event', 'medals', 'Gold Silver Bronze')
                 sources = {
-                    'Scratch': None,
-                    'Tempo': None,
-                    'Elimination': None,
-                    'Points': None
+                    'scratch': None,
+                    'tempo': None,
+                    'elimination': None,
+                    'points': None
                 }
-                mycat = self.event['prefix']
+                mycat = self.event['category']
+                mycomp = self.event['competition']
                 for e in self.meet.edb:
-                    if e['prefix'] == mycat and e['info'] in sources:
-                        sources[e['info']] = e['evid']
-                        _log.debug('Found event %s for %s', e['evid'],
-                                   e['info'])
-                if sources['Points'] is not None:
+                    if e['category'] == mycat and e['competition'] == mycomp:
+                        if e['phase'] in sources:
+                            sources[e['phase']] = e['evid']
+                            _log.debug('Found event %s for %s/%s/%s',
+                                       e['evid'], mycat, mycomp, e['phase'])
+                if sources['points'] is not None:
                     _log.debug('Using event %s for classification places',
-                               sources['Points'])
+                               sources['points'])
                     cr.set('event', 'placesrc',
-                           '%s:1-24' % (sources['Points'], ))
+                           '%s:1-24' % (sources['points'], ))
                 showevts = []
                 revevt = {}
-                for sid in ('Scratch', 'Tempo', 'Elimination', 'Points'):
+                for sid in ('scratch', 'tempo', 'elimination', 'points'):
                     if sources[sid] is not None:
                         showevts.append(sources[sid])
                         revevt[sources[sid]] = sid
@@ -145,13 +147,13 @@ class classification:
                             ecr.load(config)
                             ecr.set('event', 'inomnium', True)
                             stype = revevt[sid]
-                            if stype == 'Points':
-                                startevid = sources['Scratch']
+                            if stype == 'points':
+                                startevid = sources['scratch']
                                 if startevid is not None:
                                     ev.set_value('starters',
                                                  '%s:1-24' % (startevid, ))
-                            elif stype in ('Tempo', 'Elimination'):
-                                startevid = sources['Points']
+                            elif stype in ('tempo', 'elimination'):
+                                startevid = sources['points']
                                 if startevid is not None:
                                     ev.set_value('starters',
                                                  '%s:1-24' % (startevid, ))

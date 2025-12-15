@@ -37,6 +37,8 @@
    - allow repeated/duplicate badges on data bridge rider records
    - classification imports depends and autospec from event listing to
      showevents and placesrc
+   - use data bridge keys to look up omnium components instead of prefix
+     and info
 
 ### Deprecated
 

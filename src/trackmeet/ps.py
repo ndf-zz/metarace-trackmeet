@@ -362,17 +362,21 @@ class ps:
         if findsource:
             _log.debug('findsource')
             # search event db for source events unless already config'd
-            mycat = self.event['prefix']
+            mycat = self.event['category']
+            mycomp = self.event['competition']
             for sid in ('scr', 'tmp', 'elm'):
                 if not cr.has_option('sprintsource', sid):
-                    infostr = self.laplabels[sid]
+                    phase = self.laplabels[sid].lower()
                     for e in self.meet.edb:
-                        if e['prefix'] == mycat and e['info'] == infostr:
-                            _log.debug('Found match for %s source: %s %s %s',
-                                       sid, e['evid'], e['prefix'], e['info'])
-                            cr.set('sprintsource', sid,
-                                   '%s:1-24' % (e['evid'], ))
-                            break
+                        if e['category'] == mycat and e[
+                                'competition'] == mycomp:
+                            if e['phase'] == phase:
+                                _log.debug(
+                                    'Found match for %s source: %s %s %s', sid,
+                                    e['evid'], e['prefix'], e['info'])
+                                cr.set('sprintsource', sid,
+                                       '%s:1-24' % (e['evid'], ))
+                                break
                 else:
                     _log.debug('Sprint source already defined for %r', sid)
 
