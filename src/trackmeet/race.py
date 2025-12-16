@@ -208,20 +208,21 @@ class race:
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
-            if self.evtype == 'handicap':  # reqd?
+            if self.evtype == 'handicap':
                 if info:
-                    nr[COL_INFO] = str(info)
+                    nr[COL_INFO] = strops.mark2mark(info)
+                else:
+                    if dbr is not None:
+                        nr[COL_INFO] = strops.mark2mark(dbr['seed'])
             self.riders.append(nr)
-            if self.winopen:
-                if self.evtype in ['handicap', 'keirin'] and not self.onestart:
-                    self.reorderflag += 1
-                    GLib.timeout_add_seconds(1, self.delayed_reorder)
         else:
             if er is not None:
                 # Rider already in the model, set the info if
                 # event type is handicap or event is part of omnium
-                if self.evtype == 'handicap' or self.inomnium:
-                    if not er[COL_INFO] and info:  # don't overwrite if set
+                if not er[COL_INFO] and info:  # don't overwrite
+                    if self.evtype == 'handicap':
+                        er[COL_INFO] = strops.mark2mark(info)
+                    elif self.inomnium:
                         er[COL_INFO] = str(info)
 
     def dnfriders(self, biblist='', dnfcode='dnf'):
@@ -1319,7 +1320,10 @@ class race:
 
     def editinfo_cb(self, cell, path, new_text, col):
         """Info cell update callback."""
-        self.riders[path][col] = new_text.strip()
+        if self.evtype == 'handicap':
+            self.riders[path][COL_INFO] = strops.mark2mark(new_text.strip())
+        else:
+            self.riders[path][COL_INFO] = new_text.strip()
 
     def _editname_cb(self, cell, path, new_text, col):
         """Edit the rider name if possible."""

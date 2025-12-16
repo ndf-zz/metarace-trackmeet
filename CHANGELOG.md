@@ -21,6 +21,7 @@
    - add dnf, abd, dns, dsq handling on points and race handler
    - add pursuit dual lane autotime
    - number collection report
+   - pull handicap mark from seeding if set (pre 1.12 behavour)
 
 ### Changed
 
