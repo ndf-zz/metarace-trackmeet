@@ -12,12 +12,12 @@
     </columns>
     <data>
       <row>
-        <col id="0" translatable="yes">Withdraw</col>
-        <col id="1" translatable="yes">dnf</col>
-      </row>
-      <row>
         <col id="0" translatable="yes">Add Starters</col>
         <col id="1" translatable="yes">add</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">Withdraw</col>
+        <col id="1" translatable="yes">dnf</col>
       </row>
       <row>
         <col id="0" translatable="yes">Del Starters</col>

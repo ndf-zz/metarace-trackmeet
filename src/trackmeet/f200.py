@@ -576,6 +576,7 @@ class f200:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
+        self.reorder_startlist()
         for r in self.riders:
             ret.append(r[COL_NO])
         return ' '.join(ret)
@@ -824,11 +825,16 @@ class f200:
                         dtod = time - ftime
                         dtime = '+' + dtod.rawtime(2)
 
+                    spplc = 3
                     if r[COL_START] != tod.ZERO:
                         rtime = time.rawtime(3)
                     else:
                         rtime = time.rawtime(2) + '\u2007'
-
+                        spplc = 2
+                    if r[COL_100] is not None:
+                        sp100 = (r[COL_100] - r[COL_START]).truncate(spplc)
+                        stime = '(%s)\u3000' % (sp100.rawtime(spplc))
+                        rtime = stime + rtime
             if rank:
                 sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)

@@ -75,9 +75,9 @@ _STD_CONTESTS = {
     9: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', 'bye', '8v9'),
     10: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'),
     11: ('bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'),
-    12: ('bye', 'bye', 'bye', 'bye', '5v12', '6v11', '7v10', '8v9'),
+    12: ('1v12', '2v11', '3v10', '4v9', '5v8', '6v7'),
     13: ('bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'),
-    14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    #14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     15: ('bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     16: ('1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     # [3.2.050]
@@ -102,7 +102,7 @@ _CONFIG_SCHEMA = {
         'type': 'bool',
         'subtext': 'Rank by 200m time?',
         'hint': 'Rank losers by qualifying time [3.2.050]',
-        'defer': True,
+        'defer': False,
     },
 }
 
@@ -658,8 +658,6 @@ class sprnd:
         """Load race config from disk."""
         self.contests.clear()
         def_otherstime = False
-        if self.event['plac'] and self.event['plac'] > 4:
-            def_otherstime = True
 
         cr = jsonconfig.config({
             'event': {
@@ -1576,6 +1574,7 @@ class sprnd:
                 rank = None
                 wtime = None
                 ltime = None
+                lsort = tod.MAX
                 cm = self._rescache[cid]
                 info = None
                 lr = False
@@ -1593,9 +1592,9 @@ class sprnd:
                     rank = placeoft
                     lr = True  # include rank on loser rider
                 if not cm['bye']:
-                    if ltime is None or not self.otherstime:
-                        ltime = tod.MAX
-                    others.append((ltime, -placeoft, lose, lr))
+                    if self.otherstime and ltime is not None:
+                        lsort = ltime
+                    others.append((lsort, -placeoft, lose, lr, ltime))
                 time = None
                 yield (win, rank, wtime, info)
                 placeoft += 1
@@ -1604,6 +1603,7 @@ class sprnd:
                 rank = None
                 wtime = None
                 ltime = None
+                lsort = tod.MAX
                 info = None
                 win = c[COL_A_NO]
                 lose = c[COL_B_NO]
@@ -1613,20 +1613,21 @@ class sprnd:
                     win = c[COL_WINNER]
                     if lose == win:  # win went to 'B' rider
                         lose = c[COL_A_NO]
-                        wtime = c[COL_B_QUAL]
-                        ltime = c[COL_A_QUAL]
+                        wtime = tod.mktod(c[COL_B_QUAL])
+                        ltime = tod.mktod(c[COL_A_QUAL])
                     else:
-                        wtime = c[COL_A_QUAL]
-                        ltime = c[COL_B_QUAL]
+                        wtime = tod.mktod(c[COL_A_QUAL])
+                        ltime = tod.mktod(c[COL_B_QUAL])
                     lr = True  # include rank on loser rider
-                ltime = tod.MAX if ltime is None else ltime
-                others.append((ltime, -placeoft, lose, lr))
+                if ltime is None or not self.otherstime:
+                    ltime = tod.MAX
+                others.append((lsort, -placeoft, lose, lr, ltime))
                 time = None
                 yield (win, rank, wtime, info)
                 placeoft += 1
 
         others.sort()
-        for (time, junk, bib, lr) in others:
+        for (j1, j2, bib, lr, time) in others:
             rank = None
             info = None  # rel/dsq/etc?
             if time == tod.MAX:

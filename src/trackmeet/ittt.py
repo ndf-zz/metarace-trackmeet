@@ -844,6 +844,7 @@ class ittt:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
+        self.reorder_startlist()
         for r in self.riders:
             ret.append(r[COL_NO])
         return ' '.join(ret)

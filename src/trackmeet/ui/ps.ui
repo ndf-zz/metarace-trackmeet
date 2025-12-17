@@ -11,6 +11,10 @@
     </columns>
     <data>
       <row>
+        <col id="0" translatable="yes">Add Starters</col>
+        <col id="1" translatable="yes">add</col>
+      </row>
+      <row>
         <col id="0" translatable="yes">Gain Lap</col>
         <col id="1" translatable="yes">gain</col>
       </row>
@@ -23,6 +27,10 @@
         <col id="1" translatable="yes">dns</col>
       </row>
       <row>
+        <col id="0" translatable="yes">Withdraw</col>
+        <col id="1" translatable="yes">wdw</col>
+      </row>
+      <row>
         <col id="0" translatable="yes">Did Not Finish</col>
         <col id="1" translatable="yes">dnf</col>
       </row>
@@ -33,10 +41,6 @@
       <row>
         <col id="0" translatable="yes">Disqualify</col>
         <col id="1" translatable="yes">dsq</col>
-      </row>
-      <row>
-        <col id="0" translatable="yes">Add Starters</col>
-        <col id="1" translatable="yes">add</col>
       </row>
       <row>
         <col id="0" translatable="yes">Del Starters</col>

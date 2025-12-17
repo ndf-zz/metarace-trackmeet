@@ -214,6 +214,8 @@ class race:
                 else:
                     if dbr is not None:
                         nr[COL_INFO] = strops.mark2mark(dbr['seed'])
+            elif self.inomnium:
+                nr[COL_INFO] = str(info)
             self.riders.append(nr)
         else:
             if er is not None:
@@ -768,6 +770,7 @@ class race:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
+        self.reorder_riders()
         for r in self.riders:
             ret.append(r[COL_NO])
         return ' '.join(ret)

@@ -470,6 +470,7 @@ class ps:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
+        self.reorder_riderno()
         for r in self.riders:
             ret.append(r[RES_COL_NO])
         return ' '.join(ret)
@@ -550,6 +551,8 @@ class ps:
                 else:
                     if r[RES_COL_DNFCODE]:
                         rank = r[RES_COL_DNFCODE]
+                        if rank.isdigit():
+                            rank = int(rank)
                     else:
                         rank = 'dnf'
 
@@ -982,8 +985,46 @@ class ps:
             aux.sort()
             self.riders.reorder([a[3] for a in aux])
 
+    def get_curevent(self):
+        """Return sprint id for last completed sprint"""
+        csid = None
+        for s in self.sprints:
+            if s[SPRINT_COL_PLACES]:
+                csid = s[SPRINT_COL_ID]
+        return csid
+
+    def inomnium_startlist(self, curevent, program=False):
+        """Return an omnium sub-event startlist with current standing."""
+        ret = []
+        # assume source is a single event
+        srcev = None
+        if curevent == 'scr':
+            srcev = 'tmp'
+        elif curevent == 'tmp':
+            srcev = 'elm'
+        else:
+            _log.error('Invalid in-omnium event: %s', curevent)
+        if srcev is not None and srcev in self.sprintsource:
+            evid = self.sprintsource[srcev].split(':', 1)[0]
+            _log.debug('Omnium In-event "after" %s from: %s', curevent, evid)
+            tev = self.meet.get_event(evid, False)
+            if tev is not None:
+                tev.loadconfig()
+                ret.extend(tev.startlist_report())
+            else:
+                _log.error('Unable to load omnium event %s', evid)
+
+            # Add current standing
+            ret.extend(self.result_report())
+        return ret
+
     def startlist_report(self, program=False):
         """Return a startlist report."""
+        curevent = self.get_curevent()
+        if self.evtype == 'omnium':
+            if curevent in ('scr', 'tmp'):
+                return self.inomnium_startlist(curevent)
+
         ret = []
         sec = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
@@ -1048,15 +1089,15 @@ class ps:
                     else:
                         col2.append([rankCol, rno, rname, inf, None, None])
                         if pilot:
-                            col2.lines.append(pilot)
+                            col2.append(pilot)
             else:
                 cnt += 1
                 sec.lines.append([rankCol, rno, rname, inf, None, None])
                 if pilot:
                     sec.lines.append(pilot)
 
-                docolour = self.event['info'].lower() == 'madison'
-                if docolour or self.teamnames:  # was self.evtype == 'madison':
+                docolour = self.series.startswith('tm')
+                if docolour or self.teamnames:
                     # add the black/red entry
                     if rh is not None:
                         tvec = rh['members'].split()
@@ -1135,6 +1176,10 @@ class ps:
         sec.footer = self.meet.footerline(self.event, count=cnt, label=ptype)
 
         ret.append(sec)
+
+        if self.evtype == 'omnium' and curevent == 'elm':
+            # append a standing to the startlist
+            ret.extend(self.result_report())
         return ret
 
     def do_startlist(self):
@@ -1462,9 +1507,24 @@ class ps:
         self.resend_current()
         return False
 
+    def _available(self):
+        """Return the "next available rank" [3.2.251]."""
+        cnt = 0
+        for r in self.riders:
+            if r[RES_COL_INRACE]:
+                cnt += 1
+        if cnt == 0:
+            cnt = len(self.riders)
+        return cnt
+
     def dnfriders(self, biblist='', dnfcode='dnf'):
         """Remove listed bibs from the race."""
         recalc = False
+        if dnfcode == 'wdw':
+            avail = self._available()
+            dnfcode = str(avail)
+            _log.debug('Withraw rider, curavail = %d', avail)
+
         for bib in biblist.split():
             r = self._getrider(bib)
             if r is not None:
@@ -2050,6 +2110,9 @@ class ps:
         elif acode == 'lost':
             self.loselap(strops.reformat_biblist(rlist))
             entry.set_text('')
+        elif acode == 'wdw':
+            self.dnfriders(strops.reformat_biblist(rlist), 'wdw')
+            entry.set_text('')
         elif acode == 'abd':
             self.dnfriders(strops.reformat_biblist(rlist), 'abd')
             entry.set_text('')
@@ -2239,14 +2302,18 @@ class ps:
             if lastsprint < 0:
                 lastsprint = dnfcode
             if not r[RES_COL_INRACE]:
-                if r[RES_COL_DNFCODE]:
-                    dnfcode = strops.dnfcode_key(r[RES_COL_DNFCODE])
-                else:
-                    dnfcode = strops.dnfcode_key('dnf')
                 ptotal = -9999
                 laps = -9999
-                lastsprint = dnfcode
-                dnfcode = strops.dnfcode_key(r[RES_COL_DNFCODE])
+                if r[RES_COL_DNFCODE]:
+                    if r[RES_COL_DNFCODE].isdigit():
+                        dnfcode = strops.dnfcode_key('')
+                        lastsprint = int(r[RES_COL_DNFCODE])
+                    else:
+                        dnfcode = strops.dnfcode_key(r[RES_COL_DNFCODE])
+                        lastsprint = dnfcode
+                else:
+                    dnfcode = strops.dnfcode_key('dnf')
+                    lastsprint = dnfcode
             if self.scoring == 'laps':
                 aux.append((
                     -laps,

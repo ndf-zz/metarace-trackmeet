@@ -320,6 +320,22 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkMenuItem" id="menu_race_ucistartlist">
+                            <property name="label">UCI Startlist</property>
+                            <property name="visible">True</property>
+                            <property name="sensitive">False</property>
+                            <signal name="activate" handler="menu_race_ucistartlist_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkMenuItem" id="menu_race_uciresult">
+                            <property name="label">UCI Result</property>
+                            <property name="visible">True</property>
+                            <property name="sensitive">False</property>
+                            <signal name="activate" handler="menu_race_uciresult_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkSeparatorMenuItem" id="menu_race_sep1">
                             <property name="visible">True</property>
                           </object>
@@ -897,6 +913,20 @@
     <child>
       <object class="GtkMenuItem" id="event_result">
         <property name="label">Result</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_report_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_ucistartlist">
+        <property name="label">UCI Startlist</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="event_popup_report_cb"/>
+      </object>
+    </child>
+    <child>
+      <object class="GtkMenuItem" id="event_uciresult">
+        <property name="label">UCI Result</property>
         <property name="visible">True</property>
         <signal name="activate" handler="event_popup_report_cb"/>
       </object>
