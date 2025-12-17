@@ -415,6 +415,12 @@ class sprnd:
                                 aresult['badges'].append('win')
                                 acompetitor['badges'].append('win')
                             heatres['lines'].append(aresult)
+                else:
+                    # contest is not complete
+                    for win in range(self._rescache[cid]['a']):
+                        acompetitor['badges'].append('win')
+                    for win in range(self._rescache[cid]['b']):
+                        bcompetitor['badges'].append('win')
 
             # count up resolved contests
             ccount = len(self._rescache)
