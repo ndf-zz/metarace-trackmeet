@@ -40,6 +40,7 @@
      showevents and placesrc
    - use data bridge keys to look up omnium components instead of prefix
      and info
+   - omnium startlist mid-event includes standings
 
 ### Deprecated
 
@@ -57,6 +58,7 @@
      type is laps-based.
    - fix sorting of others by qualifying time in result gen
    - don't issue a downtime to a dns, dnf, abd or dsq rider (f200/ittt)
+   - restore broken mid competition omnium seedings
 
 ### Security
 

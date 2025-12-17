@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.6a2'
+__version__ = '1.13.6a4'
 
 import sys
 import gi
@@ -636,6 +636,139 @@ class trackmeet:
             ret = self.rdb.get_rider(rno, rser)
         return ret
 
+    def ucistartlist(self, event):
+        """Return generic UCI style startlist sections for event."""
+        _log.debug('UCI Startlist: %s', event.evno)
+        ret = []
+        secid = 'startlist-' + str(event.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
+        sec.heading = event.event.get_info(showevno=True)
+        lapstring = strops.lapstring(event.event['laps'])
+        subv = []
+        for subp in (
+                lapstring,
+                event.event['distance'],
+                event.event['rules'],
+        ):
+            if subp:
+                subv.append(subp)
+        sec.subheading = '\u3000'.join(subv)
+
+        for rno in event.get_startlist().split():
+            rname = ''
+            ruci = ''
+            rnat = ''
+            pilot = None
+            dbr = self.rdb.get_rider(rno, event.series)
+            if dbr is not None:
+                rno = dbr['no']
+                rname = dbr.resname()
+                ruci = dbr['uciid']
+                rnat = dbr['nation']
+                pilot = self.rdb.get_pilot_line(dbr, uci=True)
+            if event.series.startswith(
+                    't') and not event.series.startswith('tm'):
+                rno = ''
+            rk = ''
+            info = ''
+            sec.lines.append([rk, rno, rname, ruci, rnat, info])
+            if pilot:
+                sec.lines.append(pilot)
+            if event.series.startswith('t'):
+                col = 'black'
+                members = []
+                for member in dbr['members'].split():
+                    trh = self.rdb.fetch_bibstr(member)
+                    if trh is not None:
+                        trno = trh['no']
+                        trname = trh.resname()
+                        truci = trh['uciid']
+                        trnat = trh['nation']
+                        if event.series.startswith('tm'):  # madison
+                            trno = col
+                            col = 'red'
+                        sec.lines.append(
+                            [' ', trno, trname, truci, trnat, None])
+
+        ret.append(sec)
+        return ret
+
+    def uciresult(self, event):
+        """Return generic UCI style result sections for event."""
+        _log.debug('UCI Result: %s', event.evno)
+        ret = []
+        secid = 'result-' + str(event.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
+        sec.nobreak = True
+        sec.heading = event.event.get_info(showevno=True)
+        lapstring = strops.lapstring(event.event['laps'])
+        subv = []
+        for subp in (lapstring, event.event['distance'], event.event['rules'],
+                     event.standingstr()):
+            if subp:
+                subv.append(subp)
+        sec.subheading = '\u3000'.join(subv)
+
+        for r in event.result_gen():
+            rno = r[0]
+            rname = ''
+            ruci = ''
+            rnat = ''
+            pilot = None
+            dbr = self.rdb.get_rider(rno, event.series)
+            if dbr is not None:
+                rno = dbr['no']
+                rname = dbr.resname()
+                ruci = dbr['uciid']
+                rnat = dbr['nation']
+                pilot = self.rdb.get_pilot_line(dbr, uci=True)
+            if event.series.startswith(
+                    't') and not event.series.startswith('tm'):
+                rno = ''
+            rk = r[1]
+            if isinstance(rk, int):
+                rk = str(rk) + '.'
+            info = ''
+            _log.debug('evtype=%s r=%r', event.evtype, r)
+            if event.evtype in ('omnium', 'madison', 'points', 'tempo'):
+                sec.units = 'pt'
+                if r[3] is not None:
+                    info = str(r[3])
+                else:
+                    pass
+            else:
+                if isinstance(r[2], tod.tod):
+                    b = (r[2].timeval * 0).as_tuple()
+                    places = min(-(b.exponent), 5)
+                    info = r[2].rawtime(places)
+                elif r[2] is not None:
+                    info = str(r[2])
+                else:
+                    pass
+            sec.lines.append([rk, rno, rname, ruci, rnat, info])
+            if pilot:
+                sec.lines.append(pilot)
+            if event.series.startswith('t'):
+                col = 'black'
+                members = []
+                for member in dbr['members'].split():
+                    trh = self.rdb.fetch_bibstr(member)
+                    if trh is not None:
+                        trno = trh['no']
+                        trname = trh.resname()
+                        truci = trh['uciid']
+                        trnat = trh['nation']
+                        if event.series.startswith('tm'):  # madison
+                            trno = col
+                            col = 'red'
+                        sec.lines.append(
+                            [' ', trno, trname, truci, trnat, None])
+        ret.append(sec)
+        if len(event.decisions) > 0:
+            ret.append(self.decision_section(event.decisions))
+        return ret
+
     ## Event action callbacks
     def eventdb_cb(self, evlist, reptype=None):
         """Make a report containing start lists for the events listed."""
@@ -663,6 +796,10 @@ class trackmeet:
                     reptypestr = 'Results'
                     # from event list only include the individual events
                     secs.extend(h.result_report(recurse=False))
+                elif reptype == 'uci startlist':
+                    secs.extend(self.ucistartlist(h))
+                elif reptype == 'uci result':
+                    secs.extend(self.uciresult(h))
                 elif reptype == 'program':
                     reptypestr = 'Program of Events'
                     secs.extend(h.startlist_report(program=True))
@@ -763,6 +900,20 @@ class trackmeet:
         if self.curevent is not None:
             sections.extend(self.curevent.startlist_report())
         self.print_report(sections)
+
+    def menu_race_ucistartlist_activate_cb(self, menuitem, data=None):
+        """Generate a generic UCI startlist with Nations and UCI ID."""
+        sections = []
+        if self.curevent is not None:
+            sections.extend(self.ucistartlist(self.curevent))
+        self.print_report(sections)
+
+    def menu_race_uciresult_activate_cb(self, menuitem, data=None):
+        """Generate a generic UCI result with Nations and UCI ID."""
+        sections = []
+        if self.curevent is not None:
+            sections.extend(self.uciresult(self.curevent))
+        self.print_report(sections, 'Result')
 
     def menu_race_result_activate_cb(self, menuitem, data=None):
         """Generate a result."""
@@ -933,6 +1084,8 @@ class trackmeet:
             self.menu_race_abort.set_sensitive(True)
             self.menu_race_startlist.set_sensitive(True)
             self.menu_race_result.set_sensitive(True)
+            self.menu_race_ucistartlist.set_sensitive(True)
+            self.menu_race_uciresult.set_sensitive(True)
             self.menu_race_properties.set_sensitive(True)
             self.menu_race_decisions.set_sensitive(True)
             self.curevent.show()
@@ -1062,6 +1215,8 @@ class trackmeet:
             self.menu_race_abort.set_sensitive(False)
             self.menu_race_startlist.set_sensitive(False)
             self.menu_race_result.set_sensitive(False)
+            self.menu_race_ucistartlist.set_sensitive(False)
+            self.menu_race_uciresult.set_sensitive(False)
             # grab temporary handle to event to be closed
             delevent = self.curevent
             # invalidate curevent handle and then cleanup
@@ -3389,6 +3544,8 @@ class trackmeet:
         self.menu_race_abort = b.get_object('menu_race_abort')
         self.menu_race_startlist = b.get_object('menu_race_startlist')
         self.menu_race_result = b.get_object('menu_race_result')
+        self.menu_race_ucistartlist = b.get_object('menu_race_ucistartlist')
+        self.menu_race_uciresult = b.get_object('menu_race_uciresult')
         self.race_box = b.get_object('race_box')
         self.new_race_pop = b.get_object('menu_race_new_types')
 
