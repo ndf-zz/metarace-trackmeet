@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.6a4'
+__version__ = '1.13.6a7'
 
 import sys
 import gi
@@ -967,7 +967,7 @@ class trackmeet:
             eh = self.curevent.event
             if self.showevno and eh['type'] not in ('break', 'session'):
                 self.scbwin = scbwin.scbclock(self.scb,
-                                              'Event ' + eh.get_evno(),
+                                              'Event ' + eh.get_bridge_evno(),
                                               eh['pref'], eh['info'])
             else:
                 self.scbwin = scbwin.scbclock(self.scb, eh['pref'], eh['info'])
@@ -1172,6 +1172,7 @@ class trackmeet:
                         ## load the place set map rank -> [(rider,seed),..]
                         h = mkrace(self, e, False)
                         h.loadconfig()
+
                         # Source is finished or omnium and dest not class
                         if h.finished or (h.evtype == 'omnium'
                                           and race.evtype not in
@@ -1195,6 +1196,10 @@ class trackmeet:
                         for p in placeset:
                             if p in evplacemap:
                                 for ri in evplacemap[p]:
+                                    # look up members if series matches
+                                    #if race.series.startswith('t'):
+                                    #_log.debug('Fetch members')
+                                    # race.get_members()
                                     race.addrider(ri[0], ri[1])
                         self.autorecurse.remove(evno)
                     else:
@@ -1437,11 +1442,22 @@ class trackmeet:
         r.strings['subtitle'] = subtitlestr
         r.set_provisional(self.provisional)
 
-        # add introduction section
+        # update the index of events
+        self.updateindex()
+
+        # Intro matter
         count = 0
+
+        # index of events
+        if self._indexsec:
+            r.add_section(self._indexsec)
+            count += 1
+
+        # add introduction section
         for s in self.introsections():
             r.add_section(s)
             count += 1
+
         if count > 0:
             r.add_section(report.pagebreak(0.01))
             _log.debug('Added %d intro sections to program', count)
@@ -1618,7 +1634,10 @@ class trackmeet:
         rsec.heading = 'Results'
         sec = report.event_index('eventindex')
         sec.heading = 'Index of Events'
+        isec = report.section('eventindex')
+        isec.heading = 'Event Index'
         #sec.subheading = Date?
+        ievno = None
         for eh in self.edb:
             if eh['result'] and eh['type'] in (
                     'classification', 'team aggregate',
@@ -1634,8 +1653,15 @@ class trackmeet:
 
             if eh['inde']:  # include in index?
                 evno = eh['evid']
-                if eh['type'] in ['break', 'session']:
+                if eh['type'] in ('break', 'session'):
                     evno = None
+                    if eh['type'] == 'session' and ievno != ' ':
+                        isec.lines.append(['', '', ''])
+                        ievno = ' '
+                    else:
+                        ievno = evno
+                else:
+                    ievno = evno
                 referno = evno
                 target = None
                 if eh['refe']:  # overwrite ref no, even on specials
@@ -1649,14 +1675,20 @@ class trackmeet:
                     linkfile = 'event_' + str(referno).translate(
                         strops.WEBFILE_UTRANS)
                 descr = ' '.join([eh['pref'], eh['info']]).strip()
-                extra = None  # STATUS INFO -> progress?
+                extra = None
+                if eh['laps']:
+                    extra = '%s\u2006Lap%s' % (eh['laps'],
+                                               strops.plural(eh['laps']))
+                rules = eh['rules']  # progression
                 if eh['evov']:
                     evno = eh['evov'].strip()
                 sec.lines.append([evno, None, descr, extra, linkfile, target])
+                isec.lines.append([ievno, ' ', descr, extra, None, rules])
         if rsec.lines:
             orep.add_section(rsec)
         if sec.lines:
             orep.add_section(sec)
+            self._indexsec = isec
         basename = 'index'
         orep.canonical = os.path.join(self.linkbase, basename + '.json')
         ofile = os.path.join(EXPORTPATH, basename + '.html')
@@ -2078,12 +2110,12 @@ class trackmeet:
                 if place.isdigit():
                     placeval = int(place)
                     rank = strops.rank2ord(str(count))
-                    pvec.append('%s $%d: ____' % (rank, placeval))
+                    pvec.append('%s $%d: ___' % (rank, placeval))
                 elif place == '-':
                     rank = strops.rank2ord(str(count))
-                    pvec.append('%s: ____' % (rank, ))
+                    pvec.append('%s: ___' % (rank, ))
                 else:
-                    pvec.append('%s: ____' % (place, ))
+                    pvec.append('%s: ___' % (place, ))
         if pvec:
             prizes = '\u2003'.join(pvec)
         return prizes
@@ -2103,9 +2135,9 @@ class trackmeet:
         evno = ''
         srcev = event.get_evno()
         if self.showevno and event['type'] != 'break':
-            srcno = strops.confopt_posint(srcev, None)
+            srcno = event.get_evnum()
             if srcno is not None:
-                evno = 'Ev ' + srcev
+                evno = 'Ev ' + str(int(srcno))
         info = event['info']
         prefix = event['pref']
         ret = ' '.join((evno, prefix, info, tail)).strip()
@@ -2945,6 +2977,7 @@ class trackmeet:
             return False
         schema = _EVENT_SCHEMA
         short = 'Edit event %s' % (evno)
+        ref.set_value('dirty', True)
         res = uiutil.options_dlg(window=self.window,
                                  title=short,
                                  sections={
@@ -3001,7 +3034,6 @@ class trackmeet:
         else:
             for k in res['edb']:
                 if res['edb'][k][0]:
-                    ref.set_value('dirty', True)
                     self._ecb(evno)
                     break
         return False
@@ -3487,6 +3519,7 @@ class trackmeet:
         self.linkbase = '.'
         self.lapscore = None
         self._prevlap = None
+        self._indexsec = None
 
         # printer preferences
         paper = Gtk.PaperSize.new_custom('metarace-full', 'A4 for reports',

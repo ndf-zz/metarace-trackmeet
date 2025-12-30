@@ -567,7 +567,7 @@ class DataBridge():
         cats = c.get_cats()
         if not cats and not c['series']:
             # workaround for riderlist without categories provided
-            # eg carnival type events with flat number listing and
+            # eg carnival type meets with flat number listing and
             # incomplete event categories
             cats = [c for c in self._categories]
             if 'PARA' in cats:
@@ -675,27 +675,29 @@ class DataBridge():
     def updateEventIndex(self):
         """Update the event index object and publish"""
         dataObj = {}
-        for k, e in self._events.items():
-            dataObj[k] = {}
-            dstObj = dataObj[k]
-            for k in (
-                    'title',
-                    'subtitle',
-                    'info',
-                    'extra',
-                    'distance',
-                    'laps',
-                    'session',
-                    'category',
-                    'competition',
-                    'phase',
-                    'fragments',
-                    'startTime',
-            ):
-                if k in e:
-                    dstObj[k] = e[k]
-                else:
-                    dstObj[k] = None
+        for k, elist in self._events.items():
+            dataObj[k] = []
+            for e in elist:
+                dstObj = {}
+                for v in (
+                        'title',
+                        'subtitle',
+                        'info',
+                        'extra',
+                        'distance',
+                        'laps',
+                        'session',
+                        'category',
+                        'competition',
+                        'phase',
+                        'fragments',
+                        'startTime',
+                ):
+                    if v in e:
+                        dstObj[v] = _ornull(e[v])
+                    else:
+                        dstObj[v] = None
+                dataObj[k].append(dstObj)
 
         # write out the event index
         meetPath = self.getPath('events')
@@ -740,7 +742,7 @@ class DataBridge():
                 sessOb['label'] = _ornull(meeteh['prefix'])
             else:
                 # fragment, event, break or something else
-                evid = _asevno(meeteh.get_evno())
+                evid = _ornull(meeteh.get_bridge_evno())
                 phase = _ornull(meeteh['phase'])
                 category = _ornull(meeteh['category'])
                 competition = _ornull(meeteh['competition'])
@@ -753,23 +755,22 @@ class DataBridge():
                 # add event to index if flagged
                 if meeteh['index']:
                     if evid not in self._events:
-                        evtObj = {
-                            'title':
-                            _ornull(meeteh['prefix']),  # should be title
-                            'subtitle':
-                            _ornull(meeteh['info']),  # should be subtitle
-                            'info': _ornull(meeteh['rule']),
-                            'distance': _ornull(meeteh['dist']),
-                            'laps': _ornull(meeteh['laps']),
-                            'session': sessionid,
-                            'category': category,
-                            'competition': competition,
-                            'phase': phase,
-                            'fragments': [],
-                            'startTime': meeteh['start'],
-                        }
-                        self._events[evid] = evtObj
-                    evtObj = self._events[evid]
+                        self._events[evid] = []
+                    evtObj = {
+                        'title': _ornull(meeteh['prefix']),  # should be title
+                        'subtitle':
+                        _ornull(meeteh['info']),  # should be subtitle
+                        'info': _ornull(meeteh['rule']),
+                        'distance': _ornull(meeteh['dist']),
+                        'laps': _ornull(meeteh['laps']),
+                        'session': sessionid,
+                        'category': category,
+                        'competition': competition,
+                        'phase': phase,
+                        'fragments': [],
+                        'startTime': meeteh['start'],
+                    }
+                    self._events[evid].append(evtObj)
 
                 # update links if event contributes to data bridge
                 if fragment:
@@ -807,16 +808,17 @@ class DataBridge():
                     # add fragment to evtObj if on schedule
                     if evtObj is not None:
                         if fragment not in evtObj['fragments']:
-                            evtObj = self._events[evid]
                             evtObj['fragments'].append(fragment)
                         if evid and evid not in compObj['events']:
-                            compObj['events'][evid] = evtLabel
+                            compObj['events'][evid] = []
+                        compObj['events'][evid].append(evtLabel)
 
                         # add event & final to session entry
                         if sessionid:
                             sessOb = self._sessions[sessionid]
                             if evid not in sessOb['events']:
-                                sessOb['events'][evid] = evtInfo
+                                sessOb['events'][evid] = []
+                            sessOb['events'][evid].append(evtInfo)
                             if phase == 'final':
                                 if catComp not in sessOb['finals']:
                                     sessOb['finals'][catComp] = evtInfo
@@ -863,7 +865,7 @@ class DataBridge():
             self._current['path'] = meetPath
             self._current['title'] = event.get_info()
             self._current['info'] = _ornull(event['rules'])
-            self._current['event'] = _asevno(event.get_evno())
+            self._current['event'] = _ornull(event.get_bridge_evno())
             self._current['session'] = _ornull(event['session'])
             self._current['competitorType'] = event.competitor_type()
             self._current['category'] = path[0]
