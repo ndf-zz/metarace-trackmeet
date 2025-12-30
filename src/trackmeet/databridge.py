@@ -71,6 +71,14 @@ def _ornull(text):
     return text if text else None
 
 
+def _asevno(text):
+    """Return a sanitised event number"""
+    ret = None
+    with suppress(Exception):
+        ret = str(int(float(text)))
+    return ret
+
+
 def _mkstartlist():
     """Return an empty, ordered startlist object dict"""
     ret = {}
@@ -556,11 +564,16 @@ class DataBridge():
 
     def addCompetitor(self, c):
         """Add competitor to data source"""
-        cat = c.primary_cat()
-        if not cat:
-            cat = 'O'  # put unassigned competitors in Open cat
+        cats = c.get_cats()
+        if not cats and not c['series']:
+            # workaround for riderlist without categories provided
+            # eg carnival type events with flat number listing and
+            # incomplete event categories
+            cats = [c for c in self._categories]
+            if 'PARA' in cats:
+                cats.remove('PARA')
         sportClass = c['class']
-        if cat == 'PARA' and not sportClass:
+        if 'PARA' in cats and not sportClass:
             # pick off first subcat as sport class
             for ecat in c.get_cats():
                 if ecat != 'PARA':
@@ -569,76 +582,80 @@ class DataBridge():
             else:
                 _log.info('Para competitor without sport class: %s',
                           c.resname_bib())
-        if cat not in self._categories:
-            _log.debug('Adding cat = %r for competitor %s', cat, c.resname())
-            self.addCategory(cat)
+        for cat in cats:
+            if cat not in self._categories:
+                _log.debug('Adding cat = %r for competitor %s', cat,
+                           c.resname())
+                self.addCategory(cat)
 
-        compObj = self._categories[cat]['competitors']
-        ser = c['series'].lower()
-        cno = c['no']
-        if ser == 'pilot':  # Para Pilot
-            compObj['pilots'][cno] = {
-                'number': cno,
-                'class': _ornull(sportClass),
-                'first': _ornull(c['first'].strip().title()),
-                'last': _ornull(c['last'].strip().upper()),
-                'nation': _ornull(c['nation']),
-                'uciid': _ornull(c['uciid']),
-                'dob': _ornull(c['dob']),
-                'state': _ornull(c['data']),
-                'org': _ornull(c['org']),
-                'resname': _ornull(c.resname()),
-            }
-        elif ser.startswith('tm'):  # Madison pair
-            blackRid = None
-            redRid = None
-            for m in c['members'].split():
-                lr = self._m.rdb.fetch_bibstr(m)  # creates new if not found
-                if blackRid is None:
-                    blackRid = lr['no']
-                elif redRid is None:
-                    redRid = lr['no']
-                else:
-                    _log.debug('Extra madison members ignored for %s',
-                               c.resname_bib())
-                    break
-            compObj['pairs'][cno] = {
-                'number': cno,
-                'name': _ornull(c['first'].strip()),
-                'nation': _ornull(c['nation']),
-                'state': _ornull(c['data']),
-                'black': blackRid,
-                'red': redRid,
-                'org': _ornull(c['org']),
-                'resname': _ornull(c.resname()),
-            }
-        elif ser.startswith('t'):  # Team Entry
-            members = []
-            for m in c['members'].split():
-                lr = self._m.rdb.fetch_bibstr(m)  # creates new if not found
-                members.append(lr['no'])
-            compObj['teams'][cno] = {
-                'code': cno,
-                'name': _ornull(c['first'].strip()),
-                'nation': _ornull(c['nation']),
-                'state': _ornull(c['data']),
-                'members': members,
-                'org': _ornull(c['org']),
-                'resname': _ornull(c.resname()),
-            }
-        else:  # Rider
-            compObj['riders'][cno] = {
-                'number': cno,
-                'class': _ornull(sportClass),
-                'first': _ornull(c['first'].strip().title()),
-                'last': _ornull(c['last'].strip().upper()),
-                'nation': _ornull(c['nation']),
-                'uciid': _ornull(c['uciid']),
-                'dob': _ornull(c['dob']),
-                'state': _ornull(c['data']),
-                'org': _ornull(c['org']),
-                'resname': _ornull(c.resname()),
-            }
+            compObj = self._categories[cat]['competitors']
+            ser = c['series'].lower()
+            cno = c['no']
+            if ser == 'pilot':  # Para Pilot
+                compObj['pilots'][cno] = {
+                    'number': cno,
+                    'class': _ornull(sportClass),
+                    'first': _ornull(c['first'].strip().title()),
+                    'last': _ornull(c['last'].strip().upper()),
+                    'nation': _ornull(c['nation']),
+                    'uciid': _ornull(c['uciid']),
+                    'dob': _ornull(c['dob']),
+                    'state': _ornull(c['data']),
+                    'org': _ornull(c['org']),
+                    'resname': _ornull(c.resname()),
+                }
+            elif ser.startswith('tm'):  # Madison pair
+                blackRid = None
+                redRid = None
+                for m in c['members'].split():
+                    lr = self._m.rdb.fetch_bibstr(
+                        m)  # creates new if not found
+                    if blackRid is None:
+                        blackRid = lr['no']
+                    elif redRid is None:
+                        redRid = lr['no']
+                    else:
+                        _log.debug('Extra madison members ignored for %s',
+                                   c.resname_bib())
+                        break
+                compObj['pairs'][cno] = {
+                    'number': cno,
+                    'name': _ornull(c['first'].strip()),
+                    'nation': _ornull(c['nation']),
+                    'state': _ornull(c['data']),
+                    'black': blackRid,
+                    'red': redRid,
+                    'org': _ornull(c['org']),
+                    'resname': _ornull(c.resname()),
+                }
+            elif ser.startswith('t'):  # Team Entry
+                members = []
+                for m in c['members'].split():
+                    lr = self._m.rdb.fetch_bibstr(
+                        m)  # creates new if not found
+                    members.append(lr['no'])
+                compObj['teams'][cno] = {
+                    'code': cno,
+                    'name': _ornull(c['first'].strip()),
+                    'nation': _ornull(c['nation']),
+                    'state': _ornull(c['data']),
+                    'members': members,
+                    'org': _ornull(c['org']),
+                    'resname': _ornull(c.resname()),
+                }
+            else:  # Rider
+                compObj['riders'][cno] = {
+                    'number': cno,
+                    'class': _ornull(sportClass),
+                    'first': _ornull(c['first'].strip().title()),
+                    'last': _ornull(c['last'].strip().upper()),
+                    'nation': _ornull(c['nation']),
+                    'uciid': _ornull(c['uciid']),
+                    'dob': _ornull(c['dob']),
+                    'state': _ornull(c['data']),
+                    'org': _ornull(c['org']),
+                    'resname': _ornull(c.resname()),
+                }
 
     def updateCompetitors(self):
         """Update source data for competitors"""
@@ -723,7 +740,7 @@ class DataBridge():
                 sessOb['label'] = _ornull(meeteh['prefix'])
             else:
                 # fragment, event, break or something else
-                evid = meeteh.get_evno()
+                evid = _asevno(meeteh.get_evno())
                 phase = _ornull(meeteh['phase'])
                 category = _ornull(meeteh['category'])
                 competition = _ornull(meeteh['competition'])
@@ -846,7 +863,7 @@ class DataBridge():
             self._current['path'] = meetPath
             self._current['title'] = event.get_info()
             self._current['info'] = _ornull(event['rules'])
-            self._current['event'] = event.get_evno()
+            self._current['event'] = _asevno(event.get_evno())
             self._current['session'] = _ornull(event['session'])
             self._current['competitorType'] = event.competitor_type()
             self._current['category'] = path[0]
