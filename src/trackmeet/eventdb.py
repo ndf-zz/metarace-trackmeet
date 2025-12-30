@@ -513,9 +513,9 @@ class event:
         """Return a concatenated and stripped event information string."""
         rv = []
         if showevno and self['type'] != 'break':
-            evno = strops.confopt_posfloat(self.get_evno())
+            evno = self.get_evnum()
             if evno:
-                rv.append('Event\u2006' + self.get_evno())
+                rv.append('Event\u2006' + str(int(evno)))
         if self['pref']:
             rv.append(self['pref'])
         if self['info']:
@@ -563,6 +563,20 @@ class event:
         if ov:
             evno = ov
         return evno
+
+    def get_evnum(self):
+        """Return event number or None if non-numeric"""
+        ret = None
+        with suppress(Exception):
+            ret = float(self.get_evno())
+        return ret
+
+    def get_bridge_evno(self):
+        """Return data bridge event ID"""
+        ret = self.get_evno()
+        with suppress(Exception):
+            ret = str(int(self.get_evnum()))
+        return ret
 
     def set_notify(self, callback=None):
         """Set or clear the notify callback for the event."""
