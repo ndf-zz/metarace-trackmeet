@@ -444,9 +444,9 @@ class ps:
         else:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
-        # Force team names unless event is a real madison
-        self.teamnames = (self.series.startswith('t')
-                          and self.event['info'].lower() != 'madison')
+        # Suppress team numbers on team unless madison teams (pairs)
+        self.noteamno = (self.series.startswith('t')
+                         and not self.series.startswith('tm'))
 
         _log.debug('recalc')
         self.recalculate()
@@ -630,12 +630,16 @@ class ps:
 
             self.meet.db.updateFragment(self.event, fragment, data)
 
-    def result_report(self, recurse=True):
+    def result_report(self, recurse=True, standing=False):
         """Return a list of report sections containing the race result."""
         self.recalculate()
         ret = []
         sec = report.section('result')
-        sec.heading = self.event.get_info(showevno=True)
+        if standing:
+            # omnium standing within event
+            sec.heading = 'Omnium Points'
+        else:
+            sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
@@ -651,7 +655,7 @@ class ps:
         for r in self.riders:
             rno = ''
             dbrno = r[RES_COL_NO]
-            if not self.teamnames:
+            if not self.noteamno:
                 rno = dbrno
             rname = ''
             rcat = ''
@@ -665,6 +669,8 @@ class ps:
                 rnat = rh['nation']
                 rcat = rh['class']
                 pilot = self.meet.rdb.get_pilot_line(rh)
+            if r[RES_COL_INFO]:
+                rcat = r[RES_COL_INFO]
             plstr = ''
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
@@ -757,7 +763,7 @@ class ps:
         ret.append(sec)
 
         # output intermediate sprints
-        if self.showinters:
+        if self.showinters and not standing:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
                 subtitle = s[SPRINT_COL_LABEL]
@@ -1015,7 +1021,7 @@ class ps:
                 _log.error('Unable to load omnium event %s', evid)
 
             # Add current standing
-            ret.extend(self.result_report())
+            ret.extend(self.result_report(recurse=False, standing=True))
         return ret
 
     def startlist_report(self, program=False):
@@ -1058,7 +1064,7 @@ class ps:
             members = None
             dbrno = r[RES_COL_NO]
             rno = ''
-            if not self.teamnames:
+            if not self.noteamno:
                 rno = dbrno
             rname = ''
             rnat = None
@@ -1097,7 +1103,7 @@ class ps:
                     sec.lines.append(pilot)
 
                 docolour = self.series.startswith('tm')
-                if docolour or self.teamnames:
+                if docolour or self.noteamno:
                     # add the black/red entry
                     if rh is not None:
                         tvec = rh['members'].split()
@@ -1165,6 +1171,10 @@ class ps:
                 while cnt < self.event['plac']:
                     sec.lines.append([rankCol, None, None, None, None, None])
                     cnt += 1
+        # if madison and type is prog - try to balance cols using multiple of 6
+        if program and self.series.startswith('tm'):
+            while len(sec.lines) % 6 != 0:
+                sec.lines.append([' ', ' ', None])
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
@@ -1478,7 +1488,7 @@ class ps:
                     name, club, cls = self._getname(r[RES_COL_NO],
                                                     width=name_w)
                     plstr = r[RES_COL_PLACE] + '.'
-                    if not self.teamnames:
+                    if not self.noteamno:
                         bstr = r[RES_COL_NO]
                     pstr = str(r[RES_COL_TOTAL])
                     if self.evtype == 'scratch':
@@ -2478,7 +2488,7 @@ class ps:
         self.evtype = event['type']
         self.series = event['seri']
         self.configfile = meet.event_configfile(self.evno)
-        self.teamnames = False  # updated in loadconfig
+        self.noteamno = False  # updated in loadconfig
 
         self.readonly = not ui
         rstr = ''
