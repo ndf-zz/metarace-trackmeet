@@ -612,6 +612,7 @@ class teamagg(classification.classification):
                     pmap[cnt] = pval
                 else:
                     _log.warning('Invalid points %r in %s', pt, label)
+                lp = pval
         return pmap
 
     def teamkey(self, teamname):
