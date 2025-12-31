@@ -62,6 +62,12 @@ _CONFIG_SCHEMA = {
         'default': '40 32 26 22 18 14 12 10 8 6 4 2 +',
         'attr': 'afinalpts',
     },
+    'alabel': {
+        'prompt': 'A Final Label:',
+        'hint': 'Label for A Points',
+        'default': 'A Final',
+        'attr': 'afinallbl',
+    },
     'bfinal': {
         'prompt': 'B Finals:',
         'hint': 'List of events considered B finals',
@@ -73,6 +79,12 @@ _CONFIG_SCHEMA = {
         'hint': 'List of points awarded for B finals',
         'default': '20 16 13 11 9 7 6 5 4 3 2 1 +',
         'attr': 'bfinalpts',
+    },
+    'blabel': {
+        'prompt': 'B Final Label:',
+        'hint': 'Label for B Points',
+        'default': 'B Final',
+        'attr': 'bfinallbl',
     },
     'aheat': {
         'prompt': 'A Heats:',
@@ -86,6 +98,12 @@ _CONFIG_SCHEMA = {
         'default': '20 16 13 11 9 7 6 4 2 +',
         'attr': 'aheatpts',
     },
+    'ahlbl': {
+        'prompt': 'A Heat Label:',
+        'hint': 'Label for A Heat Points',
+        'default': 'A Heat',
+        'attr': 'ahlbl',
+    },
     'bheat': {
         'prompt': 'B Heats:',
         'hint': 'List of events considered B heats',
@@ -97,6 +115,12 @@ _CONFIG_SCHEMA = {
         'hint': 'List of points awarded for B heats',
         'default': '10 8 7 6 5 4 3 2 1 +',
         'attr': 'bheatpts',
+    },
+    'bhlbl': {
+        'prompt': 'B Heat Label:',
+        'hint': 'Label for B Heat Points',
+        'default': 'B Heat',
+        'attr': 'bhlbl',
     },
     'bestindiv': {
         'prompt': 'Best Indiv:',
@@ -134,6 +158,12 @@ _CONFIG_SCHEMA = {
         'hint': 'Provide a separate round and series tally with result',
         'attr': 'seriestally',
         'default': True,
+    },
+    'curlabel': {
+        'prompt': 'Cur Meet:',
+        'attr': 'curlabel',
+        'default': None,
+        'hint': 'Label for current meet',
     },
     'prelabel': {
         'prompt': 'Prev Meet:',
@@ -292,6 +322,8 @@ class teamagg(classification.classification):
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
+        if self.curlabel:
+            subvec.append(self.curlabel)
         substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
@@ -485,8 +517,8 @@ class teamagg(classification.classification):
                         evseries = ''
                         if evid in self.meet.edb:
                             evh = self.meet.edb[evid]
-                            evno = evh['evov'] if evh['evov'] else evid
-                            evkey = strops.confopt_posint(evno, cnt)
+                            evno = evh.get_evno()
+                            evkey = strops.confopt_float(evh.get_evnum(), cnt)
                             evname = self.meet.racenamecat(evh,
                                                            slen=28,
                                                            halign='l').strip()
@@ -753,19 +785,19 @@ class teamagg(classification.classification):
         self.load_startpts()
 
         sourcecount = 0
-        pmap = self.load_pointsmap(self.bheatpts, 'B Heat')
+        pmap = self.load_pointsmap(self.bheatpts, self.bhlbl)
         for evno in self.bheat.split():
             sourcecount += 1
             self.accumulate_event(evno, pmap)
-        pmap = self.load_pointsmap(self.aheatpts, 'A Heat')
+        pmap = self.load_pointsmap(self.aheatpts, self.ahlbl)
         for evno in self.aheat.split():
             sourcecount += 1
             self.accumulate_event(evno, pmap)
-        pmap = self.load_pointsmap(self.bfinalpts, 'B Final')
+        pmap = self.load_pointsmap(self.bfinalpts, self.bfinallbl)
         for evno in self.bfinal.split():
             sourcecount += 1
             self.accumulate_event(evno, pmap)
-        pmap = self.load_pointsmap(self.afinalpts, 'A Final')
+        pmap = self.load_pointsmap(self.afinalpts, self.afinallbl)
         for evno in self.afinal.split():
             sourcecount += 1
             self.accumulate_event(evno, pmap)
@@ -907,16 +939,21 @@ class teamagg(classification.classification):
         # aggregate properties
         self.afinal = ''
         self.afinalpts = ''
+        self.afinallbl = ''
         self.bfinal = ''
         self.bfinalpts = ''
+        self.bfinallbl = ''
         self.aheat = ''
         self.aheatpts = ''
+        self.ahlbl = ''
         self.bheat = ''
         self.bheatpts = ''
+        self.bhlbl = ''
         self.bestindiv = 2
         self.bestteam = 1
         self.seriestally = False
         self.showdetail = False
+        self.curlabel = None
         self.prelabel = None
         self.predata = None
         self.prevpts = {}  # points after previous round
@@ -1050,6 +1087,8 @@ class indivagg(teamagg):
         sec.heading = self.event.get_info(showevno=True)
         lapstring = strops.lapstring(self.event['laps'])
         subvec = []
+        if self.curlabel:
+            subvec.append(self.curlabel)
         substr = '\u3000'.join(
             (lapstring, self.event['distance'], self.event['rules'])).strip()
         if substr:
