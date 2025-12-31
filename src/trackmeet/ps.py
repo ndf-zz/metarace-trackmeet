@@ -475,6 +475,14 @@ class ps:
             ret.append(r[RES_COL_NO])
         return ' '.join(ret)
 
+    def get_inriders(self):
+        """Return list (array) of rider nos in race."""
+        ret = []
+        for r in self.riders:
+            if r[RES_COL_INRACE]:
+                ret.append(r[RES_COL_NO])
+        return ret
+
     def saveconfig(self):
         """Save race to disk."""
         if self.readonly:
@@ -2058,7 +2066,12 @@ class ps:
 
     def ps_ctrl_places_activate_cb(self, entry, data=None):
         """Handle places entry"""
-        places = strops.reformat_placelist(entry.get_text())
+        pstr = entry.get_text()
+        if pstr == '-':  # all in riders placed 1st
+            pstr = '-'.join(self.get_inriders())
+            _log.debug('Auto-fill places with: %s', pstr)
+        # TODO elif pstr == '+':  # all in riders places placed as ranked
+        places = strops.reformat_placelist(pstr)
         #if False and self.series.startswith('t') and not self.series.startswith('tm'):
         # This does not work as expected. TODO: Consider alternate storage/notation
         # for riders in a teams event :/
