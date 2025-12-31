@@ -12,7 +12,7 @@
 
 ### Security
 
-## [1.13.6]
+## [1.13.6] - 2025-12-31
 
 ### Added
 
@@ -22,6 +22,9 @@
    - add pursuit dual lane autotime
    - number collection report
    - pull handicap mark from seeding if set (pre 1.12 behavour)
+   - fetch normalised event number from eventdb
+   - provide '-' shortcut in points places to place all in riders 1st
+   - allow configuration of aggregate type labels, and current meet label
 
 ### Changed
 
@@ -41,8 +44,11 @@
    - use data bridge keys to look up omnium components instead of prefix
      and info
    - omnium startlist mid-event includes standings
-
-### Deprecated
+   - automatically add blank cat riders to bridge categories
+     as workaround for carnival type meets
+   - allow ps info col to override rider class label
+   - databridge event numbers map to list of events instead of single
+     value
 
 ### Removed
 
@@ -59,8 +65,8 @@
    - fix sorting of others by qualifying time in result gen
    - don't issue a downtime to a dns, dnf, abd or dsq rider (f200/ittt)
    - restore broken mid competition omnium seedings
-
-### Security
+   - normalise event number presentation across reports scb and data bridge
+   - fix aggregate points extension
 
 ## [1.13.5] - 2025-12-05
 
