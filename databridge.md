@@ -42,7 +42,8 @@ or HTTP.
      or a virtual standing if the result is partially determined.
    - Event: A heat, contest or phase on the meet schedule
      identified uniquely by a short string, usually numeric. Eg:
-     38 "Event 38: W15 Sprint Semi Final Heat 3, if required"
+     38 "Event 38: W15 Sprint Semi Final Heat 3, if required". Normally
+     referred to as "Event number", but may also be any string.
      An event may reference more than one specific path, and include
      multiple competition fragments.
    - Fragment: A competition, phase, contest or heat.
@@ -51,9 +52,9 @@ or HTTP.
      Eg: 1 "Day 1, Morning Session" [7]
    - Schedule of events: An ordered list of sessions that make up the
      entire meet.
-   - Index of events: A mapping between event IDs, sessions and 
+   - Index of events: A mapping between event numbers, sessions and
      the associated category, competition, phase and fragments.
-   - Current event: The event ID and unique meet path for the current
+   - Current event: The event number and unique meet path for the current
      action on the track and its associated competition fragment.
    - Home Straight: The home straight is on the same side as the finish line.
    - Back Straight: The back straight is on the opposite side to
@@ -323,7 +324,7 @@ status | STATUS | Status of result for this fragment
 title | string | Category/Competition for this fragment
 subtitle | string | Phase... string for this fragment
 info | string | Event information from schedule
-event | string | Event ID for the current event, break or presentation
+event | string | Event number for the current event, break or presentation
 session | string | Session ID for the current session
 category | string | Category ID
 competition | string | Competition ID
@@ -379,7 +380,7 @@ location | string | Meet location
 label | string | Text label for session
 startTime | 8601DT | Session start time
 endTime | 8601DT | Estimated session end time
-events | object | Mapping of event IDs to Schedule labels
+events | object | Mapping of event numbers to lists of Schedule labels
 finals | object | Mapping of CAT/COMP ids to competition title
 
 Example:
@@ -392,7 +393,7 @@ Example:
 	 "label": "Session 1",
 	 "startTime": "2025-03-24T13:00:00+10:00",
 	 "endTime": "2025-03-24T18:30:00+10:00",
-	 "events": {"1": "Men Elite Sprint Qualifying", ...
+	 "events": {"1": ["Men Elite Sprint Qualifying", ...
 	 "finals": {"ME/sprint": "Men Elite Sprint", ...
 	}
 
@@ -457,7 +458,7 @@ category | string | Competitor category ID
 title | string | Category/Competition title eg "Men Elite Sprint"
 status | STATUS | Competition overall result status
 phases | object | Mapping of phase ids to phase labels
-events | object | Map of event IDs in competition to event Labels
+events | object | Map of event numbers in competition to a list of event Labels
 warnings | object | Mapping of competitor IDs to warnings
 records | object | Mapping of record types to RECORD objects
 
@@ -479,7 +480,7 @@ Example:
 	 "status": "virtual",
 	 "phases": {"qualifying": "Qualifying", ...
 	 "warnings": {},
-	 "events": {"1": "Qualifying", ...
+	 "events": {"1": ["Qualifying", ...
 	 "records": {"national": {...
 	}
 
