@@ -803,6 +803,7 @@ class f200:
             rnat = rh['nation']
             pilot = self.meet.rdb.get_pilot_line(rh)
             rtime = None
+            rstime = None
             rtod = None
             dtime = None
             dtod = None
@@ -834,9 +835,9 @@ class f200:
                     if r[COL_100] is not None:
                         sp100 = (r[COL_100] - r[COL_START]).truncate(spplc)
                         stime = '(%s)\u3000' % (sp100.rawtime(spplc))
-                        rtime = stime + rtime
+                        rstime = stime + rtime
             if rank:
-                sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
+                sec.lines.append([rank, rno, rname, rcls, rstime, dtime])
                 finriders.add(rno)
                 badges = []
                 if qualified:
