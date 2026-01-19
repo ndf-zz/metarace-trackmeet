@@ -109,7 +109,7 @@ _CONFIG_SCHEMA = {
         'prompt': 'Heat 2 Evno:',
         'hint': 'Event number label for heat 2 (if best of three)',
         'control': 'short',
-        'default': '',
+        'default': None,
         'defer': True,
         'attr': 'heat2evno',
     },
@@ -117,7 +117,7 @@ _CONFIG_SCHEMA = {
         'prompt': 'Heat 3 Evno:',
         'hint': 'Event number label for heat 3 (if best of three)',
         'control': 'short',
-        'default': '',
+        'default': None,
         'defer': True,
         'attr': 'heat3evno',
     },
@@ -319,9 +319,7 @@ class sprnd:
         ccount = 0
         dcount = 0
         self._sprintres = {}
-        # !!! collect and update all the subfrag results here
         if self.event['type'] == 'sprint final':
-            ## TODO: sprint res includes heats
             # re-build the result cache
             for cr in self.contests:
                 cid = self.contestroot(cr[COL_CONTEST])
@@ -415,7 +413,8 @@ class sprnd:
 
                     if cr[COL_WINNER] == cr[COL_A_NO]:
                         self._rescache[cid]['a'] += 1
-                        subres['aresult']['badges'].append('win')
+                        if not cr[COL_BYE]:
+                            subres['aresult']['badges'].append('win')
                         if cr[COL_200M] is not None:
                             self._rescache[cid]['ares'][heat] = cr[
                                 COL_200M].rawtime(2)
@@ -425,13 +424,15 @@ class sprnd:
                         aresult['rank'] = 1
                         aresult['class'] = '1.'
                         aresult['result'] = result
-                        if self._rescache[cid][
-                                'a'] == 2:  # result has one extra win
-                            aresult['badges'].append('win')
-                            aresult['badges'].append('win')
-                            acompetitor['badges'].append('win')  # prev heat
-                        else:
-                            aresult['badges'].append('win')
+                        if not cr[COL_BYE]:
+                            if self._rescache[cid]['a'] == 2:
+                                # result has one extra win
+                                aresult['badges'].append('win')
+                                aresult['badges'].append('win')
+                                # save to competitor handle
+                                acompetitor['badges'].append('win')
+                            else:
+                                aresult['badges'].append('win')
                         heatres['lines'].append(aresult)
 
                         if not cr[COL_BYE]:
@@ -443,7 +444,8 @@ class sprnd:
                             heatres['lines'].append(bresult)
                     else:
                         self._rescache[cid]['b'] += 1
-                        subres['bresult']['badges'].append('win')
+                        if not cr[COL_BYE]:
+                            subres['bresult']['badges'].append('win')
                         if cr[COL_200M] is not None:
                             self._rescache[cid]['bres'][heat] = cr[
                                 COL_200M].rawtime(2)
@@ -453,13 +455,15 @@ class sprnd:
                         bresult['rank'] = 1
                         bresult['class'] = '1.'
                         bresult['result'] = result
-                        if self._rescache[cid][
-                                'b'] == 2:  # result has one extra win
-                            bresult['badges'].append('win')
-                            bresult['badges'].append('win')
-                            bcompetitor['badges'].append('win')  # prev heat
-                        else:
-                            bresult['badges'].append('win')
+                        if not cr[COL_BYE]:
+                            if self._rescache[cid]['b'] == 2:
+                                # result has one extra win
+                                bresult['badges'].append('win')
+                                bresult['badges'].append('win')
+                                # save to competitor handle
+                                bcompetitor['badges'].append('win')
+                            else:
+                                bresult['badges'].append('win')
                         heatres['lines'].append(bresult)
 
                         if not cr[COL_BYE]:
@@ -470,23 +474,52 @@ class sprnd:
                                 acompetitor['badges'].append('win')
                             heatres['lines'].append(aresult)
                 else:
-                    # contest is not complete
-                    for win in range(self._rescache[cid]['a']):
-                        acompetitor['badges'].append('win')
-                    for win in range(self._rescache[cid]['b']):
-                        bcompetitor['badges'].append('win')
+                    if not cr[COL_BYE]:
+                        # contest is not complete
+                        for win in range(self._rescache[cid]['a']):
+                            acompetitor['badges'].append('win')
+                        for win in range(self._rescache[cid]['b']):
+                            bcompetitor['badges'].append('win')
 
-            # count up resolved contests
+            # check for resolved contests
             ccount = len(self._rescache)
             for cid in self._rescache:
+                contestWon = False
                 cm = self._rescache[cid]
                 if cm['bye']:
                     ccount -= 1  # one less contest result required
+                    contestWon = True
                 elif max(cm['a'], cm['b']) > 1:
                     dcount += 1  # this contest is decided
+                    contestWon = True
 
-            # TODO: fill in contest result when known
-            # fill a/b as below again in the contest - badges are already filled
+                if contestWon:
+                    subres = self._sprintres[cid]
+                    aresult = subres['aresult']
+                    bresult = subres['bresult']
+                    subres['status'] = 'provisional'
+                    if cm['bye']:
+                        aresult['rank'] = 1
+                        aresult['class'] = '1.'
+                        subres['lines'].append(aresult)
+                    elif cm['a'] > cm['b']:  # A rider is winner
+                        aresult['rank'] = 1
+                        aresult['class'] = '1.'
+                        aresult['result'] = result
+                        bresult['rank'] = 2
+                        bresult['class'] = '2.'
+                        subres['lines'].append(aresult)
+                        subres['lines'].append(bresult)
+                    elif cm['b'] > cm['a']:  # B rider is winner
+                        bresult['rank'] = 1
+                        bresult['class'] = '1.'
+                        bresult['result'] = result
+                        aresult['rank'] = 2
+                        aresult['class'] = '2.'
+                        subres['lines'].append(bresult)
+                        subres['lines'].append(aresult)
+                    else:
+                        _log.info('Programming error: cm inconsitent %r', cm)
         else:
             # visit all contests simply
             ccount = len(self.contests)
@@ -1778,22 +1811,40 @@ class sprnd:
                         cid + ':',
                         [
                             None, cm['ano'], aname, cm['aqual'], None, None,
-                            None, None
+                            None, None, True
                         ],
-                        [None, ' ', ' ', None, None, None, None, None],
+                        [None, ' ', ' ', None, None, None, None, None, False],
                     ])
                 else:
+                    awin = False
+                    bwin = False
+                    if cm['a'] > 1:
+                        awin = True
+                    elif cm['b'] > 1:
+                        bwin = True
                     sec.lines.append([
                         cid + ':',
                         [
-                            None, cm['ano'], aname, cm['aqual'],
-                            cm['ares']['1'], cm['ares']['2'], cm['ares']['3'],
-                            None
+                            None,
+                            cm['ano'],
+                            aname,
+                            cm['aqual'],
+                            cm['ares']['1'],
+                            cm['ares']['2'],
+                            cm['ares']['3'],
+                            None,
+                            awin,
                         ],
                         [
-                            None, cm['bno'], bname, cm['bqual'],
-                            cm['bres']['1'], cm['bres']['2'], cm['bres']['3'],
-                            None
+                            None,
+                            cm['bno'],
+                            bname,
+                            cm['bqual'],
+                            cm['bres']['1'],
+                            cm['bres']['2'],
+                            cm['bres']['3'],
+                            None,
+                            bwin,
                         ],
                     ])
         else:

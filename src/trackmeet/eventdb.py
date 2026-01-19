@@ -575,11 +575,11 @@ class event:
 
     def get_bridge_evno(self, evno=None):
         """Return data bridge event ID"""
+        ret = self.get_evno()
         if evno is None:
-            ret = self.get_evno()
+            evno = self.get_evno()
         with suppress(Exception):
             ret = str(int(self.get_evnum(evno)))
-        _log.debug('get_bridge_evno(%r) => %r', evno, ret)
         return ret
 
     def set_notify(self, callback=None):
