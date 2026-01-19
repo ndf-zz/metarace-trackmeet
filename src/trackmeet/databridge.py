@@ -843,7 +843,7 @@ class DataBridge():
                 rv.append(a)
         return '/'.join(rv)
 
-    def clearCurrent(self, event=None, fragment=None):
+    def clearCurrent(self, event=None, fragment=None, evoverride=None):
         """Reset current object"""
         self._current.clear()
 
@@ -865,7 +865,7 @@ class DataBridge():
             self._current['path'] = meetPath
             self._current['title'] = event.get_info()
             self._current['info'] = _ornull(event['rules'])
-            self._current['event'] = _ornull(event.get_bridge_evno())
+            self._current['event'] = _ornull(event.get_bridge_evno(evoverride))
             self._current['session'] = _ornull(event['session'])
             self._current['competitorType'] = event.competitor_type()
             self._current['category'] = path[0]
@@ -883,10 +883,10 @@ class DataBridge():
             self._current['laps'] = _ornull(event['laps'])
             self._current['distance'] = _ornull(event['distance'])
 
-    def sendCurrent(self, event=None, fragment=None, data={}):
+    def sendCurrent(self, event=None, fragment=None, data={}, evoverride=None):
         """Repopulate current object from provided context"""
         if event is not None and fragment is not None:
-            self.clearCurrent(event, fragment)
+            self.clearCurrent(event, fragment, evoverride)
 
         # upgrade ToD to Datetime
         stod = None

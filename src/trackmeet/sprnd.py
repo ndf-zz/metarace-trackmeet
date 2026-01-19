@@ -102,7 +102,24 @@ _CONFIG_SCHEMA = {
         'type': 'bool',
         'subtext': 'Rank by 200m time?',
         'hint': 'Rank losers by qualifying time [3.2.050]',
+        'attr': 'otherstime',
         'defer': False,
+    },
+    'heat2evno': {
+        'prompt': 'Heat 2 Evno:',
+        'hint': 'Event number label for heat 2 (if best of three)',
+        'control': 'short',
+        'default': '',
+        'defer': True,
+        'attr': 'heat2evno',
+    },
+    'heat3evno': {
+        'prompt': 'Heat 3 Evno:',
+        'hint': 'Event number label for heat 3 (if best of three)',
+        'control': 'short',
+        'default': '',
+        'defer': True,
+        'attr': 'heat3evno',
     },
 }
 
@@ -111,8 +128,22 @@ class sprnd:
     """Data handling for sprint rounds."""
 
     def get_startlist(self):
-        """Return startlist - TODO."""
-        return ''
+        """Return startlist."""
+        ret = []
+        others = []
+        if self.event['type'] == 'sprint final':
+            for cid in self._rescache:
+                cm = self._rescache[cid]
+                ret.append(cm['ano'])
+                if 'bye' not in cid:
+                    others.insert(0, cm['bno'])
+        else:
+            for c in self.contests:
+                ret.append(c[COL_A_NO])
+                if 'bye' not in c[COL_CONTEST]:
+                    others.insert(0, c[COL_B_NO])
+        ret.extend(others)
+        return ' '.join(ret)
 
     def force_running(self, start=None):
         """Ignore force start time."""
@@ -127,9 +158,32 @@ class sprnd:
                 ret = True
         return ret
 
+    def get_heat(self):
+        """Return a heat label or None if not a best of three."""
+        heat = None
+        if self.event['type'] == 'sprint final':
+            i = self.current_contest_combo.get_active_iter()
+            if i is not None:
+                cid = self.contests.get_value(i, COL_CONTEST)
+                if self.event['type'] == 'sprint final':
+                    heat = self.contestheat(cid)
+        return heat
+
+    def get_evno(self, heat):
+        """Return an override event number for the nominated heat."""
+        evoverride = None
+        if self.event['type'] == 'sprint final':
+            if heat == '2' and self.heat2evno is not None:
+                evoverride = self.heat2evno
+            elif heat == '3' and self.heat3evno is not None:
+                evoverride = self.heat3evno
+        return evoverride
+
     def resend_current(self):
         fragment = self.event.get_fragment()
         if fragment:
+            data = self.data_pack()
+            evoverride = None
             contest = None
             heat = None
             i = self.current_contest_combo.get_active_iter()
@@ -138,16 +192,16 @@ class sprnd:
                 if self.event['type'] == 'sprint final':
                     contest = self.contestroot(cid)
                     heat = self.contestheat(cid)
+                    evoverride = self.get_evno(heat)
                 else:
                     contest = cid
-            data = self.data_pack()
             if heat is not None:
                 fragment = '/'.join((fragment, contest, heat))
                 data['subtitle'] = ' '.join((contest, 'Heat', heat))
             elif contest is not None:
                 fragment = '/'.join((fragment, contest))
                 data['subtitle'] = contest
-            self.meet.db.sendCurrent(self.event, fragment, data)
+            self.meet.db.sendCurrent(self.event, fragment, data, evoverride)
 
     def data_pack(self):
         """Pack standard values for a current object"""
@@ -182,7 +236,7 @@ class sprnd:
             elif pathlen == 3:  # phase
                 subtype = 'contests'
                 heattype = 'heats'
-            elif pathlan == 4:  # contest
+            elif pathlen == 4:  # contest
                 subtype = 'heats'
                 heattype = 'heats'
                 # in the case of final - this should not be possible
@@ -671,13 +725,12 @@ class sprnd:
                 'contests': [],
                 'timerstat': None,
                 'showinfo': False,
-                'otherstime': def_otherstime,
                 'decisions': [],
                 'weather': None,
             },
             'contests': {}
         })
-        cr.add_section('event')
+        cr.add_section('event', _CONFIG_SCHEMA)
         cr.add_section('contests')
         if not cr.load(self.configfile):
             _log.info('%r not read, loading defaults', self.configfile)
@@ -685,7 +738,7 @@ class sprnd:
         # event metas
         self._weather = cr.get('event', 'weather')
         self.decisions = cr.get('event', 'decisions')
-        self.otherstime = cr.get_bool('event', 'otherstime', def_otherstime)
+        cr.export_section('event', self)
         self.onestart = False
 
         # read in contests and pre-populate standard cases
@@ -945,16 +998,16 @@ class sprnd:
             _log.error('Attempt to save readonly event')
             return
         cw = jsonconfig.config()
-        cw.add_section('event')
+        cw.add_section('event', _CONFIG_SCHEMA)
         cw.add_section('contests')
         if self.winopen:
             cw.set('event', 'showinfo', self.info_expand.get_expanded())
         else:
             cw.set('event', 'showinfo', self._winState['showinfo'])
+        cw.import_section('event', self)
         cw.set('event', 'timerstat', self.timerstat)
         cw.set('event', 'decisions', self.decisions)
         cw.set('event', 'weather', self._weather)
-        cw.set('event', 'otherstime', self.otherstime)
         contestset = set()
         contestlist = []
         for c in self.contests:
@@ -985,7 +1038,6 @@ class sprnd:
     def do_properties(self):
         """Run race properties dialog."""
         _CONFIG_SCHEMA['contests']['value'] = ' '.join(self.contestlist)
-        _CONFIG_SCHEMA['otherstime']['value'] = self.otherstime
         res = uiutil.options_dlg(
             window=self.meet.window,
             title='Sprint Properties',
@@ -993,13 +1045,12 @@ class sprnd:
                 'sprnd': {
                     'title': 'Sprint',
                     'schema': _CONFIG_SCHEMA,
-                    'object': None,
+                    'object': self,
                 }
             },
             action=True,
         )
         if res['action'] == 0:  # OK
-            self.otherstime = res['sprnd']['otherstime'][2]
             if res['sprnd']['contests'][0]:
                 self.contestlist = res['sprnd']['contests'][2].split()
                 _log.debug('Contests altered, reload required')
@@ -1007,7 +1058,7 @@ class sprnd:
                               self.event,
                               priority=GLib.PRIORITY_LOW)
         else:
-            _log.debug('Edit propertied cancelled')
+            _log.debug('Edit properties cancelled')
         return False
 
     def resettimer(self):
@@ -1217,10 +1268,11 @@ class sprnd:
             loseclub = ''
         result = (('', '', '', ''), (winpl, winno, winname, winclub),
                   (losepl, loseno, losename, loseclub))
+        evno = self.get_evno(self.contestheat(contest))
         fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
                                            head=self.meet.racenamecat(
-                                               self.event),
+                                               self.event, evoverride=evno),
                                            subhead=contest,
                                            coldesc=fmt,
                                            rows=result,
@@ -1248,11 +1300,13 @@ class sprnd:
 
         # prepare start list board	(use 2+2)
         cid = ''
+        evno = None
         startlist = []
         i = self.current_contest_combo.get_active_iter()
         name_w = self.meet.scb.linelen - 10
         if i is not None:  # contest selected ok
             cid = self.contests.get_value(i, COL_CONTEST)
+            evno = self.get_evno(self.contestheat(cid))
             asm = ''
             bsm = ''
             if self.event['type'] == 'sprint final':
@@ -1276,8 +1330,8 @@ class sprnd:
         self.timerwin = False
         fmt = ((1, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         self.meet.scbwin = scbwin.scbintsprint(
-            self.meet.scb, self.meet.racenamecat(self.event), cid, fmt,
-            startlist)
+            self.meet.scb, self.meet.racenamecat(self.event, evoverride=evno),
+            cid, fmt, startlist)
         self.meet.scbwin.reset()
 
     def update_expander_lbl_cb(self):
@@ -1625,9 +1679,10 @@ class sprnd:
                         wtime = tod.mktod(c[COL_A_QUAL])
                         ltime = tod.mktod(c[COL_B_QUAL])
                     lr = True  # include rank on loser rider
-                if ltime is None or not self.otherstime:
-                    ltime = tod.MAX
-                others.append((lsort, -placeoft, lose, lr, ltime))
+                if not 'bye' in c[COL_CONTEST]:
+                    if ltime is None or not self.otherstime:
+                        ltime = tod.MAX
+                    others.append((lsort, -placeoft, lose, lr, ltime))
                 time = None
                 yield (win, rank, wtime, info)
                 placeoft += 1
@@ -1833,6 +1888,8 @@ class sprnd:
         self.startchan = 4
         self.finchan = 1
         self.otherstime = True  # Order places of "others" by qualifying time
+        self.heat2evno = None  # Event number for heat 2 of 3
+        self.heat3evno = None  # Event number for heat 3 of 3
         self.contestlist = []  # Configured list of contest labels
         self.contests = None
         self.decisions = []

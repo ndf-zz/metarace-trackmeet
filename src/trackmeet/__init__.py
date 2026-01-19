@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.6'
+__version__ = '1.13.7a1'
 
 import sys
 import gi
@@ -966,9 +966,16 @@ class trackmeet:
             self.scbwin = None
             eh = self.curevent.event
             if self.showevno and eh['type'] not in ('break', 'session'):
-                self.scbwin = scbwin.scbclock(self.scb,
-                                              'Event ' + eh.get_bridge_evno(),
-                                              eh['pref'], eh['info'])
+                evoverride = None
+                infoline = eh['info']
+                if eh['type'] == 'sprint final':
+                    heat = self.curevent.get_heat()
+                    if heat is not None:
+                        evoverride = self.curevent.get_evno(heat)
+                        infoline += ' Heat ' + heat
+                eventline = 'Event ' + eh.get_bridge_evno(evoverride)
+                self.scbwin = scbwin.scbclock(self.scb, eventline, eh['pref'],
+                                              infoline)
             else:
                 self.scbwin = scbwin.scbclock(self.scb, eh['pref'], eh['info'])
             self.scbwin.reset()
@@ -2128,14 +2135,18 @@ class trackmeet:
         return ('Event\u2006{}: {} [{}]'.format(event.get_evno(), evstr,
                                                 event.get_type()))
 
-    def racenamecat(self, event, slen=None, tail='', halign='c'):
+    def racenamecat(self,
+                    event,
+                    slen=None,
+                    tail='',
+                    halign='c',
+                    evoverride=None):
         """Concatentate race info for display on scoreboard header line."""
         if slen is None:
             slen = self.scb.linelen
         evno = ''
-        srcev = event.get_evno()
         if self.showevno and event['type'] != 'break':
-            srcno = event.get_evnum()
+            srcno = event.get_evnum(evoverride)
             if srcno is not None:
                 evno = 'Ev ' + str(int(srcno))
         info = event['info']
