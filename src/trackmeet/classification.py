@@ -69,8 +69,8 @@ class classification:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -711,6 +711,7 @@ class classification:
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('result')
         self.resend_current()
         return False
 

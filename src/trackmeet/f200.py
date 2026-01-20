@@ -107,8 +107,8 @@ class f200:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def standingstr(self):
         return self._standingstr
@@ -194,6 +194,7 @@ class f200:
 
     def do_places(self):
         """Show race result on scoreboard."""
+        self.placexfer()  # re-order by result
         self.meet.scbwin = None
         self.timerwin = False
         fmtplaces = []
@@ -225,6 +226,7 @@ class f200:
                                            coldesc=fmt,
                                            rows=fmtplaces)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('result')
 
     def todstr(self, col, cr, model, iter, data=None):
         """Format tod into text for listview."""
@@ -1450,6 +1452,7 @@ class f200:
         self.meet.gemini.show_brt()
         self.timerwin = True
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('timer')
         self.resend_current()
 
     def toarmstart(self):

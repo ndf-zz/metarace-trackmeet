@@ -169,14 +169,17 @@ class sprnd:
                     heat = self.contestheat(cid)
         return heat
 
-    def get_evno(self, heat):
-        """Return an override event number for the nominated heat."""
+    def get_evoverride(self, heat):
+        """Return an override event handle for the nominated heat."""
         evoverride = None
         if self.event['type'] == 'sprint final':
+            ovid = None
             if heat == '2' and self.heat2evno is not None:
-                evoverride = self.heat2evno
+                ovid = self.heat2evno
             elif heat == '3' and self.heat3evno is not None:
-                evoverride = self.heat3evno
+                ovid = self.heat3evno
+            if ovid and ovid in self.meet.edb:
+                evoverride = self.meet.edb[ovid]
         return evoverride
 
     def resend_current(self):
@@ -185,6 +188,7 @@ class sprnd:
             data = self.data_pack()
             evoverride = None
             contest = None
+            nextContest = None
             heat = None
             i = self.current_contest_combo.get_active_iter()
             if i is not None:
@@ -192,15 +196,40 @@ class sprnd:
                 if self.event['type'] == 'sprint final':
                     contest = self.contestroot(cid)
                     heat = self.contestheat(cid)
-                    evoverride = self.get_evno(heat)
+                    evoverride = self.get_evoverride(heat)
                 else:
                     contest = cid
+            if contest in self._prevNext:
+                nextContest = self._prevNext[contest]
             if heat is not None:
+                if nextContest:
+                    data['next'] = '/'.join((fragment, nextContest, heat))
                 fragment = '/'.join((fragment, contest, heat))
                 data['subtitle'] = ' '.join((contest, 'Heat', heat))
             elif contest is not None:
+                if nextContest:
+                    data['next'] = '/'.join((fragment, nextContest))
                 fragment = '/'.join((fragment, contest))
                 data['subtitle'] = contest
+            if nextContest is None:
+                if evoverride is None:
+                    # use bridge to get next path
+                    data['next'] = self.meet.db.getNextPath(
+                        self.event.get_fragment())
+                else:
+                    # scan event index for first bridged event following evoverride
+                    nextPath = None
+                    nh = evoverride
+                    while nh is not None:
+                        nh = self.meet.edb.getnextrow(nh)
+                        if nh is not None:
+                            if nh['index']:
+                                nextPath = self.meet.db.getNextPath(
+                                    nh.get_fragment())
+                                if nextPath is not None:
+                                    break
+                    if nextPath is not None:
+                        data['next'] = nextPath
             self.meet.db.sendCurrent(self.event, fragment, data, evoverride)
 
     def data_pack(self):
@@ -307,8 +336,8 @@ class sprnd:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -751,6 +780,7 @@ class sprnd:
         """Load race config from disk."""
         self.contests.clear()
         def_otherstime = False
+        self._prevNext.clear()
 
         cr = jsonconfig.config({
             'event': {
@@ -788,6 +818,7 @@ class sprnd:
         # restore contest details
         oft = 0
         curactive = -1
+        prevContest = None
         for cid in contestlist:
             bye = False
             if cid == 'bye':
@@ -796,6 +827,9 @@ class sprnd:
             elif 'bye' in cid:
                 cid = cid.replace('-', ' ')
                 bye = True  # Assume contest no is provided in text
+            if prevContest is not None and cid != prevContest:
+                self._prevNext[prevContest] = cid
+            prevContest = cid
             heats = (cid, )
             if self.event['type'] == 'sprint final':
                 heats = (cid + ' Heat 1', cid + ' Heat 2', cid + ' Heat 3')
@@ -854,11 +888,13 @@ class sprnd:
 
     def _get_rider(self, bib):
         """Return rdb for the provided bib, or create a new empty one"""
-        bib = bib.upper()
-        dbr = self.meet.rdb.get_rider(bib, self.series)
-        if dbr is None:
-            self.meet.rdb.add_empty(bib, self.series)
+        dbr = None
+        bib = bib.upper().strip()
+        if bib:
             dbr = self.meet.rdb.get_rider(bib, self.series)
+            if dbr is None:
+                self.meet.rdb.add_empty(bib, self.series)
+                dbr = self.meet.rdb.get_rider(bib, self.series)
         return dbr
 
     def del_riders(self):
@@ -936,24 +972,32 @@ class sprnd:
                 byeflag = None
 
                 ano = cr[COL_A_NO]
-                rh = self._get_rider(ano)
-                aname = rh.resname()
-                anat = rh['nation']
-                acls = rh['class']
+                aname = ''
+                anat = ''
+                acls = ''
                 apilot = None
-                ph = self.meet.rdb.get_pilot(rh)
-                if ph is not None:
-                    apilot = ph.resname()
+                rh = self._get_rider(ano)
+                if rh is not None:
+                    aname = rh.resname()
+                    anat = rh['nation']
+                    acls = rh['class']
+                    ph = self.meet.rdb.get_pilot(rh)
+                    if ph is not None:
+                        apilot = ph.resname()
 
-                bno = cr[COL_B_NO]
-                rh = self._get_rider(bno)
-                bname = rh.resname()
-                bnat = rh['nation']
-                bcls = rh['class']
+                bno = cr[COL_B_NO].upper().strip()  # may be ' ' for bye
+                bname = ''
+                bnat = ''
+                bcls = ''
                 bpilot = None
-                ph = self.meet.rdb.get_pilot(rh)
-                if ph is not None:
-                    bpilot = ph.resname()
+                rh = self._get_rider(bno)
+                if rh is not None:
+                    bname = rh.resname()
+                    bnat = rh['nation']
+                    bcls = rh['class']
+                    ph = self.meet.rdb.get_pilot(rh)
+                    if ph is not None:
+                        bpilot = ph.resname()
 
                 aqual = None
                 raqual = None
@@ -1085,6 +1129,7 @@ class sprnd:
         )
         if res['action'] == 0:  # OK
             if res['sprnd']['contests'][0]:
+                # reload self via meet
                 self.contestlist = res['sprnd']['contests'][2].split()
                 _log.debug('Contests altered, reload required')
                 GLib.idle_add(self.meet.open_event,
@@ -1153,7 +1198,6 @@ class sprnd:
         """Display the running time on the scoreboard."""
         if self.timerstat == 'idle':
             self.armstart()
-        ## NOTE: display todo
         tp = '200m:'
         self.meet.scbwin = scbwin.scbtimer(self.meet.scb, self.event['pref'],
                                            self.event['info'], tp)
@@ -1168,6 +1212,8 @@ class sprnd:
                 self.meet.gemini.set_time(elap.rawtime(2))
             self.meet.scbwin.update()
         self.meet.gemini.show_brt()
+        self.meet.db.setScoreboardHint('timer')
+        self.resend_current()
 
     def key_event(self, widget, event):
         """Race window key press handler."""
@@ -1301,11 +1347,12 @@ class sprnd:
             loseclub = ''
         result = (('', '', '', ''), (winpl, winno, winname, winclub),
                   (losepl, loseno, losename, loseclub))
-        evno = self.get_evno(self.contestheat(contest))
+        evoverride = self.get_evoverride(self.contestheat(contest))
         fmt = ((3, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         self.meet.scbwin = scbwin.scbtable(scb=self.meet.scb,
                                            head=self.meet.racenamecat(
-                                               self.event, evoverride=evno),
+                                               self.event,
+                                               evoverride=evoverride),
                                            subhead=contest,
                                            coldesc=fmt,
                                            rows=result,
@@ -1314,6 +1361,7 @@ class sprnd:
         self.meet.scbwin.reset()
         if self._weather is None:
             self._weather = self.meet.get_weather()
+        self.meet.db.setScoreboardHint('result')
 
     def _getname(self, bib, width=32):
         """Return a name and club for the rider if known"""
@@ -1339,7 +1387,7 @@ class sprnd:
         name_w = self.meet.scb.linelen - 10
         if i is not None:  # contest selected ok
             cid = self.contests.get_value(i, COL_CONTEST)
-            evno = self.get_evno(self.contestheat(cid))
+            evoverride = self.get_evoverride(self.contestheat(cid))
             asm = ''
             bsm = ''
             if self.event['type'] == 'sprint final':
@@ -1363,9 +1411,11 @@ class sprnd:
         self.timerwin = False
         fmt = ((1, 'l'), (3, 'r'), ' ', (name_w, 'l'), (5, 'r'))
         self.meet.scbwin = scbwin.scbintsprint(
-            self.meet.scb, self.meet.racenamecat(self.event, evoverride=evno),
-            cid, fmt, startlist)
+            self.meet.scb,
+            self.meet.racenamecat(self.event, evoverride=evoverride), cid, fmt,
+            startlist)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('startlist')
 
     def update_expander_lbl_cb(self):
         """Update race info expander label."""
@@ -1956,6 +2006,7 @@ class sprnd:
         self._infoLine = None
         self._cursprint = None
         self._sprintres = None
+        self._prevNext = {}
 
         self.contests = Gtk.ListStore(
             str,  # COL_CONTEST = 0

@@ -889,6 +889,7 @@ class teamagg(classification.classification):
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('result')
         self.resend_current()
         return False
 
@@ -1073,6 +1074,7 @@ class indivagg(teamagg):
                                            coldesc=fmt,
                                            rows=resvec)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('result')
         self.resend_current()
         return False
 

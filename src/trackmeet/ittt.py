@@ -124,8 +124,8 @@ class ittt:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def standingstr(self):
         return self._standingstr
@@ -277,6 +277,8 @@ class ittt:
                                            coldesc=fmt,
                                            rows=fmtplaces)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('result')
+        self.resend_current()
 
     def todstr(self, col, cr, model, iter, data=None):
         """Format tod into text for listview."""
@@ -2386,6 +2388,7 @@ class ittt:
         self.meet.gemini.set_bib(self.bs.getrider(), 1)
         self.timerwin = True
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('timing')
         self.resend_current()
 
     def toarmstart(self):

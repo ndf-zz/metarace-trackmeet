@@ -176,8 +176,8 @@ class ps:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def loadconfig(self):
         """Load race config from disk."""
@@ -470,9 +470,9 @@ class ps:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
-        self.reorder_riderno()
-        for r in self.riders:
-            ret.append(r[RES_COL_NO])
+        aux = self._get_startaux()
+        for a in aux:
+            ret.append(a[4])  # (x,x,x,x, bib)
         return ' '.join(ret)
 
     def get_inriders(self):
@@ -972,14 +972,15 @@ class ps:
             self.stat_but.update('ok', 'Running')
             self.meet.main_timer.dearm(1)
 
-    def reorder_riderno(self):
-        """Sort the rider list by rider number or seeding."""
+    def _get_startaux(self):
+        """Return a temporary auxilliary list of riders in startlist order."""
+        aux = []
         if len(self.riders) > 1:
-            aux = []
             cnt = 0
             for r in self.riders:
+                bib = r[RES_COL_NO]
                 seed = strops.confopt_posint(r[RES_COL_INFO], 9999)
-                rno = strops.riderno_key(r[RES_COL_NO])
+                rno = strops.riderno_key(bib)
                 rank = 0
                 if self.evtype == 'omnium':
                     # this is the omnium itself - standing informs order
@@ -988,15 +989,21 @@ class ps:
                         rank = strops.confopt_posint(r[RES_COL_PLACE], 9998)
                     else:
                         rank = 9999
-                    aux.append((rank, seed, rno, cnt))
+                    aux.append((rank, seed, rno, cnt, bib))
                 elif self.inomnium:
                     # eg tempo - seeding informs order
-                    aux.append((seed, rno, cnt, cnt))
+                    aux.append((seed, rno, cnt, cnt, bib))
                 else:
                     # order by rider no
-                    aux.append((rno, cnt, cnt, cnt))
+                    aux.append((rno, cnt, cnt, cnt, bib))
                 cnt += 1
             aux.sort()
+        return aux
+
+    def reorder_riderno(self):
+        """Sort the rider list by rider number or seeding."""
+        if len(self.riders) > 1:
+            aux = self._get_startaux()
             self.riders.reorder([a[3] for a in aux])
 
     def get_curevent(self):
@@ -1233,6 +1240,7 @@ class ps:
                                            coldesc=fmt,
                                            rows=startlist)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('startlist')
         self.resend_current()
 
     def _getname(self, bib, width=32):
@@ -1522,6 +1530,7 @@ class ps:
                                            rows=resvec)
         self.meet.scbwin.reset()
         self._cursprint = None
+        self.meet.db.setScoreboardHint('result')
         self.resend_current()
         return False
 
@@ -1598,6 +1607,8 @@ class ps:
                 self.meet.scb, self.meet.racenamecat(self.event),
                 'Gaining a Lap'.upper(), srfmt, srlines)
             self.meet.scbwin.reset()
+            self.meet.db.setScoreboardHint(
+                'result')  # might be timing, but unsupported
             self.next_sprint_counter += 1
             delay = SPRINT_PLACE_DELAY * len(rlines) or 1
             if delay > SPRINT_PLACE_DELAY_MAX:
@@ -1657,6 +1668,7 @@ class ps:
                 self.meet.scbwin.update()
         else:
             self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('timing')
         self.resend_current()
 
     def starttrig(self, e, wallstart=None):
@@ -2107,6 +2119,7 @@ class ps:
                     GLib.timeout_add_seconds(delay, self.delayed_result)
                     self._cursprint = curid
                     self._cursprintinfo = sinfo
+                    self.meet.db.setScoreboardHint('result')
                     self.resend_current()
                 else:
                     self.do_places()

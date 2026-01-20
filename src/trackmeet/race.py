@@ -117,8 +117,8 @@ class race:
                     self.prefix_ent.set_text(self.event['pref'])
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
-                # re-draw summary line
                 self.update_expander_lbl_cb()
+                self.resend_current()
 
     def changerider(self, oldNo, newNo):
         """Update rider no in event"""
@@ -976,6 +976,7 @@ class race:
             self.meet.scbwin.update()
         else:
             self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('timer')
         self.resend_current()
 
     def _do_draw(self):
@@ -1054,6 +1055,7 @@ class race:
                                                timestr=ts)
             self.meet.scbwin.reset()
             self.doscbplaces = False
+            self.meet.db.setScoreboardHint('result')
         self.setfinished()
         self._eliminated = None  # superfluous?
         self.resend_current()
@@ -1084,6 +1086,7 @@ class race:
                                            coldesc=fmt,
                                            rows=startlist)
         self.meet.scbwin.reset()
+        self.meet.db.setScoreboardHint('startlist')
         self.resend_current()
 
     def resend_current(self):
@@ -1263,6 +1266,7 @@ class race:
                             coldesc=[' ', (self.meet.scb.linelen - 1, 'l')],
                             rows=[[rstr]])
                         self.meet.scbwin.reset()
+                        self.meet.db.setScoreboardHint('timing')
                         self.meet.gemini.reset_fields()
                         self.meet.gemini.set_bib(bib)
                         self.meet.gemini.show_brt()
@@ -1309,6 +1313,7 @@ class race:
                                                    coldesc=FMT,
                                                    rows=self.results)
                 self.meet.scbwin.reset()
+                self.meet.db.setScoreboardHint('result')
         self.meet.cmd_announce('eliminated', '')
         self._eliminated = None
         self.meet.gemini.clear()

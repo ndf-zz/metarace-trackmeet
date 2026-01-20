@@ -32,7 +32,7 @@ from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
-from .sender import sender, OVERLAY_CLOCK, OVERLAY_IMAGE, _CONFIG_SCHEMA as _SENDER_SCHEMA
+from .sender import sender, OVERLAY_CLOCK, OVERLAY_IMAGE, OVERLAY_BLANK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .lapscore import lapscore
 from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
@@ -159,6 +159,22 @@ _CONFIG_SCHEMA = {
         'hint': 'Include list of riders on program of events',
         'attr': 'riderlist',
         'default': False,
+    },
+    'startpage': {
+        'prompt': 'First Page:',
+        'control': 'short',
+        'type': 'int',
+        'hint': 'First page number on printed program of events',
+        'attr': 'startpage',
+        'default': None,
+    },
+    'endpages': {
+        'prompt': 'End Pages:',
+        'control': 'short',
+        'type': 'int',
+        'hint': 'Number of additional non-padding end pages',
+        'attr': 'endpages',
+        'default': 0,
     },
     'communiques': {
         'prompt': 'Communiqu\u00e9s:',
@@ -511,6 +527,10 @@ class trackmeet:
         # always re-load databridge
         _log.debug('Re-load Data Bridge')
         self.db.load()
+
+        # dump data bridge root elements if meetcode set
+        if self.eventcode:
+            self.db.updateMeet()
 
     def menu_meet_quit_cb(self, menuitem, data=None):
         """Quit the track meet application."""
@@ -971,15 +991,18 @@ class trackmeet:
                 if eh['type'] == 'sprint final':
                     heat = self.curevent.get_heat()
                     if heat is not None:
-                        evoverride = self.curevent.get_evno(heat)
+                        evoverride = self.curevent.get_evoverride(heat)
                         infoline += ' Heat ' + heat
-                eventline = 'Event ' + eh.get_bridge_evno(evoverride)
+                if evoverride is None:
+                    evoverride = eh
+                eventline = 'Event ' + evoverride.get_bridge_evno()
                 self.scbwin = scbwin.scbclock(self.scb, eventline, eh['pref'],
                                               infoline)
             else:
                 self.scbwin = scbwin.scbclock(self.scb, eh['pref'], eh['info'])
+            self.db.setScoreboardHint('event')
             self.scbwin.reset()
-            self.curevent.delayed_announce()
+            self.curevent.delayed_announce()  # also triggers current resend
             self.set_event_start(self.curevent.event)
 
     def menu_race_properties_activate_cb(self, menuitem, data=None):
@@ -1441,6 +1464,11 @@ class trackmeet:
         self.check_export_path()
         template = metarace.PROGRAM_TEMPLATE
         r = report.report(template)
+        # temp: hack the page counts
+        r.booklet = True
+        if self.startpage is not None:
+            r.startpage = self.startpage
+            r.endpages = self.endpages
         subtitlestr = 'Program of Events'
         if self.subtitle:
             subtitlestr = self.subtitle + ' - ' + subtitlestr
@@ -1708,7 +1736,7 @@ class trackmeet:
 
         # dump data bridge root elements if meetcode set
         if self.eventcode:
-            self.db.update()
+            self.db.updateMeet()
 
         GLib.idle_add(self.mirror_start)
 
@@ -1890,14 +1918,14 @@ class trackmeet:
             self.scb.set_ignore(True)
 
     def menu_scb_clock_cb(self, menuitem, data=None):
-        """Select timer scoreboard overlay."""
+        """Select facility clock on scoreboard."""
         self.gemini.clear()
         self.scbwin = None  # stop sending any new updates
         self.scb.clrall()  # force clear of current text page
         self.scb.sendmsg(OVERLAY_CLOCK)
         _log.debug('Show facility clock')
         if self.eventcode:
-            data = {}
+            self.db.setScoreboardHint('clock')
             self.db.clearCurrent()
             self.db.updateCurrent()
 
@@ -1906,9 +1934,10 @@ class trackmeet:
         self.gemini.clear()
         self.scbwin = None
         self.scb.clrall()
+        self.scb.sendmsg(OVERLAY_BLANK)
         _log.debug('Blank scoreboards')
         if self.eventcode:
-            data = {}
+            self.db.setScoreboardHint('blank')
             self.db.clearCurrent()
             self.db.updateCurrent()
 
@@ -1919,6 +1948,10 @@ class trackmeet:
         self.scb.clrall()
         self.scb.sendmsg(OVERLAY_IMAGE)
         _log.debug('Scoreboard image overlay')
+        if self.eventcode:
+            self.db.setScoreboardHint('image')
+            self.db.clearCurrent()
+            self.db.updateCurrent()
 
     def menu_scb_test_cb(self, menuitem, data=None):
         """Select scoreboard text test."""
@@ -1926,6 +1959,10 @@ class trackmeet:
         self.scbwin = scbwin.scbtest(self.scb)
         self.scbwin.reset()
         _log.debug('Scoreboard testpage')
+        if self.eventcode:
+            self.db.setScoreboardHint('test')
+            self.db.clearCurrent()
+            self.db.updateCurrent()
 
     def menu_scb_connect_activate_cb(self, menuitem, data=None):
         """Force a reconnect to scoreboards."""
@@ -1959,7 +1996,7 @@ class trackmeet:
 
     ## Menu button callbacks
     def menu_clock_clicked_cb(self, button, data=None):
-        """Handle click on menubar clock."""
+        """Display meet info screen."""
         self.scb.clrall()
         (line1, line2,
          line3) = strops.titlesplit(self.title + ' ' + self.subtitle,
@@ -1971,6 +2008,7 @@ class trackmeet:
                                       locstr=self.document)
         self.scbwin.reset()
         if self.eventcode:
+            self.db.setScoreboardHint('meet')
             data = {}
             if self.curevent is not None:
                 data['session'] = self.curevent.event['session']
@@ -2146,7 +2184,9 @@ class trackmeet:
             slen = self.scb.linelen
         evno = ''
         if self.showevno and event['type'] != 'break':
-            srcno = event.get_evnum(evoverride)
+            srcno = event.get_evnum()
+            if evoverride is not None:
+                srcno = evoverride.get_evnum()
             if srcno is not None:
                 evno = 'Ev ' + str(int(srcno))
         info = event['info']
@@ -2687,6 +2727,15 @@ class trackmeet:
     def rider_lookup_cb(self, menuitem, data=None):
         _log.info('Rider lookup not yet enabled')
 
+    def _editEventNo(self, cell, path, new_text, col):
+        """Edit event number."""
+        old_text = self._elm[path][0]
+        if old_text != new_text:
+            evid = self._elm[path][3]
+            if evid in self.edb:
+                event = self.edb[evid]
+                event['evov'] = new_text.strip()
+
     def _editname_cb(self, cell, path, new_text, col):
         """Edit the rider name if possible."""
         old_text = self._rlm[path][1]
@@ -2850,6 +2899,7 @@ class trackmeet:
             if event in self.edb:
                 # update single entry in list
                 e = self.edb[event]
+                e.set_value('dirty', True)
                 for lr in self._elm:
                     if lr[3] == event:
                         eno = e.get_evno()
@@ -2875,6 +2925,14 @@ class trackmeet:
             _log.debug('Re-load event view')
         if self.curevent is not None:
             self.curevent.eventcb(event)
+            self.curevent.saveconfig()
+
+        # dump data bridge root elements if meetcode set
+        if self.eventcode:
+            self.db.updateMeet()
+
+        # flag export
+        self.menu_data_export_activate_cb(None)
         return False
 
     def ridercb(self, rider):
@@ -2943,6 +3001,10 @@ class trackmeet:
                 self._rlm.append(rlr)
         if self.curevent is not None:
             self.curevent.ridercb(rider)
+
+        # dump data bridge root elements if meetcode set
+        if self.eventcode:
+            self.db.updateMeet()
         return False
 
     def _rcb(self, rider):
@@ -3513,6 +3575,8 @@ class trackmeet:
         self.communiques = False
         self.domestic = True
         self.riderlist = False
+        self.startpage = None
+        self.endpages = 0
         self.nextlinks = {}
         self.prevlinks = {}
         self.commalloc = {}
@@ -3670,7 +3734,7 @@ class trackmeet:
         t.set_rules_hint(True)
         t.get_selection().set_mode(Gtk.SelectionMode.MULTIPLE)
         uiutil.mkviewcoltxt(t, 'ID', 3)
-        uiutil.mkviewcoltxt(t, 'No', 0)
+        uiutil.mkviewcoltxt(t, 'No', 0, cb=self._editEventNo)
         uiutil.mkviewcoltxt(t, 'Info', 1, expand=True, maxwidth=100)
         uiutil.mkviewcoltxt(t, 'Type', 2)
         t.show()

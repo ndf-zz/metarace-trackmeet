@@ -537,10 +537,6 @@ class DataBridge():
             _log.debug('Adding category %s', cat)
             self._catlist.append(cat)
 
-    def getFragment(self, fragment, event):
-        """Prepare an updated fragment object and return"""
-        pass
-
     def updateCategory(self, cat):
         """Update and publish the category object"""
         if not cat:
@@ -714,11 +710,26 @@ class DataBridge():
         self._sessions.clear()
         self._events.clear()
         self._competitions.clear()
+        self._prevNext.clear()
 
         # walk the event listing (from meet)
+        prevFrag = None
+        fragCheck = set()
         for meeteh in self._m.edb:
             sessionid = _ornull(meeteh['session'])
             fragment = meeteh.get_fragment()
+            if fragment is not None:
+                cnt = 1
+                while fragment in fragCheck:
+                    cnt += 1
+                    newcomp = '%s.%d' % (meeteh['competition'].rsplit(
+                        '.', 1)[0], cnt)
+                    _log.warning(
+                        'Duplicate meet fragment %r updated comp => %s',
+                        fragment, newcomp)
+                    meeteh.set_value('competition', newcomp)
+                    fragment = meeteh.get_fragment()
+                fragCheck.add(fragment)
 
             # ensure session object exists
             if sessionid:
@@ -778,7 +789,7 @@ class DataBridge():
                     evtLabel = _ornull(meeteh['info'])
                     catComp = meeteh.get_catcomp()  # ensured by fragment
 
-                    # TEMP: choose ctype by series
+                    # Transitional: Choose ctype by event series
                     competitorType = meeteh.competitor_type()
 
                     # ensure competition is listed in category stub
@@ -823,6 +834,11 @@ class DataBridge():
                                 if catComp not in sessOb['finals']:
                                     sessOb['finals'][catComp] = evtInfo
 
+                        # record link to previous event on schedule
+                        if prevFrag is not None:
+                            self._prevNext[prevFrag] = fragment
+                        prevFrag = fragment
+
         self.updateEventIndex()
 
         # publish the session objects
@@ -843,9 +859,21 @@ class DataBridge():
                 rv.append(a)
         return '/'.join(rv)
 
+    def getNextPath(self, fragment):
+        """Return a meet path for the next fragment if known."""
+        ret = None
+        if fragment in self._prevNext:
+            ret = self.getPath(self._prevNext[fragment])
+        return ret
+
+    def setScoreboardHint(self, msg=None):
+        """Set the current scoreboard hint."""
+        self._scoreboard = msg
+
     def clearCurrent(self, event=None, fragment=None, evoverride=None):
         """Reset current object"""
         self._current.clear()
+        self._current['scoreboard'] = _ornull(self._scoreboard)
 
         if event is not None and fragment is not None:
             # ensure event meta matches the claimed CAT/comp
@@ -860,12 +888,18 @@ class DataBridge():
                            fragment, catComp)
                 return
             meetPath = self.getPath(fragment)
+            evno = None
+            if evoverride is not None:
+                evno = evoverride.get_bridge_evno()
+            else:
+                evno = event.get_bridge_evno()
 
             # pre-fill the static elements
             self._current['path'] = meetPath
+            self._current['next'] = self.getNextPath(fragment)
             self._current['title'] = event.get_info()
             self._current['info'] = _ornull(event['rules'])
-            self._current['event'] = _ornull(event.get_bridge_evno(evoverride))
+            self._current['event'] = _ornull(evno)
             self._current['session'] = _ornull(event['session'])
             self._current['competitorType'] = event.competitor_type()
             self._current['category'] = path[0]
@@ -903,6 +937,11 @@ class DataBridge():
         if stod and etod:
             data['elapsed'] = (etod - stod).truncate(3)
 
+        # convert relative next path in data to meet path
+        if 'next' in data and data['next']:
+            if not data['next'].startswith(self._base):
+                data['next'] = self.getPath(data['next'])
+
         # fill in competitor information as result lines
         topn = None
         if event is not None:
@@ -916,7 +955,7 @@ class DataBridge():
                 data[k] = self._updateResultLine(csrc, topn)
 
         # override values provided by the data object
-        for k in ('status', 'title', 'subtitle', 'session', 'info',
+        for k in ('next', 'status', 'title', 'subtitle', 'session', 'info',
                   'competitionType', 'eventStart', 'startTime', 'endTime',
                   'elapsed', 'competitorA', 'labelA', 'timeA', 'downA',
                   'rankA', 'infoA', 'competitorB', 'labelB', 'timeB', 'downB',
@@ -936,13 +975,14 @@ class DataBridge():
 
         # import values from object source in order
         dataObj = {}
-        for k in ('path', 'status', 'title', 'subtitle', 'info', 'event',
-                  'session', 'category', 'competition', 'phase', 'contest',
-                  'heat', 'competitorType', 'competitionType', 'eventStart',
-                  'startTime', 'endTime', 'elapsed', 'competitorA', 'labelA',
-                  'timeA', 'downA', 'rankA', 'infoA', 'competitorB', 'labelB',
-                  'timeB', 'downB', 'rankB', 'infoB', 'eliminated', 'remain',
-                  'toGo', 'laps', 'distance', 'record', 'weather'):
+        for k in ('path', 'next', 'status', 'title', 'subtitle', 'info',
+                  'event', 'session', 'category', 'competition', 'phase',
+                  'contest', 'heat', 'competitorType', 'competitionType',
+                  'eventStart', 'startTime', 'endTime', 'elapsed',
+                  'competitorA', 'labelA', 'timeA', 'downA', 'rankA', 'infoA',
+                  'competitorB', 'labelB', 'timeB', 'downB', 'rankB', 'infoB',
+                  'eliminated', 'remain', 'toGo', 'laps', 'distance', 'record',
+                  'weather', 'scoreboard'):
 
             if k in self._current:
                 dataObj[k] = self._current[k]
@@ -1025,7 +1065,6 @@ class DataBridge():
     def update(self):
         """Update the root-level meet objects"""
         self.updateMeet()
-        self.updateCurrent()
 
     def load(self):
         """Initialise internal context"""
@@ -1099,10 +1138,12 @@ class DataBridge():
         self._sessions = {}  # session data object source
         self._events = {}  # event index object source
         self._current = {}  # current object data source
+        self._prevNext = {}  # links from current frag to next frag
         self._competitions = {}  # CAT/comp object sources
         self._results = {}  # ?? required?
         self._startlists = {}  # ?? required?
         self._qualifying = {}  # filled by result updates
+        self._scoreboard = None  # scoreboard type hint
         self._pause = False
 
     def _pathDelete(self, path):
