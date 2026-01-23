@@ -1,6 +1,6 @@
 # Trackmeet "Data Bridge" Schema
 
-*Updated: 2025-12-04*
+*Updated: 2026-01-24*
 
 
 ## Overview
@@ -283,6 +283,7 @@ session | string | Session ID
 category | string | Competitor category ID
 competition | string | Competition ID
 phase | string | Competition phase ID
+sponsor | string | Event sponsor text
 fragments | array | ordered list of meet paths to fragments in this event
 startTime | 8601DT | Rough event start time on the session program
 
@@ -301,6 +302,7 @@ Example:
 	  "category": "ME",
 	  "competition": "sprint",
 	  "phase": "qualifying",
+          "sponsor": "B & E Roll Guys",
 	  "fragments": ["ME/sprint/qualifying"],
           "startTime": ...
 	 }, ...
@@ -320,6 +322,7 @@ event context.
 key | type | descr
 --- | --- | ---
 path | string | Meet path for the event fragment currently in progress or null
+next | string | Meet path for the next expected event fragment on the program
 status | STATUS | Status of result for this fragment
 title | string | Category/Competition for this fragment
 subtitle | string | Phase... string for this fragment
@@ -331,6 +334,7 @@ competition | string | Competition ID
 phase | string | Competition phase ID
 contest | string | Contest ID
 heat | string | Heat ID
+sponsor | string | Event sponsor text
 competitorType | string | Competitor type indicator
 competitionType | string | Competition type indicator
 eventStart | 8601DT | Rough start time for start of event
@@ -355,6 +359,7 @@ laps | integer | Total laps (mass start, sprint, 200)
 distance | string | Event distance label with units eg "2 km", "750 m"
 record | RECORD | In the case a competitor betters a record, the record object [DEP]
 weather | WEATHER | Current local weather observation if known
+scoreboard | SCOREBOARD | Scoreboard display type hint
 
 Example:
 
@@ -606,6 +611,7 @@ info | string | Event information string
 distance | string | Event distance and units (if relevant)
 laps | integer | Event laps (if relevant)
 status | STATUS | Status of the startlist
+sponsor | string | Event sponsor string
 competitionType | string | Indication of the type of startlist
 competitorType | string | Indication of the competitor type
 competitors | array | Ordered list of STARTER objects
@@ -642,6 +648,7 @@ info | string | Event information string
 distance | string | Event distance and units (if relevant)
 laps | integer | Number of laps (if relevant)
 status | STATUS | Status of the result
+sponsor | string | Event sponsor string
 competitionType | string | Indication of the type of result
 competitorType | string | Indication of the competitor type
 lines | array | Ordered list of RESULTLINE objects
@@ -852,6 +859,17 @@ members | array | Ordered set of team members if competitor was team
        - "hold": Starters/Rankings are virtual, pending review by officials
        - "provisional": Event has finished and places have been assigned
        - "final": Places have been approved by officials, result is finalised
+   - SCOREBOARD: Current scoreboard hint, one of:
+       - null: Type is unknown or board is disabled
+       - "blank": Blank screen
+       - "clock": Facility clock
+       - "meet": Meet information screen
+       - "event": Event information screen
+       - "startlist": Event startlist
+       - "timing": Live timing
+       - "result": Event result/standing
+       - "test": Test pattern
+       - "image": Sponsor logo/animation
    - Valid competitor type indicators:
        - null: Competitor type is not relevant, or unknown
        - "rider": Individual riders
@@ -886,6 +904,7 @@ members | array | Ordered set of team members if competitor was team
        - "single": Single competitor in each heat (tt, 200)
        - "dual": A/B competitors (tt, pursuit, team sprint, team pursuit)
        - "bunch": Mass start (scratch, points etc)
+       - "hour": UCI Hour Record (TBC)
        - "classification": Final classification for a competition - includes
          medals and champion badges when relevant. May include lower
          places before finals are complete.
