@@ -127,6 +127,45 @@ _CONFIG_SCHEMA = {
 class sprnd:
     """Data handling for sprint rounds."""
 
+    def advance(self):
+        """Move to next contest or return next event on meet schedule."""
+        ret = None
+
+        contest = None
+        heat = None
+        evoverride = None
+        i = self.current_contest_combo.get_active_iter()
+        if i is not None:
+            cid = self.contests.get_value(i, COL_CONTEST)
+            if self.event['type'] == 'sprint final':
+                contest = self.contestroot(cid)
+                heat = self.contestheat(cid)
+                evoverride = self.get_evoverride(heat)
+            else:
+                contest = cid
+        if contest in self._prevNext:
+            nextContest = self._prevNext[contest]
+            nextCid = nextContest
+            if self.event['type'] == 'sprint final':
+                nextCid += ' Heat ' + heat
+            self.select_contest(nextCid)
+        else:
+            nh = self.event
+            if evoverride is not None:
+                nh = evoverride
+            ret = self.meet.edb.getnextrow(nh)
+        return ret
+
+    def select_contest(self, contest=None):
+        """Try to select the noniminated contest."""
+        cid = -1
+        if contest is not None:
+            for count, cr in enumerate(self.contests):
+                if cr[COL_CONTEST] == contest:
+                    cid = count
+                    break
+        self.current_contest_combo.set_active(cid)
+
     def get_startlist(self):
         """Return startlist."""
         ret = []
@@ -337,7 +376,6 @@ class sprnd:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
-                self.resend_current()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -1212,7 +1250,7 @@ class sprnd:
                 self.meet.gemini.set_time(elap.rawtime(2))
             self.meet.scbwin.update()
         self.meet.gemini.show_brt()
-        self.meet.db.setScoreboardHint('timer')
+        self.meet.db.setScoreboardHint('timing')
         self.resend_current()
 
     def key_event(self, widget, event):
