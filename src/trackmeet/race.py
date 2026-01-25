@@ -118,7 +118,6 @@ class race:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
-                self.resend_current()
 
     def changerider(self, oldNo, newNo):
         """Update rider no in event"""
@@ -340,6 +339,7 @@ class race:
                 if self.evtype not in (
                         'sprint',
                         'keirin',
+                        'derby',
                 ) and not self.inomnium:
                     nfo = r[COL_INFO]
             outriders.insert(0, [str(rank) + '.', bib, name, nfo])
@@ -370,6 +370,7 @@ class race:
                         if self.evtype not in (
                                 'sprint',
                                 'keirin',
+                                'derby',
                         ) and not self.inomnium:
                             nfo = r[COL_INFO]
                     self.results.append([str(rank) + '.', bib, name, nfo])
@@ -433,7 +434,7 @@ class race:
         self.seedsrc = None  # default is no seed info
         if self.evtype == 'handicap':
             self.seedsrc = 3  # fetch handicap info from autospec
-        if self.evtype in ('sprint', 'keirin'):
+        if self.evtype in ('sprint', 'keirin', 'derby'):
             deftimetype = '200m'
             defdistunits = 'metres'
             defdistance = '200'
@@ -640,7 +641,8 @@ class race:
                 xtra = '    '
                 if r[COL_INFO]:
                     inf = r[COL_INFO]
-                    if self.evtype in ['keirin', 'sprint']:  # encirc draw no
+                    if self.evtype in ('keirin', 'sprint',
+                                       'derby'):  # encirc draw no
                         inf = strops.drawno_encirc(inf)
                     xtra = strops.truncpad(inf, 4, 'r')
                 namestr = strops.truncpad(r[COL_NAME], 25)
@@ -716,7 +718,7 @@ class race:
 
             if r[COL_INFO] and not self.inomnium:
                 inf = r[COL_INFO]
-            if self.evtype in ['keirin', 'sprint']:  # encirc draw no
+            if self.evtype in ('keirin', 'sprint', 'derby'):  # encirc draw no
                 inf = strops.drawno_encirc(inf)
             if self.inomnium:
                 if cnt % 2 == 0:
@@ -976,7 +978,7 @@ class race:
             self.meet.scbwin.update()
         else:
             self.meet.scbwin.reset()
-        self.meet.db.setScoreboardHint('timer')
+        self.meet.db.setScoreboardHint('timing')
         self.resend_current()
 
     def _do_draw(self):
@@ -1002,7 +1004,7 @@ class race:
                     self.resettimer()
                     return True
                 elif key == key_startlist:
-                    if self.evtype in ['keirin', 'sprint']:
+                    if self.evtype in ('keirin', 'sprint', 'derby'):
                         self._do_draw()
                         return True
             if key[0] == 'F':
@@ -1495,7 +1497,7 @@ class race:
             bib = r[COL_NO]
             rank = None
             info = ''
-            if self.evtype in ('handicap', 'sprint'):
+            if self.evtype in ('handicap', 'sprint', 'derby'):
                 # include handicap and previous win info
                 info = r[COL_INFO].strip()
             if self.onestart:
@@ -1572,8 +1574,8 @@ class race:
                     pcount = rtot
 
             if r[COL_INFO]:
-                if self.evtype not in ('keirin',
-                                       'sprint') and not self.inomnium:
+                if self.evtype not in ('keirin', 'sprint',
+                                       'derby') and not self.inomnium:
                     inf = r[COL_INFO]
 
             if plstr:  # don't emit a row for unplaced riders
