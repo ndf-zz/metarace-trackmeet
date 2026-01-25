@@ -177,7 +177,6 @@ class ps:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
-                self.resend_current()
 
     def loadconfig(self):
         """Load race config from disk."""

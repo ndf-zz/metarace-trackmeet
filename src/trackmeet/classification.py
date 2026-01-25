@@ -70,7 +70,6 @@ class classification:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
-                self.resend_current()
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
