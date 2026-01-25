@@ -376,7 +376,8 @@ class timerpane:
     def start(self, starttod):
         """Trigger start on timer."""
         self.starttod = starttod
-        self.set_split(0)
+        if self.splitlbls:
+            self.set_split(0)
         self.torunning()
 
     def toload(self, bib=None):
