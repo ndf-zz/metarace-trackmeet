@@ -46,6 +46,7 @@ from . import ittt
 from . import sprnd
 from . import classification
 from . import aggregate
+from . import hourrec
 
 PRGNAME = 'org._6_v.trackmeet'
 APPNAME = 'Trackmeet'
@@ -175,6 +176,15 @@ _CONFIG_SCHEMA = {
         'hint': 'Number of additional non-padding end pages',
         'attr': 'endpages',
         'default': 0,
+    },
+    'padbook': {
+        'prompt': 'Pad Booklet:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Pad program pages up to a multiple of 4',
+        'attr': 'padbook',
+        'default': False,
     },
     'communiques': {
         'prompt': 'Communiqu\u00e9s:',
@@ -351,8 +361,8 @@ def mkrace(meet, event, ui=True):
             'sprint final',
     ):
         ret = sprnd.sprnd(meet=meet, event=event, ui=ui)
-    ##elif etype == 'hour':
-    ##ret = hourrec.hourrec(meet=meet, event=event, ui=ui)
+    elif etype == 'hour':
+        ret = hourrec.UCIHour(meet=meet, event=event, ui=ui)
     elif etype == 'team aggregate':
         ret = aggregate.teamagg(meet=meet, event=event, ui=ui)
     elif etype == 'indiv aggregate':
@@ -1029,8 +1039,19 @@ class trackmeet:
     def menu_race_next_activate_cb(self, menuitem, data=None):
         """Open the next event on the program."""
         if self.curevent is not None:
-            nh = self.edb.getnextrow(self.curevent.event)
+            # special case: currently in a sprint round
+            if self.curevent.evtype in ('sprint final', 'sprint round'):
+                nh = self.curevent.advance()
+                if nh is None:
+                    return
+            else:
+                nh = self.edb.getnextrow(self.curevent.event)
             if nh is not None:
+                if nh['type'] == 'sprint heat':
+                    # open the actual event
+                    if nh['refer']:
+                        if nh['refer'] in self.edb:
+                            nh = self.edb[nh['refer']]
                 self.open_event(nh)
                 self.select_event(nh)
             else:
@@ -1465,7 +1486,7 @@ class trackmeet:
         template = metarace.PROGRAM_TEMPLATE
         r = report.report(template)
         # temp: hack the page counts
-        r.booklet = True
+        r.booklet = self.padbook
         if self.startpage is not None:
             r.startpage = self.startpage
             r.endpages = self.endpages
@@ -1514,7 +1535,14 @@ class trackmeet:
                         sec.footer = smeta['footer']
                         aux = []
                         count = 0
-                        for rid in self.rdb.biblistfromseries(series):
+                        rlist = set()
+                        if smeta['categories']:
+                            # assume a manually crafted series listing
+                            for cat in smeta.get_catset():
+                                rlist.update(self.rdb.biblistfromcat(cat))
+                        else:
+                            rlist.update(self.rdb.biblistfromseries(series))
+                        for rid in rlist:
                             nr = self.rdb.get_rider(rid)
                             if nr is not None:
                                 if nr['no'] and nr['last']:
@@ -1602,6 +1630,10 @@ class trackmeet:
             self.updateindex()
             if self.curevent is not None:
                 self.curevent.resend_current()
+            else:
+                self.db.clearCurrent()
+                self.db.updateCurrent()
+
         except Exception as e:
             _log.error('%s updating event index: %s', e.__class__.__name__, e)
             raise
@@ -1673,6 +1705,8 @@ class trackmeet:
         isec.heading = 'Event Index'
         #sec.subheading = Date?
         ievno = None
+        lievno = None
+        lrules = None
         for eh in self.edb:
             if eh['result'] and eh['type'] in (
                     'classification', 'team aggregate',
@@ -1688,15 +1722,26 @@ class trackmeet:
 
             if eh['inde']:  # include in index?
                 evno = eh['evid']
+                ievno = eh.get_bridge_evno()
+                ilaps = eh['laps']
+                irules = eh['rules']
                 if eh['type'] in ('break', 'session'):
                     evno = None
                     if eh['type'] == 'session' and ievno != ' ':
+                        if len(isec.lines) > 3:
+                            isec.breakhints.append(len(isec.lines))
                         isec.lines.append(['', '', ''])
                         ievno = ' '
                     else:
-                        ievno = evno
+                        pass
+                        ievno = ''
                 else:
-                    ievno = evno
+                    if ievno == lievno:
+                        ievno = ' '
+                        irules = None
+                        ilaps = None
+                    else:
+                        lievno = ievno
                 referno = evno
                 target = None
                 if eh['refe']:  # overwrite ref no, even on specials
@@ -1711,14 +1756,17 @@ class trackmeet:
                         strops.WEBFILE_UTRANS)
                 descr = ' '.join([eh['pref'], eh['info']]).strip()
                 extra = None
+                iextra = None
                 if eh['laps']:
                     extra = '%s\u2006Lap%s' % (eh['laps'],
                                                strops.plural(eh['laps']))
+                    if ilaps is not None:
+                        iextra = extra
                 rules = eh['rules']  # progression
                 if eh['evov']:
                     evno = eh['evov'].strip()
                 sec.lines.append([evno, None, descr, extra, linkfile, target])
-                isec.lines.append([ievno, ' ', descr, extra, None, rules])
+                isec.lines.append([ievno, ' ', descr, iextra, None, irules])
         if rsec.lines:
             orep.add_section(rsec)
         if sec.lines:
@@ -2925,7 +2973,6 @@ class trackmeet:
             _log.debug('Re-load event view')
         if self.curevent is not None:
             self.curevent.eventcb(event)
-            self.curevent.saveconfig()
 
         # dump data bridge root elements if meetcode set
         if self.eventcode:
@@ -3577,6 +3624,7 @@ class trackmeet:
         self.riderlist = False
         self.startpage = None
         self.endpages = 0
+        self.padbook = 0
         self.nextlinks = {}
         self.prevlinks = {}
         self.commalloc = {}
