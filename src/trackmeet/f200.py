@@ -108,7 +108,6 @@ class f200:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
-                self.resend_current()
 
     def standingstr(self):
         return self._standingstr
@@ -643,6 +642,7 @@ class f200:
                         (placestr, bibstr, namestr, tmstr)))
                 curline += 1
             self.resend_current()
+        return False
 
     def do_properties(self):
         """Run event properties dialog."""
@@ -1452,7 +1452,7 @@ class f200:
         self.meet.gemini.show_brt()
         self.timerwin = True
         self.meet.scbwin.reset()
-        self.meet.db.setScoreboardHint('timer')
+        self.meet.db.setScoreboardHint('timing')
         self.resend_current()
 
     def toarmstart(self):
