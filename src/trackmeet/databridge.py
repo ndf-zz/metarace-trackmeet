@@ -408,6 +408,7 @@ class DataBridge():
             'distance': None,
             'laps': None,
             'status': None,
+            'sponsor': _ornull(event['sponsor']),
             'competitionType': None,
             'competitorType': None,
             'competitors': [],
@@ -434,6 +435,7 @@ class DataBridge():
             'distance': None,
             'laps': None,
             'status': None,
+            'sponsor': _ornull(event['sponsor']),
             'competitionType': None,
             'competitorType': None,
             'lines': [],
@@ -534,7 +536,7 @@ class DataBridge():
         elif cat in _NONCHAMPCATS:
             self._categories[cat]['label'] = _NONCHAMPCATS[cat]
         if cat not in self._catlist:
-            _log.debug('Adding category %s', cat)
+            #_log.debug('Adding category %s', cat)
             self._catlist.append(cat)
 
     def updateCategory(self, cat):
@@ -580,8 +582,7 @@ class DataBridge():
                           c.resname_bib())
         for cat in cats:
             if cat not in self._categories:
-                _log.debug('Adding cat = %r for competitor %s', cat,
-                           c.resname())
+                #_log.debug('Adding cat = %r for competitor %s', cat, c.resname())
                 self.addCategory(cat)
 
             compObj = self._categories[cat]['competitors']
@@ -658,8 +659,7 @@ class DataBridge():
         for rid in self._m.rdb:
             r = self._m.rdb[rid]
             if r['series'] == 'cat':
-                _log.debug('Add category %s for cat entry %s', r['id'],
-                           r.resname())
+                #_log.debug('Add category %s for cat entry %s', r['id'], r.resname())
                 self.addCategory(r['id'])
             elif r['series'] and r['series'].lower() in ('series', 'spare',
                                                          'ds'):
@@ -686,6 +686,7 @@ class DataBridge():
                         'category',
                         'competition',
                         'phase',
+                        'sponsor',
                         'fragments',
                         'startTime',
                 ):
@@ -778,6 +779,7 @@ class DataBridge():
                         'category': category,
                         'competition': competition,
                         'phase': phase,
+                        'sponsor': _ornull(meeteh['sponsor']),
                         'fragments': [],
                         'startTime': meeteh['start'],
                     }
@@ -872,6 +874,7 @@ class DataBridge():
 
     def clearCurrent(self, event=None, fragment=None, evoverride=None):
         """Reset current object"""
+        _log.debug('Clear current %r', fragment)
         self._current.clear()
         self._current['scoreboard'] = _ornull(self._scoreboard)
 
@@ -905,6 +908,7 @@ class DataBridge():
             self._current['category'] = path[0]
             self._current['competition'] = path[1]
             self._current['phase'] = None
+            self._current['sponsor'] = _ornull(event['sponsor'])
             self._current['eventStart'] = event['start']
             if len(path) > 2 and path[2]:
                 self._current['phase'] = path[2]
@@ -960,7 +964,7 @@ class DataBridge():
                   'elapsed', 'competitorA', 'labelA', 'timeA', 'downA',
                   'rankA', 'infoA', 'competitorB', 'labelB', 'timeB', 'downB',
                   'rankB', 'infoB', 'eliminated', 'remain', 'toGo', 'record',
-                  'noLaps'):
+                  'noLaps', 'laps', 'distance'):
             if k in data and data[k]:
                 self._current[k] = data[k]
 
@@ -977,12 +981,12 @@ class DataBridge():
         dataObj = {}
         for k in ('path', 'next', 'status', 'title', 'subtitle', 'info',
                   'event', 'session', 'category', 'competition', 'phase',
-                  'contest', 'heat', 'competitorType', 'competitionType',
-                  'eventStart', 'startTime', 'endTime', 'elapsed',
-                  'competitorA', 'labelA', 'timeA', 'downA', 'rankA', 'infoA',
-                  'competitorB', 'labelB', 'timeB', 'downB', 'rankB', 'infoB',
-                  'eliminated', 'remain', 'toGo', 'laps', 'distance', 'record',
-                  'weather', 'scoreboard'):
+                  'contest', 'heat', 'sponsor', 'competitorType',
+                  'competitionType', 'eventStart', 'startTime', 'endTime',
+                  'elapsed', 'competitorA', 'labelA', 'timeA', 'downA',
+                  'rankA', 'infoA', 'competitorB', 'labelB', 'timeB', 'downB',
+                  'rankB', 'infoB', 'eliminated', 'remain', 'toGo', 'laps',
+                  'distance', 'record', 'weather', 'scoreboard'):
 
             if k in self._current:
                 dataObj[k] = self._current[k]
