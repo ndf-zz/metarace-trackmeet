@@ -268,7 +268,7 @@ Subtopics available under [MEET]:
 #### [MEET]/events
 
 Map of event ids to their associated information. Each key
-in the event index maps to an EVENT object with the
+in the event index maps to a list of EVENT objects with the
 following keys from the schedule of events:
 
 key | type | descr
@@ -291,26 +291,30 @@ Example:
 
 	2025atc/events
 	{
-	 "1": {
-	  "title": "Men Elite Sprint",
-	  "subtitle": "Qualifying",
-	  "info": "Top 16 to Round 1",
-	  "extra": null,
-	  "distance": "200\u2006m",
-	  "laps": null,
-	  "session": "1",
-	  "category": "ME",
-	  "competition": "sprint",
-	  "phase": "qualifying",
-          "sponsor": "B & E Roll Guys",
-	  "fragments": ["ME/sprint/qualifying"],
-          "startTime": ...
-	 }, ...
+	 "1": [
+          {
+	   "title": "Men Elite Sprint",
+	   "subtitle": "Qualifying",
+	   "info": "Top 16 to Round 1",
+	   "extra": null,
+	   "distance": "200\u2006m",
+	   "laps": null,
+	   "session": "1",
+	   "category": "ME",
+	   "competition": "sprint",
+	   "phase": "qualifying",
+           "sponsor": "B & E Roll Guys",
+	   "fragments": ["ME/sprint/qualifying"],
+           "startTime": ...
+	  }, ...
+         ], ...
 	}
 
 *Note:* Event subtitle, info, extra may not line up
-exactly with competition data, event index is informative
+exactly with competition data. The event index is informative
 and based on content of the published schedule of events.
+Some event numbers on the schedule may refer to multiple
+distinct events in the listing.
 
 #### [MEET]/current
 
