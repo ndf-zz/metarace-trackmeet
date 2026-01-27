@@ -2596,11 +2596,11 @@ class ps:
             b.get_object('ps_info_evno').set_text(self.evno)
             self.showev = b.get_object('ps_info_evno_show')
             self.prefix_ent = b.get_object('ps_info_prefix')
-            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.prefix_ent.set_text(self.event['pref'])
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.info_ent = b.get_object('ps_info_title')
-            self.info_ent.connect('changed', self.editent_cb, 'info')
             self.info_ent.set_text(self.event['info'])
+            self.info_ent.connect('changed', self.editent_cb, 'info')
 
             self.time_lbl = b.get_object('ps_info_time')
             self.time_lbl.modify_font(uiutil.MONOFONT)

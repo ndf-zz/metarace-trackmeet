@@ -874,7 +874,6 @@ class DataBridge():
 
     def clearCurrent(self, event=None, fragment=None, evoverride=None):
         """Reset current object"""
-        _log.debug('Clear current %r', fragment)
         self._current.clear()
         self._current['scoreboard'] = _ornull(self._scoreboard)
 

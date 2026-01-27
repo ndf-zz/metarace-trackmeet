@@ -397,7 +397,7 @@ class f200:
         cw.set('event', 'chan_I', self.chan_I)
         cw.set('event', 'chan_F', self.chan_F)
         cw.set('event', 'autoarm', self.autoarm)
-        cw.set('event', 'startlist', self.get_startlist())
+        cw.set('event', 'startlist', self.get_startlist(reorder=False))
         cw.set('event', 'inomnium', self.inomnium)
 
         _log.debug('winopen: %r', self.winopen)
@@ -574,10 +574,11 @@ class f200:
         ret.append(sec)
         return ret
 
-    def get_startlist(self):
+    def get_startlist(self, reorder=True):
         """Return a list of bibs in the rider model."""
         ret = []
-        self.reorder_startlist()
+        if reorder:
+            self.reorder_startlist()
         for r in self.riders:
             ret.append(r[COL_NO])
         return ' '.join(ret)
@@ -1883,11 +1884,11 @@ class f200:
             b.get_object('race_info_evno').set_text(self.evno)
             self.showev = b.get_object('race_info_evno_show')
             self.prefix_ent = b.get_object('race_info_prefix')
-            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.prefix_ent.set_text(self.event['pref'])
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.info_ent = b.get_object('race_info_title')
-            self.info_ent.connect('changed', self.editent_cb, 'info')
             self.info_ent.set_text(self.event['info'])
+            self.info_ent.connect('changed', self.editent_cb, 'info')
 
             # Timer Pane
             mf = b.get_object('race_timer_pane')

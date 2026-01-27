@@ -554,7 +554,7 @@ class ittt:
         cw.set('event', 'chan_B', self.chan_B)
         cw.set('event', 'timetype', self.timetype)
         cw.set('event', 'autotime', self.autotime)
-        cw.set('event', 'startlist', self.get_startlist())
+        cw.set('event', 'startlist', self.get_startlist(reorder=False))
         cw.set('event', 'inomnium', self.inomnium)
         cw.set('event', 'forcedetail', self.forcedetail)
         cw.set('event', 'precision', self.precision)
@@ -842,10 +842,11 @@ class ittt:
             ret.append(rec)
         return ret
 
-    def get_startlist(self):
+    def get_startlist(self, reorder=True):
         """Return a list of bibs in the rider model."""
         ret = []
-        self.reorder_startlist()
+        if reorder:
+            self.reorder_startlist()
         for r in self.riders:
             ret.append(r[COL_NO])
         return ' '.join(ret)
@@ -2908,11 +2909,11 @@ class ittt:
             b.get_object('race_info_evno').set_text(self.evno)
             self.showev = b.get_object('race_info_evno_show')
             self.prefix_ent = b.get_object('race_info_prefix')
-            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.prefix_ent.set_text(self.event['pref'])
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.info_ent = b.get_object('race_info_title')
-            self.info_ent.connect('changed', self.editent_cb, 'info')
             self.info_ent.set_text(self.event['info'])
+            self.info_ent.connect('changed', self.editent_cb, 'info')
 
             # Timer Panes
             mf = b.get_object('race_timer_pane')

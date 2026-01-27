@@ -533,36 +533,31 @@ class race:
             _log.info('Event config mismatch: %r != %r', eid, EVENT_ID)
 
     def reorder_riders(self):
-        """Reorder rider model according to seeding or handicap marks."""
+        """Sort the rider list by rider number or seeding."""
         if len(self.riders) > 1:
-            auxmap = []
+            aux = self._get_startaux()
+            self.riders.reorder([a[2] for a in aux])
+
+    def _get_startaux(self):
+        """Return a temporary auxilliary list of riders in startlist order."""
+        aux = []
+        if len(self.riders) > 1:
             cnt = 0
             for r in self.riders:
+                bib = r[COL_NO]
                 seed = strops.mark2int(r[COL_INFO])
                 if seed is None:
                     seed = 9999
                 rno = strops.riderno_key(r[COL_NO])
                 if self.evtype == 'handicap':
-                    auxmap.append((
-                        -seed,
-                        rno,
-                        cnt,
-                    ))
+                    aux.append((-seed, rno, cnt, bib))
                 elif self.inomnium:
-                    auxmap.append((
-                        seed,
-                        rno,
-                        cnt,
-                    ))
+                    aux.append((seed, rno, cnt, bib))
                 else:
-                    auxmap.append((
-                        rno,
-                        cnt,
-                        cnt,
-                    ))
+                    aux.append((rno, cnt, cnt, bib))
                 cnt += 1
-            auxmap.sort()
-            self.riders.reorder([a[2] for a in auxmap])
+            aux.sort()
+        return aux
 
     def set_timetype(self, data=None):
         """Update state and ui to match timetype."""
@@ -772,9 +767,9 @@ class race:
     def get_startlist(self):
         """Return a list of bibs in the rider model."""
         ret = []
-        self.reorder_riders()
-        for r in self.riders:
-            ret.append(r[COL_NO])
+        aux = self._get_startaux()
+        for a in aux:
+            ret.append(a[3])  # (x,x,x, bib)
         return ' '.join(ret)
 
     def saveconfig(self):
@@ -1717,11 +1712,11 @@ class race:
             b.get_object('race_info_evno').set_text(self.evno)
             self.showev = b.get_object('race_info_evno_show')
             self.prefix_ent = b.get_object('race_info_prefix')
-            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.prefix_ent.set_text(self.event['pref'])
+            self.prefix_ent.connect('changed', self.editent_cb, 'pref')
             self.info_ent = b.get_object('race_info_title')
-            self.info_ent.connect('changed', self.editent_cb, 'info')
             self.info_ent.set_text(self.event['info'])
+            self.info_ent.connect('changed', self.editent_cb, 'info')
 
             self.time_lbl = b.get_object('race_info_time')
             self.time_lbl.modify_font(uiutil.MONOFONT)

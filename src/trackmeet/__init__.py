@@ -1420,8 +1420,15 @@ class trackmeet:
                     sec.subheading = smeta['subtitle']
                     sec.footer = smeta['footer']
                     aux = []
+                    rlist = set()
+                    if smeta['categories']:
+                        # assume a manually crafted series listing
+                        for cat in smeta.get_catset():
+                            rlist.update(self.rdb.biblistfromcat(cat))
+                    else:
+                        rlist = self.rdb.biblistfromseries(series)
                     count = 0
-                    for rid in self.rdb.biblistfromseries(series):
+                    for rid in rlist:
                         nr = self.rdb.get_rider(rid)
                         if nr is not None and nr['series'] not in (
                                 'spare', 'cat', 'team', 'ds', 'series',
@@ -1800,8 +1807,9 @@ class trackmeet:
 
     def menu_data_export_activate_cb(self, menuitem, data=None):
         """Export race data."""
-        if not self.exportlock.acquire(False):
-            _log.info('Export already in progress')
+        if not self._exportLock.acquire(False):
+            _log.debug('Export already in progress')
+            self._exportBlocked.set()
             return None
         try:
             if self.exporter is not None:
@@ -1809,9 +1817,12 @@ class trackmeet:
                     _log.debug('Stale exporter handle removed')
                     self.exporter = None
                 else:
-                    _log.info('Export already in progress')
-                return False
+                    _log.debug('Export already in progress')
+                    self._exportBlocked.set()
+                    return False
 
+            if self.curevent is not None and self.curevent.winopen:
+                self.save_curevent()
             self.exporter = threading.Thread(target=self.__run_data_export,
                                              name='export',
                                              daemon=True)
@@ -1820,7 +1831,7 @@ class trackmeet:
         except Exception as e:
             _log.error('%s starting export: %s', e.__class__.__name__, e)
         finally:
-            self.exportlock.release()
+            self._exportLock.release()
 
     def check_depends_dirty(self, evno, checked=None):
         """Recursively determine event dependencies"""
@@ -1861,6 +1872,7 @@ class trackmeet:
 
     def __run_data_export(self):
         try:
+            self._exportBlocked.clear()
             _log.debug('Begin data export')
             self.check_export_path()
             self.updatenexprev()  # re-compute next/prev link struct
@@ -1950,9 +1962,12 @@ class trackmeet:
             if self.mirrorpath:
                 GLib.idle_add(self.mirror_start)
             _log.debug('End data export thread[%s]', self.exporter.native_id)
+            if self._exportBlocked.is_set():
+                # queue another export in case request came in during this run
+                _log.debug('Previous export attempt blocked, queueing another')
+                self.delayed_export()
         except Exception as e:
             _log.error('%s data export: %s', e.__class__.__name__, e)
-            raise
 
     ## SCB menu callbacks
     def menu_scb_enable_toggled_cb(self, button, data=None):
@@ -2429,7 +2444,6 @@ class trackmeet:
     # Track meet functions
     def delayed_export(self):
         """Queue an export on idle add."""
-        self.exportpending = True
         GLib.idle_add(self.exportcb)
 
     def save_curevent(self):
@@ -2450,11 +2464,6 @@ class trackmeet:
 
     def exportcb(self):
         """Save current event and update race info in external db."""
-        if not self.exportpending:
-            return False  # probably doubled up
-        self.exportpending = False
-        if self.curevent is not None and self.curevent.winopen:
-            self.save_curevent()
         self.menu_data_export_activate_cb(None)
         return False  # for idle add
 
@@ -2943,8 +2952,11 @@ class trackmeet:
 
     def eventcb(self, event):
         """Handle a change in the event model"""
+        _log.debug('eventcb %r', event)
+        doexport = False
         if event is not None:
             if event in self.edb:
+                doexport = True
                 # update single entry in list
                 e = self.edb[event]
                 e.set_value('dirty', True)
@@ -2979,7 +2991,9 @@ class trackmeet:
             self.db.updateMeet()
 
         # flag export
-        self.menu_data_export_activate_cb(None)
+        if doexport:
+            _log.debug('doexport set - idle add delayed export')
+            self.delayed_export()
         return False
 
     def ridercb(self, rider):
@@ -3631,7 +3645,6 @@ class trackmeet:
         self.timerport = None
         self.tracklen_n = 250  # numerator
         self.tracklen_d = 1  # denominator
-        self.exportpending = False
         self.mirrorpath = ''  # default mirror path
         self.mirrorcmd = None
         self.shortname = ''
@@ -3674,7 +3687,8 @@ class trackmeet:
         self.gemport = ''
         self.mirror = None  # file mirror thread
         self.exporter = None  # export worker thread
-        self.exportlock = threading.Lock()  # one only exporter
+        self._exportLock = threading.Lock()  # one only exporter
+        self._exportBlocked = threading.Event()  # flag blocked export
         self.wsauth = False  # Enable UCI web services
 
         b = uiutil.builder('trackmeet.ui')
