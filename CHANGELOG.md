@@ -12,11 +12,38 @@
 
 ### Security
 
+## [1.13.7] 2026-01-29
+
+### Added
+
+   - Configure Heat 2 and Heat 3 event nos within sprint round handler
+   - Add pseudo event handler for sprint 2/3
+   - Mark heat label on sprint final scoreboard info page
+   - Include link to next event fragment in bridge current object
+   - Provide scoreboard type hint in bridge current object
+   - Re-run export on completion if any export requests blocked while in progress
+   - Hour record event handler
+
+### Changed
+
+   - Advance event when sprint running will select next contest if possible
+   - Advance to break event when type is sprint heat will open parent sprint handler
+   - Mark preferred page breaks on session boundaries in program index
+   - Allow addition of custom number series by category lookup to program rider list
+
+### Fixed
+
+   - populate contest result when known for sprint finals
+   - suppress "win" badges on byes
+   - don't re-order points race rider model on save
+   - don't update eventdb prefix/info on event load
+   - add workaround for reordering of starters on save in flying 200 and ittt
+
 ## [1.13.6] - 2025-12-31
 
 ### Added
 
-   - include optional inrtroduction sections to printed program
+   - include optional introduction sections to printed program
    - add prefix to data bridge telegraph topics
    - add dnf, abd, dns, dsq handling on points and race handler
    - add pursuit dual lane autotime

@@ -746,7 +746,7 @@ class DataBridge():
                         'finals': {},
                     }
 
-            if meeteh['type'] == 'session':
+            if meeteh['type'] == 'session' and sessionid:
                 # Special case: session marker
                 sessOb = self._sessions[sessionid]
                 sessOb['startTime'] = meeteh['start']

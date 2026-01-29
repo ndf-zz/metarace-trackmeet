@@ -175,6 +175,13 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="GtkMenuItem" id="mkrace_sess">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Session</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuItem" id="mkrace_break">
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">Break</property>
@@ -199,6 +206,13 @@
                                   <object class="GtkMenuItem" id="mkrace_spd">
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">Sprint Derby</property>
+                                    <signal name="activate" handler="menu_race_make_activate_cb"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="mkrace_sph">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Sprint Heat</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
                                   </object>
                                 </child>
@@ -246,7 +260,6 @@
                                 </child>
                                 <child>
                                   <object class="GtkMenuItem" id="mkrace_hour">
-                                    <property name="sensitive">False</property>
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">Hour</property>
                                     <signal name="activate" handler="menu_race_make_activate_cb"/>
