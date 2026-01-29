@@ -375,6 +375,8 @@ class scbtt(scbwin):
             if self.line2 != self.nextline2:
                 self.line2 = self.nextline2
                 self.scb.setline(c2oft, self.nextline2)
+            if self.count % 400 == 0:
+                self.scb.flush()
             self.count += 1
 
 

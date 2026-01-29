@@ -21,7 +21,7 @@ Notes on the interpretation of the standing rules, January 2026:
 
 import gi
 import logging
-from math import floor
+from math import floor, ceil
 
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
@@ -51,6 +51,8 @@ EVENT_ID = 'hourrec-1.0'
 _key_armstart = 'F5'
 _key_reset = 'F5'
 _key_timer = 'F6'
+_key_abort = 'F7'  # toggle abort status
+_key_forceabort = 'F8'  # force abort in case of incorrect finish trigger
 
 # internal constants
 _DURATION = tod.HOUR
@@ -64,6 +66,9 @@ _CHAN_START = 0
 _CHAN_MAN = 1
 _CHAN_LAP = 2
 _CHAN_HALF = 3
+_COUNTDOWNMAX = tod.mktod('1h30:00')
+_COUNTDOWNMIN = tod.MINUTE
+_QUARTER = tod.mktod('15:00')
 
 _CONFIG_SCHEMA = {
     'etype': {
@@ -178,7 +183,6 @@ _TIMING_SCHEMA = {
         'places': 4,
         'attr': '_finish',
         'default': None,
-        'readonly': True,
     },
     'lapcount': {
         'prompt': 'Lap count:',
@@ -196,6 +200,15 @@ _TIMING_SCHEMA = {
         'attr': '_mancount',
         'default': 0,
     },
+    'aborted': {
+        'prompt': 'Aborted:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Attempt was aborted before completion',
+        'attr': '_aborted',
+        'default': False,
+    },
     'lastlap': {
         'prompt': 'Final lap:',
         'control': 'short',
@@ -203,6 +216,15 @@ _TIMING_SCHEMA = {
         'hint': 'Lap time in which the hour expired',
         'places': 3,
         'attr': '_lastlap',
+        'default': None,
+    },
+    'prevlap': {
+        'prompt': 'Last lap:',
+        'control': 'short',
+        'type': 'tod',
+        'hint': 'Last complete lap recorded',
+        'places': 3,
+        'attr': '_prevlap',
         'default': None,
         'readonly': True,
     },
@@ -319,8 +341,6 @@ class UCIHour:
 
     def loadconfig(self):
         """Load race config from disk."""
-        self.onestart = False
-        self.finished = False
         self._tracelog.clear()
         self._splitlist.clear()
 
@@ -352,14 +372,18 @@ class UCIHour:
             for st in splits:
                 self._splitlist.append(tod.mktod(st))
 
-        # reset event state flags
+        # reset event timerstat before recalc in case of abort after finish
         if self._start is not None:
-            self.onestart = True
             if self._finish is not None:
-                self.finished = True
                 self.timerstat = 'finished'
             else:
-                self.timerstat = 'running'
+                if self._aborted:
+                    if self._lastlap is not None:
+                        self.timerstat = 'finished'
+                    else:
+                        self.timerstat = 'abort'
+                else:
+                    self.timerstat = 'running'
 
         # update ui and re-join timer if required
         if self.winopen:
@@ -374,12 +398,15 @@ class UCIHour:
                 if self._finish is not None:
                     _log.debug('Attempt finished')
                     self._timer.finish(self._finish)
-                    self._endtrace()
-                    self._disarmchrono()
+                    self._toFinish()
                 else:
-                    _log.debug('Re-join event in progress')
-                    self._starttrace()
-                    self._armchrono()
+                    if self._aborted:
+                        if self._lastlap is not None:
+                            self._toFinish()  # abort after completion of time
+                        else:
+                            self._toFinish(timerstat='abort')
+                    else:
+                        self._resumeAttempt()
             else:
                 # should be idle on load already
                 pass
@@ -425,20 +452,16 @@ class UCIHour:
         twocol = True
         rankcol = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
-        sec = report.section(secid)
+        sec = report.bullet_text(secid)
+        sec.heading = self.event.get_info(showevno=True)
 
-        sec.nobreak = True
-        headvec = self.event.get_info(showevno=True).split()
-        if not program:
-            headvec.append('Start List')
-        else:
-            rankcol = ' '
-        sec.heading = ' '.join(headvec)
-        # suppress "laps" string on hour reports
-        substr = '\u3000'.join(
-            (self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            sec.subheading = substr
+        # suppress "laps" on hour report
+        subv = []
+        if self._wallstart is not None:
+            subv.append('Start: %s' % (self._wallstart.meridiem(secs=False), ))
+        if self.event['record']:
+            subv.append(self.event['record'])
+        sec.subheading = '\u3000'.join(subv)
 
         self._startlines = []
         sec.lines = []
@@ -449,12 +472,13 @@ class UCIHour:
             dbrno = self._rider['no']
             rnat = self._rider['nationality']
             rname = self._rider.resname()
+            rline = 'Rider: %s' % (self._riderName(), )
             inf = self._rider['class']
             pilot = self.meet.rdb.get_pilot_line(self._rider)
             pname = None
             if pilot:
                 pname = pilot[2]
-            sec.lines.append([None, rno, rname, inf, None, None])
+            sec.lines.append(['', rline])
             if pilot:
                 sec.lines.append(pilot)
             self._startlines.append({
@@ -464,13 +488,20 @@ class UCIHour:
                 'info': inf,
                 'pilot': pname,
             })
+        target = self._target
+        if self._record is not None:
+            target = self._record
+        if target is not None:
+            tstr = 'Target: %0.3f\u2006km' % (target / 1000.0, )
+            sec.lines.append(['', tstr])
 
         # Prizemoney line
         sec.prizes = self.meet.prizeline(self.event)
 
         # Footer line
-        sec.footer = self.meet.footerline(self.event, count=cnt)
-
+        sec.footer = self.meet.footerline(self.event,
+                                          count=1,
+                                          showrecord=False)
         ret.append(sec)
         return ret
 
@@ -492,7 +523,7 @@ class UCIHour:
             title='Hour Record Properties',
             sections={
                 'hour': {
-                    'title': 'Event Config',
+                    'title': 'Configuration',
                     'schema': _CONFIG_SCHEMA,
                     'object': self,
                 },
@@ -513,7 +544,8 @@ class UCIHour:
                 else:
                     _log.debug('Cleared rider')
                 self._updateRider()
-                ##! recalculate
+            self.recalculate()
+            self.meet.delayed_export()
         else:
             _log.debug('Edit properties cancelled')
         return False
@@ -606,18 +638,33 @@ class UCIHour:
         self._mancount = 0
         self._lastlap = None
         self._prevlap = None
+        self._aborted = False
         self._splitlist.clear()
         self._tracelog.clear()
-        self.recalculate
+        self.recalculate()
 
         if self.winopen:
             self.showtimerwin()
+            self.meet.delayed_export()
         _log.info('Reset to idle')
 
     def showtimerwin(self):
         """Display running info on the scoreboard."""
-        header = 'Something'
-        subheader = 'Something ELse'
+        durationlbl = 'Hour'
+        if self._reclen != tod.HOUR:
+            if self._reclen == _QUARTER:
+                if self.meet.scb.linelen < 27:
+                    durationlbl = 'Qtr Hour'
+                else:
+                    durationlbl = 'Quarter Hour'
+            elif self._reclen < tod.MINUTE:
+                durationlbl = self._reclen.rawtime(0) + 's'
+            else:
+                durationlbl = self._reclen.rawtime(0)
+        header = '%s Record Attempt' % (durationlbl, )
+        subheader = ''
+        if self._rider is not None:
+            subheader = self._rider.fitname(self.meet.scb.linelen)
         self.meet.scbwin = scbwin.scbtt(scb=self.meet.scb,
                                         header=header,
                                         subheader=subheader)
@@ -628,26 +675,125 @@ class UCIHour:
         self.resend_current()
         return False
 
+    def _armLap(self):
+        """Resume effort if aborted, or log arm request."""
+        if self.timerstat == 'running':
+            _log.info('Arm lap')
+        elif self.timerstat == 'abort':
+            self._resumeAttempt()
+            self.recalculate()
+            self.meet.delayed_export()
+        else:
+            _log.debug('Ignore abort/resume')
+
+    def _toFinish(self, timerstat='finished'):
+        self._endtrace()
+        self._disarmchrono()
+        self.timerstat = timerstat
+        self._timer.tofinish()
+
+    def _resumeAttempt(self):
+        if self._start is not None:
+            _log.debug('Re-join event in progress')
+            self._starttrace()
+            self._armchrono()
+            self._timer.start(self._start)
+            self.timerstat = 'running'
+        else:
+            _log.info('Unable to resume: Start time not set')
+
+    def _doAbort(self):
+        """Perform abort of attempt before completion of time."""
+        _log.info('Attempt aborted after lap %r, %s', self._lapcount,
+                  self._elapsed)
+        self._aborted = True
+        if self._rider is not None:
+            self.meet.timer_log_msg(self._rider['no'], '- Abort -')
+        self._toFinish(timerstat='abort')
+        self.recalculate()
+        self.meet.delayed_export()
+
+    def _doResume(self):
+        """Perform resume attempt from operator request."""
+        self._resumeAttempt()
+        self.recalculate()
+        self.meet.delayed_export()
+
+    def _doAbortAfter(self):
+        """Perform abort after completion of time [3.5.033]."""
+        if self._splitlist:
+            llstart = tod.ZERO
+            # end of last completed lap
+            llend = (self._splitlist[-1] - self._start).truncate(3)
+            if len(self._splitlist) > 1:
+                # start of last completed lap
+                llstart = (self._splitlist[-2] - self._start).truncate(3)
+            self._lastlap = llend - llstart
+            _log.info('Abort after completion of time, TRC=%s',
+                      self._lastlap.rawtime(3))
+            self._aborted = True
+            if self._rider is not None:
+                self.meet.timer_log_msg(self._rider['no'], '- Abort -')
+            self._toFinish()
+            self.recalculate()
+            self.meet.delayed_export()
+        else:
+            _log.debug('Degenerate lap count, attempt aborted')
+            self._doAbort()
+
+    def _abortAttempt(self, after=False):
+        """Handle request to abort/resume attempt."""
+        if self.timerstat == 'abort' and not after:
+            self._doResume()
+        elif self.timerstat == 'running' and not after:
+            if self._lstart is not None:
+                lelap = tod.now() - self._lstart
+                if lelap < self._reclen:
+                    # abort before completion of hour
+                    self._doAbort()
+                else:
+                    self._doAbortAfter()
+            else:
+                # must assume abort is before end of hour since no runtime available
+                self._doAbort()
+        elif after and not self._aborted and self.timerstat == 'finished':
+            _log.debug('Finish time cleared')
+            self._finish = None
+            self._doAbortAfter()
+        else:
+            _log.debug('Ignore abort/resume')
+
     def key_event(self, widget, event):
         """Race window key press handler."""
         if event.type == Gdk.EventType.KEY_PRESS:
             key = Gdk.keyval_name(event.keyval) or 'None'
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key == _key_reset:  # override ctrl+f5
-                    self._abortcnt += 1
-                    if self._abortcnt > 4:
+                    self._resetcnt += 1
+                    if self._resetcnt > 4:
                         self.toidle()
-                        self._abortcnt = 0
-                    elif self._abortcnt == 1:
+                        self._resetcnt = 0
+                    elif self._resetcnt == 1:
                         _log.info('Press Ctrl+F5 five times to reset')
                     return True
-            self._abortcnt = 0
+                elif key == _key_abort:  # abort/resume attempt
+                    self._abortAttempt()
+                    self._resetcnt = 0
+                    return True
+                elif key == _key_forceabort:  # force abort for spurious finish
+                    self._abortAttempt(after=True)
+                    self._resetcnt = 0
+                    return True
+            self._resetcnt = 0
             if key[0] == 'F':
                 if key == _key_armstart:
                     self.armstart()
                     return True
                 elif key == _key_timer:
                     self.showtimerwin()
+                    return True
+                elif key == _key_abort:
+                    self._armLap()
                     return True
         return False
 
@@ -663,6 +809,7 @@ class UCIHour:
         ret['competitionType'] = 'hour'
 
         ret['status'] = self._status
+        ret['units'] = 'km'
 
         if self._weather is not None:
             ret['weather'] = self._weather
@@ -728,6 +875,7 @@ class UCIHour:
                 self.meet.main_timer.dearm(_CHAN_START)
                 self.torunning(rt[0], rt[1])
                 self.recalculate()
+                self.meet.delayed_export()
             else:
                 _log.info('No recent start time to recover')
         else:
@@ -740,27 +888,35 @@ class UCIHour:
                        e.source)
             self.torunning(e)
             self.recalculate()
+            self.meet.delayed_export()
         else:
             _log.debug('Spurious start trigger: %s@%s/%s', e.chan,
                        e.rawtime(1), e.source)
 
     def _laptrig(self, e):
         """Receive a lap trigger."""
-        if self._start is not None:
+        # Note: elapsed time is truncated and used for lap times in order to avoid
+        #       inconsistencies in reported values which may result in one less metre
+        #       in final distance estimate
+
+        if self._start is not None and self.timerstat == 'running':
             lt = self._start
+            lelap = tod.ZERO
             if self._splitlist:
                 lt = self._splitlist[-1]  # last completed lap
-            laptime = e - lt
+                lelap = (lt - self._start).truncate(3)
+            elap = (e - self._start).truncate(3)
+            laptime = elap - lelap
             if laptime > self._minlap and laptime < self._reclen:
                 self._prevlap = laptime
                 rno = ''
                 if self._rider is not None:
                     rno = self._rider['no']
-                elap = e - self._start
                 if elap < self._reclen:
                     # this is one more lap
                     self._lapcount += 1
-                    self._splitlist.append(e)
+                    self._splitlist.append(
+                        e)  # maintain the unmodified splits in data
                     self._timer.intermed(e)
                     if lt != self._start:
                         self.meet.timer_log_straight(rno, 'lap', laptime, 3)
@@ -775,15 +931,18 @@ class UCIHour:
                         self._lastlap = laptime
                         self._timer.finish(e)
                         _log.debug('Rider finished @ %s, last lap: %s',
-                                   elap.rawtime(1), laptime.rawtime(1))
+                                   elap.rawtime(4), laptime.rawtime(4))
                         self.meet.timer_log_straight(rno, 'lap', laptime, 3)
                         self.meet.timer_log_straight(rno, 'fin', elap, 3)
+                        self._toFinish()
                     else:
                         _log.debug(
                             'Sprious lap trigger after last lap: %s@%s/%s',
                             e.chan, e.rawtime(1), e.source)
                 self.recalculate()
-                GLib.idle_add(self.scblap)
+                if self.timerstat != 'finished':
+                    GLib.idle_add(self.scblap)
+                self.meet.delayed_export()
             else:
                 _log.debug('Short lap: %s', laptime.rawtime(1))
         else:
@@ -830,25 +989,27 @@ class UCIHour:
         nelap = ''
         dofinishtxt = False
         dostarttxt = False
-        if self._lstart is not None and self._finish is None:
-            # running
-            elap = now - self._lstart
-            if elap >= (self._reclen + tod.mktod('5:00')):
-                nelap = '--:--'
-            else:
-                nelap = elap.rawtime(0)
-
-        elif self._finish is not None:
+        if self.timerstat == 'finished':
             # the hour is over
             nelap = '--:--'
             dofinishtxt = True
+        elif self._lstart is not None:
+            if not self._aborted:
+                # running
+                elap = now - self._lstart
+                if elap >= (self._reclen + tod.mktod('5:00')):
+                    nelap = '--:--'
+                else:
+                    nelap = elap.rawtime(0)
+            else:
+                nelap = 'Aborted'
         else:
             # before start
             nelap = ''
             dostarttxt = True
             if self._wallstart is not None:
                 count = self._wallstart - now
-                if count >= tod.MINUTE and count < tod.HOUR:
+                if count >= _COUNTDOWNMIN and count <= _COUNTDOWNMAX:
                     nelap = count.rawtime(0)
 
         if self._timerwin and type(self.meet.scbwin) is scbwin.scbtt:
@@ -858,22 +1019,21 @@ class UCIHour:
                     self.meet.scbwin.setline1('')
                     self.meet.scbwin.setr1('Result:')
                     if self._D is not None and self._D > 0:
-                        self.meet.scbwin.sett1('{0:0.3f}km'.format(self._D /
-                                                                   1000.0))
+                        self.meet.scbwin.sett1('{0:0.3f}\u2006km'.format(
+                            self._D / 1000.0))
                     else:
-                        pass
-                        ##! - whatados?
+                        self.meet.scbwin.sett1('[Aborted]')
                     self.meet.scbwin.setline2('')
                     self.meet.scbwin.setr2('')
                     self.meet.scbwin.sett2('')
                 elif dostarttxt:
                     if self._record:
-                        self.meet.scbwin.setr1('Record:')
-                        self.meet.scbwin.sett1('{0:0.3f}km'.format(
+                        self.meet.scbwin.setr1('Target:')
+                        self.meet.scbwin.sett1('{0:0.3f}\u2006km'.format(
                             self._record / 1000.0))
                     elif self._target:
                         self.meet.scbwin.setr1('Target:')
-                        self.meet.scbwin.sett1('{0:0.3f}km'.format(
+                        self.meet.scbwin.sett1('{0:0.3f}\u2006km'.format(
                             self._target / 1000.0))
                     if self._wallstart is not None:
                         line1 = strops.truncpad(
@@ -902,10 +1062,16 @@ class UCIHour:
         """Update scoreboard and telegraph outputs."""
 
         if self._timerwin and type(self.meet.scbwin) is scbwin.scbtt:
-            self.meet.scbwin.setline1(
-                strops.truncpad(
-                    'Elapsed: ', self.meet.scb.linelen - 12, align='r') +
-                strops.truncpad(self._lelap, 12))
+            if not self._aborted:
+                self.meet.scbwin.setline1(
+                    strops.truncpad(
+                        'Elapsed: ', self.meet.scb.linelen - 12, align='r') +
+                    strops.truncpad(self._lelap, 12))
+            else:
+                self.meet.scbwin.setline1(
+                    strops.truncpad('Attempt Aborted',
+                                    self.meet.scb.linelen,
+                                    align='c'))
 
             if self._lapcount > 0 and len(self._splitlist) == self._lapcount:
                 self.meet.scbwin.setr1('Lap {0}:'.format(self._lapcount))
@@ -923,19 +1089,19 @@ class UCIHour:
             if self._record:
                 self.meet.scbwin.setline2(
                     strops.truncpad(
-                        'Record: ', self.meet.scb.linelen - 12, align='r') +
-                    strops.truncpad('{0:0.3f}km'.format(self._record /
-                                                        1000.0), 12))
+                        'Target: ', self.meet.scb.linelen - 12, align='r') +
+                    strops.truncpad(
+                        '{0:0.3f}\u2006km'.format(self._record / 1000.0), 12))
             elif self._target:
                 self.meet.scbwin.setline2(
                     strops.truncpad(
                         'Target: ', self.meet.scb.linelen - 12, align='r') +
-                    strops.truncpad('{0:0.3f}km'.format(self._target /
-                                                        1000.0), 12))
+                    strops.truncpad(
+                        '{0:0.3f}\u2006km'.format(self._target / 1000.0), 12))
             if self._projection is not None:
-                self.meet.scbwin.setr2('Projection:')
-                self.meet.scbwin.sett2('{0:0.1f}  km'.format(self._projection /
-                                                             1000.0))
+                self.meet.scbwin.setr2('Estimate:')
+                pval = floor(self._projection / 10) / 100.0
+                self.meet.scbwin.sett2('{0:0.2f}\u2006km'.format(pval))
             else:
                 self.meet.scbwin.setr2('')
                 self.meet.scbwin.sett2('')
@@ -945,7 +1111,8 @@ class UCIHour:
         self.meet.cmd_announce('lapcount', str(self._lapcount))
         self.meet.cmd_announce('elapsed', self._lelap)
         if self._prevlap is not None:
-            self.meet.cmd_announce('laptime', self._prevlap.rawtime(3))
+            self.meet.cmd_announce('laptime',
+                                   self._prevlap.round(2).rawtime(2))
 
         ### on the gemini - use B/T dual timer mode
         ###self.meet.gemini.set_bib(str(self.lapcount),0)
@@ -1007,7 +1174,8 @@ class UCIHour:
         }]
         resline = self._reslines[0]
         if self._rider is not None:
-            sec.lines.append(['', self._riderName()])
+            rline = 'Rider: %s' % (self._riderName(), )
+            sec.lines.append(['', rline])
             resline['competitor'] = self._rider['no']
             resline['nation'] = self._rider['nation']
             resline['name'] = self._rider.resname()
@@ -1023,14 +1191,15 @@ class UCIHour:
                 self._weather['p'],
             )
             sec.lines.append(['', wstr])
-
         # complete?
-        if self._finish is not None:
-            if self._D is not None and self._D > 0:
-                resline['result'] = '{0:0.3f}\u2006km'.format(self._D / 1000.0)
 
-                dstr = 'Final distance: {0:0.3f}\u2006km'.format(self._D /
-                                                                 1000.0)
+        if self.timerstat == 'finished':
+            if self._D is not None and self._D > 0:
+                if self._finish is None:
+                    sec.footer = '* Additional distance calculated on the basis of the time of the lap before last [3.5.033].'
+                diststr = '{0:0.3f}'.format(self._D / 1000.0)
+                resline['result'] = diststr
+                dstr = 'Final distance: {0}\u2006km'.format(diststr)
                 sec.lines.append(['', dstr])
                 if self._record is not None:
                     rstr = ''
@@ -1038,15 +1207,15 @@ class UCIHour:
                         # assume world record  ##! TODO: add record objects?
                         resline['badges'].append('wr')
                         delta = self._D - self._record
-                        rstr = '{0}\u2006m more than record: {1:0.3f}\u2006km'.format(
+                        rstr = '{0}\u2006m more than target: {1:0.3f}\u2006km'.format(
                             delta, self._record / 1000.0)
                     else:
                         delta = self._record - self._D
                         if delta == 0:  # special case
-                            rstr = 'Equalled record: {0:0.3f}\u2006km'.format(
+                            rstr = 'Equalled target: {0:0.3f}\u2006km'.format(
                                 self._record / 1000.0)
                         else:
-                            rstr = '{0}\u2006m short of record: {1:0.3f}\u2006km'.format(
+                            rstr = '{0}\u2006m short of target: {1:0.3f}\u2006km'.format(
                                 delta, self._record / 1000.0)
 
                     sec.lines.append(['', rstr])
@@ -1055,12 +1224,17 @@ class UCIHour:
             if self._compute:
                 dicstr = 'Additional distance: {0}\u2006m'.format(self._DiC)
                 sec.lines.append(['', dicstr])
-                sec.lines.append(['', self._compute])
+                computestr = 'Compute: %s' % (self._compute, )
+                sec.lines.append(['', computestr])
         elif self._start is not None:
-            ## add elapsed ##! TODO
-            if self._elapsed is not None:
-                elapstr = 'Elapsed: %s' % (self._elapsed)
-                sec.lines.append(['', elapstr])
+            if not self._aborted:
+                if self._elapsed is not None:
+                    elapstr = 'Elapsed: %s' % (self._elapsed)
+                    sec.lines.append(['', elapstr])
+            else:
+                if self._elapsed is not None:
+                    elapstr = 'Attempt aborted after %s' % (self._elapsed)
+                    sec.lines.append(['', elapstr])
             if self._lapcount > 0:
                 lapstr = 'Complete laps: %d' % (self._lapcount, )
                 sec.lines.append(['', lapstr])
@@ -1068,9 +1242,15 @@ class UCIHour:
                 avgstr = '1\u2006km lap average: %0.3f\u2006s' % (
                     self._avglap, )
                 sec.lines.append(['', avgstr])
+            target = self._target
+            if self._record is not None:
+                target = self._record
+            if target is not None:
+                tstr = 'Target: %0.3f\u2006km' % (target / 1000.0, )
+                sec.lines.append(['', tstr])
             if self._projection is not None:
-                projstr = 'Projection: %0.3f\u2006km' % (self._projection /
-                                                         1000.0, )
+                pval = floor(self._projection / 10) / 100.0
+                projstr = 'Estimate: %0.2f\u2006km' % (pval, )
                 sec.lines.append(['', projstr])
         ret.append(sec)
 
@@ -1085,12 +1265,15 @@ class UCIHour:
             sec = report.threecol_section('laptimes')
             sec.subheading = 'Lap Times'
             lpi = self.meet.tracklen_n / self.meet.tracklen_d
-            lt = self._start
+            lsplit = None
             count = 1
             ld = 0
             for st in self._splitlist:
-                laptime = st - lt
-                split = st - self._start
+                split = (st - self._start).truncate(3)
+                if lsplit is not None:
+                    laptime = split - lsplit
+                else:
+                    laptime = split
                 lstr = str(count)
                 dist = int(lpi * count)
                 detail[lstr] = {
@@ -1108,12 +1291,15 @@ class UCIHour:
                     ['', '', lstr, '',
                      laptime.rawtime(3),
                      split.rawtime(3)])
-                lt = st
+                lsplit = split
                 count += 1
             # include final lap
             if self._finish is not None and count > 0:
-                laptime = self._finish - lt
-                split = self._finish - self._start
+                split = (self._finish - self._start).truncate(3)
+                if lsplit is not None:
+                    laptime = split - lsplit
+                else:
+                    laptime = split
                 dist = int(lpi * count)
                 lstr = str(count)
                 detail[lstr] = {
@@ -1131,6 +1317,18 @@ class UCIHour:
                     ['', '', lstr, '',
                      laptime.rawtime(3),
                      split.rawtime(3)])
+                trc = self._reclen - lsplit
+                if trc <= laptime:
+                    sec.lines.append(['', '', 'TRC', '', trc.rawtime(3), None])
+            if self._aborted:
+                if self._lastlap is None:
+                    sec.lines.append(['', '', 'Aborted', '', None, None])
+                else:
+                    trc = self._reclen - lsplit
+                    if trc <= self._lastlap:
+                        sec.lines.append(
+                            ['', '', 'TRC', '',
+                             trc.rawtime(3), None])
             ret.append(sec)
 
         if len(self.decisions) > 0:
@@ -1157,60 +1355,77 @@ class UCIHour:
 
     def recalculate(self):
         """Update internal state."""
+        self.onestart = False
+        self.finished = False
         self._avglap = None
         self._projection = None
         self._elapsed = None
         self._status = None
-
+        self._D = None
+        self._DiC = None
+        self._compute = None
+        self._distance = None
         self._competitorA = None
         self._timeA = None
         self._infoA = None
         self._labelA = None
-        self._distance = None
+        remain = None
         if self._detail is not None:
             ret['detail'] = self._detail
         if self._start is not None:
+            self.onestart = True
             lpi = self.meet.tracklen_n / self.meet.tracklen_d
-            if self._finish is not None:
+            if self.timerstat == 'finished':
+                self.finished = True
                 self._status = 'provisional'
-                llstart = self._start
+                altmark = ''
+                if self._finish is None:
+                    altmark = '*'  # Flag use of [3.5.033]
+
+                # determine elapsed time at end of lap before completion of time
+                endofll = self._start
                 if self._splitlist:
-                    llstart = self._splitlist[-1]
+                    endofll = self._splitlist[-1]
 
                 # convert to plain values for calculation [3.5.031]
                 tc = self._lapcount
-                llelap = llstart - self._start
+                llelap = (endofll - self._start).truncate(3)
                 trc = float((self._reclen - llelap).timeval)
-                ttc = float(self._lastlap.timeval)
+                ttc = float(self._lastlap.timeval)  # this is already truncated
                 dic = lpi * trc / ttc
-                if dic > lpi:
+                if not dic > lpi:
+                    d = (lpi * tc) + dic
+                    self._D = int(floor(d))
+                    self._DiC = int(floor(dic))
+                    self._compute = 'D=%d\u2006m, LPi=%0.1f\u2006m, TC=%d\u2006lap%s, DiC=%d\u2006m, TTC%s=%0.3f\u2006s, TRC=%0.3f\u2006s' % (
+                        self._D, lpi, tc, strops.plural(tc), self._DiC,
+                        altmark, ttc, trc)
+                    _log.debug('Compute: %s', self._compute)
+                    self._distance = '%0.3f\u2006km' % (self._D / 1000.0)
+                else:
                     _log.error('DiC %0.1f is greater than LPi %0.1f', dic, lpi)
-                d = (lpi * tc) + dic
-                self._D = int(floor(d))
-                self._DiC = int(floor(dic))
-                self._compute = 'Compute: D=%d\u2006m, LPi=%0.1f\u2006m, TC=%d\u2006lap%s, DiC=%d\u2006m, TTC=%0.3f\u2006s, TRC=%0.3f\u2006s' % (
-                    self._D, lpi, tc, strops.plural(tc), self._DiC, ttc, trc)
-                _log.debug('%s', self._compute)
-                self._distance = '%0.3f\u2006km' % (self._D / 1000.0)
             else:
-                self._status = 'virtual'
+                if self._aborted:
+                    self._status = 'provisional'
+                else:
+                    self._status = 'virtual'
                 if self._lapcount > 0 and len(
                         self._splitlist) == self._lapcount:
                     lastpass = self._splitlist[-1]
-                    elap = lastpass - self._start
+                    elap = (lastpass - self._start).truncate(3)
                     self._elapsed = elap.rawtime(1)
-                    remain = tod.HOUR - elap
+                    remain = self._reclen - elap
                     remsec = float(remain.timeval)
                     self._distance = '%0.3f\u2006km' % (lpi * self._lapcount /
                                                         1000.0)
 
-                    if len(self._splitlist) > 7:  # ignore first km
+                    if len(self._splitlist) > 4:  # ignore first few laps
                         st = self._splitlist[-5]
                         et = self._splitlist[-1]
-                        elap = et - st
+                        avgelap = et - st
                         minelap = 4 * float(self._minlap.timeval)
-                        if elap > minelap and elap < _MAXAVG:
-                            self._avglap = 0.25 * float(elap.timeval)
+                        if avgelap > minelap and avgelap < _MAXAVG:
+                            self._avglap = 0.25 * float(avgelap.timeval)
 
                     if len(self._splitlist
                            ) >= self._projlap and self._avglap is not None:
@@ -1218,16 +1433,11 @@ class UCIHour:
                             pcount = self._lapcount + _PESSIMISM * remsec / self._avglap
                             proj = lpi * pcount
                             _log.debug(
-                                'Projection:  Avg=%0.1fs, Rem=%0.1fs, Count=%0.1fs, Proj=%0.1fs',
+                                'Est: Avg=%0.3fs, Rem=%0.3fs, Count=%0.3flaps, Proj=%0.1fm',
                                 self._avglap, remsec, pcount, proj)
                             if proj > self._minproj and proj < self._maxproj:
                                 self._projection = int(proj)
 
-                    if self._avglap is not None:
-                        twolaps = 2 * self._avglap
-                        if remsec < twolaps and remsec > self._avglap:
-                            _log.warning('BELL NEXT LAP')
-                            ##! TODO - flag in ui
                 else:
                     _log.debug(
                         'Laps (%d) and splits (%d) out, projection skipped',
@@ -1237,7 +1447,45 @@ class UCIHour:
 
         if self.winopen:
             # update user interface with runtime info
-            pass
+            svec = [self.timerstat.title()]
+            if self._lapcount > 0:
+                svec.append('%d\u2006lap%s' %
+                            (self._lapcount, strops.plural(self._lapcount)))
+            if self._D is not None:
+                svec.append('%0.3f\u2006km' % (self._D / 1000.0, ))
+            elif remain is not None:
+                svec.append('%s' % (remain.rawtime(1), ))
+                if self._avglap is not None:
+                    remsec = float(remain.timeval)
+                    if remsec < 10 * self._avglap:
+                        togo = ceil(remsec / self._avglap)
+                        svec.append('~%d\u2006lap%s to go' %
+                                    (togo, strops.plural(togo)))
+                        if togo == 2:
+                            svec.append('[Bell next lap]')
+                        _log.debug('Togo=%d @ %r/%s', togo, self._lapcount,
+                                   self._elapsed)
+            self._statlbl.set_text('\u3000'.join(svec))
+            if self._compute is not None:
+                self._computepfx.set_text('Compute:')
+                self._computelbl.set_text(self._compute)
+            else:
+                self._computepfx.set_text('Estimate:')
+                if self._projection is not None:
+                    self._computelbl.set_text('%0.3f\u2006km' %
+                                              (self._projection / 1000.0, ))
+                else:
+                    self._computelbl.set_text('N/A')
+            if self._prevlap is not None:
+                prevstr = ''
+                if self._avglap is not None:
+                    prevstr = '%s\u3000~1km Average: %0.3f' % (
+                        self._prevlap.rawtime(3), self._avglap)
+                else:
+                    prevstr = self._prevlap.rawtime(3)
+                self._prevlbl.set_text(prevstr)
+            else:
+                self._prevlbl.set_text('--.--')
 
     def __init__(self, meet, event, ui=True):
         """Constructor.
@@ -1293,6 +1541,7 @@ class UCIHour:
         self._weather = None  # weather observations at start of event
         self._start = None  # hour start by chronometer
         self._lstart = None  # rolling time start
+        self._aborted = False  # attempt aborted
         self._finish = None  # finish time by chronometer
         self._elapsed = None  # current elapsed time
         self._lelap = None  # last elapsed time displayed on scb
@@ -1305,7 +1554,7 @@ class UCIHour:
         self._splitlist = []  # list of lap split times
         self._trace = None
         self._tracelog = []
-        self._abortcnt = 0  # make abort difficult
+        self._resetcnt = 0  # make reset difficult
         self._timerwin = False
         self._status = None
 
@@ -1338,5 +1587,11 @@ class UCIHour:
             self._timer.bibent.connect('activate', self.bibent_cb, self._timer)
             self._timer.hide_splits()
             mf.pack_start(self._timer.frame, True, True, 0)
+
+            # hour details pane
+            self._statlbl = b.get_object('hour_info_stat')
+            self._computepfx = b.get_object('hour_info_computepfx')
+            self._computelbl = b.get_object('hour_info_compute')
+            self._prevlbl = b.get_object('hour_info_prev')
 
             b.connect_signals(self)

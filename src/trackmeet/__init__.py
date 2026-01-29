@@ -2190,7 +2190,7 @@ class trackmeet:
                 self.weather.t, self.weather.h, self.weather.p)
             self.main_timer.printline(lstr)
 
-    def footerline(self, event, count=None, label='Riders'):
+    def footerline(self, event, count=None, label='Riders', showrecord=True):
         """Format competitor count, sponsor and record for program report."""
         footer = None
         fvec = []
@@ -2199,7 +2199,7 @@ class trackmeet:
                 label,
                 count,
             ))
-        if event['reco']:
+        if event['reco'] and showrecord:
             fvec.append(event['reco'])
         if event['sponsor']:
             fvec.append('Sponsor: ' + event['sponsor'])
