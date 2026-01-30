@@ -835,6 +835,7 @@ class f200:
                     else:
                         rtime = time.rawtime(2) + '\u2007'
                         spplc = 2
+                    rstime = rtime
                     if r[COL_100] is not None:
                         sp100 = (r[COL_100] - r[COL_START]).truncate(spplc)
                         stime = '(%s)\u3000' % (sp100.rawtime(spplc))
