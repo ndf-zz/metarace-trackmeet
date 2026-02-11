@@ -1185,10 +1185,11 @@ class UCIHour:
             if ph is not None:
                 resline['pilot'] = ph.resname()
         if self._weather is not None:
-            wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006%%, %0.1f\u2006hPa' % (
+            wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%, ~%0.4f\u2006kg/m\u00b3' % (
                 self._weather['t'],
-                self._weather['h'],
                 self._weather['p'],
+                self._weather['h'],
+                self._weather['d'],
             )
             sec.lines.append(['', wstr])
         # complete?
@@ -1262,7 +1263,8 @@ class UCIHour:
                 rno = self._rider['no']
             self._detail[rno] = {}
             detail = self._detail[rno]
-            sec = report.threecol_section('laptimes')
+            sec = report.lapsplits('laptimes')
+            sec.places = 3
             sec.subheading = 'Lap Times'
             lpi = self.meet.tracklen_n / self.meet.tracklen_d
             lsplit = None
@@ -1285,12 +1287,17 @@ class UCIHour:
                 }
                 nd = int(0.010 + lpi * count / 1000.0)
                 if nd != ld:
-                    lstr += '  / {}\u2006km'.format(nd)
+                    lstr += ' / {}\u2006km'.format(nd)
                     ld = nd
-                sec.lines.append(
-                    ['', '', lstr, '',
-                     laptime.rawtime(3),
-                     split.rawtime(3)])
+                    sec.breakhints.append(
+                        count)  # break on line following km split
+                sec.lines.append({
+                    'label': lstr,
+                    'rank': None,
+                    'elapsed': split.truncate(3),
+                    'interval': laptime.truncate(3),
+                    'points': None,
+                })
                 lsplit = split
                 count += 1
             # include final lap
@@ -1311,24 +1318,43 @@ class UCIHour:
                 }
                 nd = int(0.010 + lpi * count / 1000.0)
                 if nd != ld:
-                    lstr += '  / {}\u2006km'.format(nd)
+                    lstr += ' / {}\u2006km'.format(nd)
                     ld = nd
-                sec.lines.append(
-                    ['', '', lstr, '',
-                     laptime.rawtime(3),
-                     split.rawtime(3)])
+                sec.lines.append({
+                    'label': lstr,
+                    'rank': None,
+                    'elapsed': split.truncate(3),
+                    'interval': laptime.truncate(3),
+                    'points': None,
+                })
                 trc = self._reclen - lsplit
                 if trc <= laptime:
-                    sec.lines.append(['', '', 'TRC', '', trc.rawtime(3), None])
+                    sec.lines.append({
+                        'label': 'TRC',
+                        'rank': None,
+                        'elapsed': None,
+                        'interval': trc.truncate(3),
+                        'points': None,
+                    })
             if self._aborted:
                 if self._lastlap is None:
-                    sec.lines.append(['', '', 'Aborted', '', None, None])
+                    sec.lines.append({
+                        'label': 'Aborted',
+                        'rank': None,
+                        'elapsed': None,
+                        'interval': None,
+                        'points': None,
+                    })
                 else:
                     trc = self._reclen - lsplit
                     if trc <= self._lastlap:
-                        sec.lines.append(
-                            ['', '', 'TRC', '',
-                             trc.rawtime(3), None])
+                        sec.lines.append({
+                            'label': 'TRC',
+                            'rank': None,
+                            'elapsed': None,
+                            'interval': trc.truncate(3),
+                            'points': None,
+                        })
             ret.append(sec)
 
         if len(self.decisions) > 0:
