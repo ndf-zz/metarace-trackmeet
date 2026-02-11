@@ -31,6 +31,41 @@ _NONCHAMPCATS = {
     'T': 'Teams',
 }
 
+# Competition labels
+_COMPETITIONS = {
+    'sprint': 'Sprint',
+    'ip': 'Individual Pursuit',
+    'tp': 'Team Pursuit',
+    'tt': 'Time Trial',
+    'points': 'Points Race',
+    'keirin': 'Keirin',
+    'ts': 'Team Sprint',
+    'madison': 'Madison',
+    'scratch': 'Scratch Race',
+    'elimination': 'Elimination Race',
+    'omnium': 'Omnium',
+    'hour': 'Hour Record',
+}
+
+# Phase labels
+_PHASES = {
+    'qualifying': 'Qualifying',
+    'r1': 'Round 1',
+    'r2': 'Round 2',
+    'r3': 'Round 3',
+    'r4': 'Round 3',
+    'r5': 'Round 3',
+    'rep': 'Repechage',
+    'rep1': 'Repechage 1',
+    'rep2': 'Repechage 2',
+    'rep3': 'Repechage 3',
+    'qf': 'Quarter Final',
+    'sf': 'Semi Final',
+    '1.8': '1/8 Final',
+    '1.16': '1/16 Final',
+    'final': 'Final',
+}
+
 # Configuration
 _CONFIG_SCHEMA = {
     'mtype': {
@@ -252,7 +287,7 @@ class DataBridge():
         meetPath = self.getPath(fragment)
         self._pathSave(meetPath, compObj)
 
-    def _updateResultLine(self, line, topn=None):
+    def _updateResultLine(self, line):
         """Return a patched result line object"""
         if line is None:
             return None
@@ -269,8 +304,8 @@ class DataBridge():
             'result': None,
             'extra': None,
         }
+
         # overwrite any provided non-empty values
-        qual = False
         for k in obj:
             # update value
             if k in line and line[k]:
@@ -293,11 +328,13 @@ class DataBridge():
         catComp = event.get_catcomp()
         if catComp in self._competitions:
             category = event['category']
+            competition = event['competition']
             compObj = self._competitions[catComp]
             competitorType = compObj['competitorType']
             if category in self._categories:
                 cref = None
                 competitors = self._categories[category]['competitors']
+                ##! TODO: adjust badges with yellow and amber cards as required
                 if competitorType == 'rider':
                     if cid in competitors['riders']:
                         cref = competitors['riders'][cid]
@@ -336,7 +373,6 @@ class DataBridge():
     def updateResultLines(self, event, fragment, lines):
         """Scan result lines and patch values"""
         catComp = event.get_catcomp()
-        topn = _ornull(event['topn'])
 
         # scan lines and transfer to result
         ret = []
@@ -351,7 +387,7 @@ class DataBridge():
                 #_log.debug('Missing competitor no %r for result %s', c,
                 #fragment)
                 continue
-            ret.append(self._updateResultLine(c, topn))
+            ret.append(self._updateResultLine(c))
         return ret
 
     def updateStartLines(self, event, fragment, competitors):
@@ -366,37 +402,55 @@ class DataBridge():
         # scan competitors and transfer to start list
         ret = []
         for c in competitors:
+            if isinstance(c, str):
+                # promote competitor ID to line
+                c = self._lookupCompetitor(c, event)
             cno = None
             if 'competitor' in c:
                 cno = _ornull(c['competitor'])
             if cno is None:
                 #_log.debug('Missing competitor no %r for %s', c, fragment)
                 continue
-            obj = {
-                'competitor': None,
-                'nation': None,
-                'name': None,
-                'pilot': None,
-                'members': None,
-                'info': None,
-                'badges': [],
-                'qualRank': None,
-                'qualPlace': None,
-                'qualTime': None,
-            }
-
-            # pre-fill qualifying info
+            # fill qualifying info
             if qual and cno in qual:
                 qualObj = qual[cno]
                 for k in ('qualRank', 'qualPlace', 'qualTime'):
-                    obj[k] = qualObj[k]
-
-            # overwrite any provided non-empty values
-            for k in obj:
-                if k in c and c[k]:
-                    obj[k] = c[k]
-            ret.append(obj)
+                    c[k] = qualObj[k]
+            ret.append(self._updateStartLine(c))
         return ret
+
+    def _updateStartLine(self, competitor):
+        """Return a patched competitor object"""
+        if competitor is None:
+            return None
+        obj = {
+            'competitor': None,
+            'nation': None,
+            'name': None,
+            'pilot': None,
+            'members': None,
+            'info': None,
+            'badges': [],
+            'qualRank': None,
+            'qualPlace': None,
+            'qualTime': None,
+        }
+        # overwrite any provided non-empty values
+        for k in obj:
+            # update value
+            if k in competitor and competitor[k]:
+                if k == 'members':
+                    members = []
+                    for m in competitor[k]:
+                        mno, junk = strops.bibstr2bibser(m)
+                        members.append(mno)
+                    obj[k] = members
+                elif k == 'badges':
+                    if isinstance(competitor[k], (set, list, tuple)):
+                        obj[k] = sorted(competitor[k])
+                else:
+                    obj[k] = competitor[k]
+        return obj
 
     def updateStartlist(self, event, fragment, data):
         """Fill and publish a result object for the provided fragment"""
@@ -714,6 +768,7 @@ class DataBridge():
         self._prevNext.clear()
 
         # walk the event listing (from meet)
+        sessions = set()
         prevFrag = None
         fragCheck = set()
         for meeteh in self._m.edb:
@@ -732,7 +787,7 @@ class DataBridge():
                     fragment = meeteh.get_fragment()
                 fragCheck.add(fragment)
 
-            # ensure session object exists
+            # ensure a session object exists
             if sessionid:
                 if sessionid not in self._sessions:
                     self._sessions[sessionid] = {
@@ -749,15 +804,31 @@ class DataBridge():
             if meeteh['type'] == 'session' and sessionid:
                 # Special case: session marker
                 sessOb = self._sessions[sessionid]
-                sessOb['startTime'] = meeteh['start']
-                sessOb['endTime'] = meeteh['endtime']
-                sessOb['label'] = _ornull(meeteh['prefix'])
+                if sessionid not in sessions:  # avoid overwrite
+                    sessOb['startTime'] = meeteh['start']
+                    sessOb['endTime'] = meeteh['endtime']
+                    sessOb['label'] = _ornull(meeteh['prefix'])
+                    sessions.add(sessionid)
+                else:
+                    _log.debug('Session %s aready defined, %s ignored',
+                               sessionid, meeteh['evid'])
             else:
                 # fragment, event, break or something else
                 evid = _ornull(meeteh.get_bridge_evno())
                 phase = _ornull(meeteh['phase'])
                 category = _ornull(meeteh['category'])
                 competition = _ornull(meeteh['competition'])
+                compLabel = None
+                if competition in _COMPETITIONS:
+                    compLabel = _COMPETITIONS[competition]
+                else:
+                    # assume standalone competition, or para style subcomp
+                    if meeteh['type'] in ('classification', 'team aggregate',
+                                          'indiv aggregate'):
+                        compLabel = meeteh['prefix']  # by convention
+                phaseLabel = None
+                if phase and phase in _PHASES:
+                    phaseLabel = _PHASES[phase]
                 evtObj = None
 
                 # ensure category exists (allows anon/no competitor)
@@ -797,14 +868,14 @@ class DataBridge():
                     # ensure competition is listed in category stub
                     catObj = self._categories[category]
                     if competition not in catObj['competitions']:
-                        catObj['competitions'][competition] = evtLabel
+                        catObj['competitions'][competition] = compLabel
                     # ensure CAT/comp object exists on bridge
                     if catComp not in self._competitions:
                         compObj = {
-                            'label': evtLabel,
+                            'label': compLabel,
                             'competitorType': competitorType,
                             'category': category,
-                            'title': evtInfo,
+                            'title': meeteh['prefix'],
                             'status': None,
                             'phases': {},
                             'events': {},
@@ -816,7 +887,11 @@ class DataBridge():
 
                     # fill in compObj details
                     if phase and phase not in compObj['phases']:
-                        compObj['phases'][phase] = evtLabel
+                        compObj['phases'][phase] = phaseLabel
+
+                    # update label if not yet set
+                    if compObj['label'] is None and compLabel is not None:
+                        compObj['label'] = compLabel
 
                     # add fragment to evtObj if on schedule
                     if evtObj is not None:
@@ -834,7 +909,8 @@ class DataBridge():
                             sessOb['events'][evid].append(evtInfo)
                             if phase == 'final':
                                 if catComp not in sessOb['finals']:
-                                    sessOb['finals'][catComp] = evtInfo
+                                    sessOb['finals'][catComp] = meeteh[
+                                        'prefix']
 
                         # record link to previous event on schedule
                         if prevFrag is not None:
@@ -946,16 +1022,13 @@ class DataBridge():
                 data['next'] = self.getPath(data['next'])
 
         # fill in competitor information as result lines
-        topn = None
-        if event is not None:
-            topn = _ornull(event['topn'])
         for k in ('competitorA', 'competitorB', 'eliminated'):
             if k in data:
                 csrc = data[k]
                 if isinstance(csrc, str):
                     # promote competitor ID to line
                     csrc = self._lookupCompetitor(csrc, event)
-                data[k] = self._updateResultLine(csrc, topn)
+                data[k] = self._updateResultLine(csrc)
 
         # override values provided by the data object
         for k in ('next', 'status', 'title', 'subtitle', 'session', 'info',
@@ -1012,7 +1085,7 @@ class DataBridge():
         self._meet['location'] = _ornull(self._m.document)
         self._meet['locationCode'] = _ornull(self._m.facility)
         self._meet['pcp'] = _ornull(self._m.pcp)
-        self._meet['date'] = _ornull(self._m.date)
+        self._meet['date'] = _ornull(self._m.get_date())
 
         # load category stubs and competitor data
         self.loadCategories()
@@ -1161,6 +1234,10 @@ class DataBridge():
                                      topic=path,
                                      qos=1,
                                      retain=True)
+
+    def get_timezone(self):
+        """Return meet timezone."""
+        return self._tz
 
     def _pathSave(self, path, dataObj):
         """Serialize path object and publish to mqtt"""
