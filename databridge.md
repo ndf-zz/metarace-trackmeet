@@ -1,15 +1,15 @@
 # Trackmeet "Data Bridge" Schema
 
-*Updated: 2026-01-24*
+__Updated: 2026-02-09__
 
 
 ## Overview
 
 Trackmeet data bridge is a loose collection of data objects
-that convey information about a meet, competitions, competitors
-and results for overlay on graphic displays. All data endpoints are
-communicated as JSON-encoded objects, via MQTT (telegraph)
-or HTTP.
+that convey information about a track cycling meet, competitions,
+competitors and results for overlay on graphic displays.
+All data endpoints are communicated as JSON-encoded objects,
+via MQTT (telegraph) or HTTP.
 
 
 ## Definitions
@@ -36,13 +36,12 @@ or HTTP.
    - Path: A slash delimited list identifying a meet, category,
      competition, phase, contest, and heat. [5,6]
    - Startlist: A list of competitors and their qualifying information
-     (where relevant) that will be expected to start a
-     competition fragment.
+     (where relevant) that will be expected to start a competition fragment.
    - Result: A summary of the outcomes of a competition fragment,
      or a virtual standing if the result is partially determined.
    - Event: A heat, contest or phase on the meet schedule
      identified uniquely by a short string, usually numeric. Eg:
-     38 "Event 38: W15 Sprint Semi Final Heat 3, if required". Normally
+     38 "Event 38: W15 Sprint Semi Final Heat 3". Normally
      referred to as "Event number", but may also be any string.
      An event may reference more than one specific path, and include
      multiple competition fragments.
@@ -62,7 +61,7 @@ or HTTP.
    - A/B Competitor: For timed events with two competitors on the track
      (pursuit, time trial, team sprint, team pursuit) The "A"
      competitor refers to the home straight, and "B" to the back
-     straight. A/B finish lines are marked with a half-length white line
+     straight. A/B finish lines are marked with a white line
      positioned in the middle of the respective straight.
    - Place/Placing: A competitor that completes an event, or that is
      assigned a finish, will be allocated a placing by officials. Placed
@@ -81,9 +80,9 @@ or HTTP.
      no mention in the result why the relegation occurred.
    - Medals: The 1st, 2nd and 3rd placed competitors in a competition
      will be awarded Gold, Silver and Bronze medals (respectively).
-   - Title/Champion: The best-placed Australian competitor in a
-     competition will be awarded the Australian title. Eg:
-     Elite Men Sprint Australian Champion.
+   - Title/Champion: The best-placed eligible competitor in a
+     competition will be awarded the title. Eg:
+     Men Elite Sprint Australian Champion.
 
 Notes:
 
@@ -125,7 +124,7 @@ Cycling startlists and results should adhere to the following conventions:
      eg: '1.', '2.' unless they are one of the special values:
      'dns', 'dnf', 'abd' or 'dsq'.
    - A virtual classification, eg during qualifying or for an intermediate
-     time split should be surrounded with parentheses: (3.), italicised: *3.*,
+     time split should be surrounded with parentheses: (3.), italicised: __3.__,
      or formatted in such a way that is is obviously not a confirmed place.
      Places are confirmed when then fragment status is 'provisional' or
      'final'.
@@ -135,9 +134,11 @@ Cycling startlists and results should adhere to the following conventions:
      simplify readability. Team competitor IDs are for internal
      reference only.
    - Result times, down times, points should be right-aligned
-   - State affiliations are shown in parentheses () next to a
-     rider name, and may be omitted for space.
-   - Where an event includes additional information, it should be
+   - State or club affiliations are shown in parentheses () next to a
+     rider name, and may be omitted for space. For open events where
+     international riders are granted a start, their nationality may
+     be used in place of a state/club affiliation.
+   - Where an event result includes additional information, it should be
      included in a right-aligned column to the left of the result column
 
 Result based on time:
@@ -168,6 +169,14 @@ Para event with multiple sport classes:
 
 ## Meet Path Reference
 
+For HTTP access, prepend the meet path with https://db.6-v.org. For example:
+
+	2026atc/current => https://db.6-v.org/2026atc/current
+
+For MQTT access, prepend the meet path with db. For example:
+
+	2026atc/ME/ip => db/2026atc/ME/ip
+
 
 ### Endpoint Summary
 
@@ -177,12 +186,10 @@ Para event with multiple sport classes:
    - [MEET]/current/startlist: Startlist for current fragment [TBC]
    - [MEET]/current/result: Result for current fragment [TBC]
    - [MEET]/[SESSION]: Session information
-   - [MEET]/[CATEGORY]:
-     Competitor category overview and competitions in meet
-   - [MEET]/[CATEGORY]/competitors:
-     Rider, team and pilot labels
+   - [MEET]/[CATEGORY]: Competitor category overview and competitions in meet
+   - [MEET]/[CATEGORY]/competitors: Rider, team and pilot labels
    - [MEET]/[CATEGORY]/[COMPETITION]:
-     Competition information, list of phases, record information
+     Competition information, list of phases, penalties and record information
    - [MEET]/[CATEGORY]/[COMPETITION]/startlist:
      Startlist for overall competition
    - [MEET]/[CATEGORY]/[COMPETITION]/result:
@@ -206,9 +213,10 @@ Para event with multiple sport classes:
    - [MEET]/[CATEGORY]/[COMPETITION]/[PHASE]/[CONTEST]/[HEAT]/result:
      Result for heat
 
+
 ### Path Endpoint Types
 
-Data endpoints map to a JSON encoded object, with 
+Data endpoints map to JSON encoded objects, with
 keys specific to the relevant type. All path endpoints
 also include a serial number and last updated field:
 
@@ -219,12 +227,13 @@ updated | 8601DT | Date and time of last update
 
 These keys are omitted from examples below for clarity.
 
+
 #### [MEET]
 
 The meet object is a top level identifier.
 It contains string information about the organisation,
 date summary, president of the commissaires'
-panel (PCP), a list of sessions and a list of categories.
+panel (PCP), schedule of events and a list of categories.
 
 key | type | descr
 --- | --- | ---
@@ -232,10 +241,10 @@ title | string | Meet title
 subtitle | string | Meet subtitle
 organiser | string | Meet organiser
 location | string | Meet location
-locationCode | string | Venue code (TBC)
+locationCode | string | [Venue code](https://weather.auscycling.org.au/api/locations)
 pcp | string | Name of the president of the commissaires' panel (PCP)
 date | string | Description of event dates
-timezone | string | Zoneinfo key for meet location
+timezone | string | [tzdata key](https://en.wikipedia.org/wiki/Tz_database) for meet location
 startDate | 8601D | Date of first day of competition
 endDate | 8601D | Date of last day of competition
 schedule | object | Mapping of session ids to session labels
@@ -264,6 +273,7 @@ Subtopics available under [MEET]:
   - current: A current event object for the action on-track
   - [SESSION]: Session information for session ID
   - [CATEGORY]: Competitor category information
+
 
 #### [MEET]/events
 
@@ -310,11 +320,12 @@ Example:
          ], ...
 	}
 
-*Note:* Event subtitle, info, extra may not line up
+**Note:** Event subtitle, info, extra may not line up
 exactly with competition data. The event index is informative
 and based on content of the published schedule of events.
 Some event numbers on the schedule may refer to multiple
 distinct events in the listing.
+
 
 #### [MEET]/current
 
@@ -377,6 +388,7 @@ Example:
 	 ...
 	}
 
+
 #### [MEET]/[SESSION]
 
 Information for session ID [SESSION] and an ordered list of events
@@ -406,6 +418,7 @@ Example:
 	 "finals": {"ME/sprint": "Men Elite Sprint", ...
 	}
 
+
 #### [MEET]/[CATEGORY]
 
 Information on the meet category with ID [CATEGORY]
@@ -427,6 +440,7 @@ Example:
 	 "Women Under 15",
 	 "competitions": {"ip": "Individual Pursuit"...
 	}
+
 
 #### [MEET]/[CATEGORY]/competitors
 
@@ -455,6 +469,7 @@ Example:
 	 "pilots": null
 	}
 
+
 #### [MEET]/[CATEGORY]/[COMPETITION]
 
 Competition summary object.
@@ -468,7 +483,7 @@ title | string | Category/Competition title eg "Men Elite Sprint"
 status | STATUS | Competition overall result status
 phases | object | Mapping of phase ids to phase labels
 events | object | Map of event numbers in competition to a list of event Labels
-warnings | object | Mapping of competitor IDs to warnings
+penalties | object | Mapping of competitor IDs to list of PENALTY objects
 records | object | Mapping of record types to RECORD objects
 
 Subtopics available under [COMPETITION]:
@@ -488,10 +503,11 @@ Example:
 	 "title": "Women Under 15 Individual Pursuit",
 	 "status": "virtual",
 	 "phases": {"qualifying": "Qualifying", ...
-	 "warnings": {},
 	 "events": {"1": ["Qualifying", ...
+	 "penalties": {},
 	 "records": {"national": {...
 	}
+
 
 #### [MEET]/[CATEGORY]/[COMPETITION]/[PHASE]
 
@@ -527,6 +543,7 @@ Example:
 	 "laps": 8,
 	 "distance": "2000\u2006m"
 	}
+
 
 #### [MEET]/[CATEGORY]/[COMPETITION]/[PHASE]/[CONTEST]
 
@@ -568,6 +585,7 @@ Example:
 	 "distance": "750\u2006m"
 	}
 
+
 #### [MEET]/[CATEGORY]/[COMPETITION]/[PHASE]/[CONTEST]/[HEAT]
 
 Competition heat object.
@@ -601,6 +619,7 @@ Example:
 	 "laps": 3,
 	 "distance": "750\u2006m"
 	}
+
 
 #### .../startlist
 
@@ -639,6 +658,7 @@ Example:
 	 ]
 	}
 
+
 #### .../result
 
 A result for the parent competition, phase, contest
@@ -659,7 +679,7 @@ lines | array | Ordered list of RESULTLINE objects
 units | string | Result units if applicable
 decisions | array | Ordered list of decisions of the commissaires' panel
 weather | WEATHER | Weather observations as at the start of the result
-detail | object | Map of competitor IDs and lap IDs to result DETAIL objects
+detail | object | Map of competitor IDs to result DETAIL objects
 startTime | 8601DT | Date and time of start of this result (if known)
 
 Example:
@@ -688,7 +708,9 @@ Example:
 
 ## Data Type Reference
 
+
 ### Composite Object types
+
 
 #### STARTER
 
@@ -706,6 +728,7 @@ badges | array | Array of badges relevant to competitor in this startlist
 qualRank | integer | Ranking in qualification phase
 qualPlace | string | Placing in qualification phase
 qualTime | 8601I | Recorded time in qualification phase
+
 
 #### RESULTLINE
 
@@ -725,7 +748,29 @@ badges | array | Array of badges relevant to competitor in this result
 result | string | Formatted text result string
 extra | string | Additional result info string (eg down time)
 
+
 #### DETAIL
+
+Detail information for a single competitor
+
+key | type | descr
+--- | --- | ---
+startTime | 8601DT | Date and time of heat start (if known)
+weather | WEATHER | weather observations at beginning of heat
+splits | object | Map of split ids to SPLIT objects
+
+
+Example:
+
+	{
+	 "startTime": "20260210T19:02:23.456+10:00",
+	 "weather": { "t": 32.5, "p": 1019.0, "h" ...
+	 "splits": {
+	  "100": { ...
+	 }
+	}
+
+#### SPLIT
 
 A split lap or sprint lap detail with the following structure:
 
@@ -734,8 +779,9 @@ key | type | descr
 label | string | Label for this split/sprint
 rank | integer | Competitor's ranking at this split - may be null
 elapsed | 8601I | Elapsed time to this split/sprint (if known)
-interval | 8601I | Interval since previous split/sprint (if known)
+interval | 8601I | Interval since previous full lap (null for half-laps)
 points | numeric | Points awarded to competitor at this sprint
+distance | numeric | Distance in metres to this split (if relevant)
 
 Example for a 100m split in a flying 200m time trial:
 
@@ -744,7 +790,8 @@ Example for a 100m split in a flying 200m time trial:
 	 "rank": 2,
 	 "elapsed": "PT5.618S",
 	 "interval": "PT5.618S",
-	 "points": null
+	 "points": null,
+	 "distance": 100
 	}
 
 
@@ -767,6 +814,7 @@ uciid  | string | UCI 11 digit unique identifier or null if not known
 dob    | 8601D | Date of birth
 state  | string | State of rider's Australian club or null if not known
 org    | string | Club, team or organisation string
+penalties | list | List of PENALTY objects issued to competitor
 
 
 #### TEAM
@@ -782,6 +830,7 @@ name | string | Team name
 nation | string | IOC 3 letter nation code
 state | string | Team state of origin if known
 members | array | Ordered list of rider IDs eligible to participate in team
+penalties | list | List of PENALTY objects issued to competitor
 
 
 #### PAIR
@@ -797,6 +846,7 @@ nation | string | IOC 3 letter nation code
 state | string | Competitor state (if valid)
 black | string | Competitor ID of rider carrying black number
 red | string | Competitor ID of rider carrying red number
+penalties | list | List of PENALTY objects issued to competitor
 
 
 #### WEATHER
@@ -808,6 +858,25 @@ key | type | descr
 t | number | Temperature in degrees Celsius
 h | number | Relative humidity percentage
 p | number | Atmospheric pressure in hectopascals (hPa)
+d | number | Estimated air density (~kg/m^3)
+
+
+#### PENALTY
+
+Summary of a penalty issued to a rider for dangerous
+riding or an infringement of the rules. Note that any
+combination of warning, fine, rel, dsq may be present
+in a single penalty.
+
+key | type | descr
+--- | --- | ---
+competition | string | Competition ID
+fragment | string | Fragment in which the warning was issued
+warning | bool | A Warning was issued
+fine | bool | Competitor was fined
+rel | bool | Competitor was relegated
+dsq | bool | Competitor was disqualified
+reason | string | Full text of the warning
 
 
 #### RECORD
@@ -846,6 +915,7 @@ members | array | Ordered set of team members if competitor was team
    - array []: Ordered list of objects
    - object {}: Collection of name-value pairs
    - null: Empty value
+
 
 ### Schema-specific data types and labels
 
@@ -916,7 +986,9 @@ members | array | Ordered set of team members if competitor was team
    - Badges:
        - "warning": Competitor has received a warning in the
          current competition, indicated with a yellow card.
-       - "disqualified": Competitor was disqualified from the current
+       - "meetwarn": Competitor has received a warning elsewhere in
+         the meet, indicated with an amber card.
+       - "dsq": Competitor was disqualified from the current
          competition, indicated with a red card.
        - "qualified": Competitor has qualified for the next phase
          of the current competition in this result, indicated with
