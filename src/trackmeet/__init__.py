@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.7'
+__version__ = '1.13.8a'
 
 import sys
 import gi
@@ -11,7 +11,7 @@ import csv
 import os
 import json
 import threading
-from datetime import datetime, UTC
+from datetime import datetime, time, date, timedelta, UTC
 
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
@@ -32,10 +32,11 @@ from metarace.telegraph import telegraph, _CONFIG_SCHEMA as _TG_SCHEMA
 from metarace.export import mirror, _CONFIG_SCHEMA as _EXPORT_SCHEMA
 from metarace.timy import timy, _TIMER_LOG_LEVEL, _CONFIG_SCHEMA as _TIMY_SCHEMA
 from metarace.weather import Weather, _CONFIG_SCHEMA as _WEATHER_SCHEMA
+from metarace.standards import _CONFIG_SCHEMA as _STANDARDS_SCHEMA
 from .sender import sender, OVERLAY_CLOCK, OVERLAY_IMAGE, OVERLAY_BLANK, _CONFIG_SCHEMA as _SENDER_SCHEMA
 from .gemini import gemini
 from .lapscore import lapscore
-from .eventdb import eventdb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
+from .eventdb import Event, EventDb, sub_autospec, sub_depend, event_type, _CONFIG_SCHEMA as _EVENT_SCHEMA
 from .databridge import DataBridge, _CONFIG_SCHEMA as _DB_SCHEMA
 from . import uiutil
 from . import scbwin
@@ -53,7 +54,7 @@ APPNAME = 'Trackmeet'
 LOGFILE = 'event.log'
 LOGFILE_LEVEL = logging.DEBUG
 CONFIGFILE = 'config.json'
-TRACKMEET_ID = 'trackmeet-2.0'  # configuration versioning
+TRACKMEET_ID = 'trackmeet-2.1'  # configuration versioning
 EXPORTPATH = 'export'
 MAXREP = 10000  # communique max number
 SESSBREAKTHRESH = 0.075  # forced page break threshold
@@ -61,6 +62,13 @@ ANNOUNCE_LINELEN = 80  # length of lines on text-only DHI announcer
 MAX_AUTORECURSE = 8  # maximum levels of autostart dependency
 RECOVER_TIMEOUT = 8  # ignore previous impulses that are too old
 PROGRAM_INTRO = 'introduction.json'  # Program introduction sections
+PRINT_TYPES = {
+    'save': 'Save to PDF',
+    'pdfpreview': 'Preview and Save to PDF',
+    'preview': 'Preview',
+    'dialog': 'Print Dialog',
+    'direct': 'Print Direct'
+}
 
 _log = logging.getLogger('trackmeet')
 _log.setLevel(logging.DEBUG)
@@ -101,11 +109,21 @@ _CONFIG_SCHEMA = {
         'defer': True,
         'attr': 'facility',
     },
-    'date': {
-        'prompt': 'Date:',
-        'hint': 'Date of the meet as human-readable text',
-        'attr': 'date',
-        'default': '',
+    'startdate': {
+        'prompt': 'Start Date:',
+        'hint': 'Start date of meet',
+        'attr': 'startdate',
+        'control': 'short',
+        'type': 'date',
+        'subtext': 'YYYY-MM-DD',
+    },
+    'enddate': {
+        'prompt': 'End Date:',
+        'hint': 'Last date of meet (leave blank for single day meet)',
+        'attr': 'enddate',
+        'control': 'short',
+        'type': 'date',
+        'subtext': 'YYYY-MM-DD',
     },
     'pcp': {
         'prompt': 'PCP:',
@@ -194,6 +212,15 @@ _CONFIG_SCHEMA = {
         'hint': 'Assign numbers to all reports',
         'attr': 'communiques',
         'default': False,
+    },
+    'doprint': {
+        'prompt': 'Reports:',
+        'control': 'choice',
+        'attr': 'doprint',
+        'defer': True,
+        'options': PRINT_TYPES,
+        'default': 'pdfpreview',
+        'hint': 'Ad-hoc report handling'
     },
     'domestic': {
         'prompt': 'Rules:',
@@ -325,11 +352,106 @@ _CONFIG_SCHEMA = {
     },
 }
 
+_ADD_SESSION_SCHEMA = {
+    'id': {
+        'prompt': 'ID:',
+        'hint': 'Session number or identifier',
+        'control': 'short',
+        'attr': 'sess',
+    },
+    'title': {
+        'prompt': 'Title:',
+        'hint': 'Session title, eg "Junior Program", "Saturday Morning"',
+        'attr': 'prefix',
+        'defer': True,
+    },
+    'info': {
+        'prompt': 'Info:',
+        'hint': 'Brief session information',
+        'attr': 'rule',
+        'defer': True,
+    },
+    'date': {},
+    'starttime': {
+        'prompt': 'Start Time:',
+        'type': 'tod',
+        'control': 'short',
+        'places': 0,
+        'hint': 'Session start time',
+        'subtext': 'hh:mm:ss [required]',
+    },
+    'endtime': {
+        'prompt': 'End Time:',
+        'type': 'tod',
+        'control': 'short',
+        'places': 0,
+        'hint': 'Estimated session end time',
+        'subtext': 'hh:mm:ss [optional]',
+    },
+    'inde': {
+        'prompt': 'Include in:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Event Index?',
+        'attr': 'inde',
+        'defer': True,
+        'hint': 'Include session header on index of events',
+    },
+    'prog': {
+        'prompt': '',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Printed Program?',
+        'attr': 'prog',
+        'defer': True,
+        'hint': 'Include session header in printed program',
+    },
+}
 
-def mkrace(meet, event, ui=True):
-    """Create a new object of the correct type."""
+_ADD_BREAK_SCHEMA = {
+    'prefix': {
+        'prompt': 'Prefix:',
+        'hint': 'Break title',
+        'attr': 'prefix',
+        'defer': True,
+    },
+    'info': {
+        'prompt': 'Info:',
+        'hint': 'Break subtitle',
+        'attr': 'subtitle',
+        'defer': True,
+    },
+    'rule': {
+        'prompt': 'Extra:',
+        'hint': 'Extra information to appear under title',
+        'attr': 'rule',
+        'defer': True,
+    },
+    'inde': {
+        'prompt': 'Include in:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Event Index?',
+        'attr': 'inde',
+        'defer': True,
+        'hint': 'Include break on index of events',
+    },
+    'prog': {
+        'prompt': '',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Printed Program?',
+        'attr': 'prog',
+        'defer': True,
+        'hint': 'Include break in printed program',
+    },
+}
+
+
+def mkrace(meet, ev, ui=True):
+    """Create a new object of the correct type for the provided event handle."""
     ret = None
-    etype = event['type']
+    etype = ev['type']
     if etype in (
             'indiv tt',
             'indiv pursuit',
@@ -339,7 +461,7 @@ def mkrace(meet, event, ui=True):
             'team pursuit',
             'team pursuit race',
     ):
-        ret = ittt.ittt(meet=meet, event=event, ui=ui)
+        ret = ittt.ittt(meet=meet, event=ev, ui=ui)
     elif etype in (
             'scratch',
             'points',
@@ -348,27 +470,27 @@ def mkrace(meet, event, ui=True):
             'tempo',
             'progressive',
     ):
-        ret = ps.ps(meet=meet, event=event, ui=ui)
+        ret = ps.ps(meet=meet, event=ev, ui=ui)
     elif etype == 'classification':
-        ret = classification.classification(meet=meet, event=event, ui=ui)
+        ret = classification.classification(meet=meet, event=ev, ui=ui)
     elif etype in (
             'flying 200',
             'flying lap',
     ):
-        ret = f200.f200(meet=meet, event=event, ui=ui)
+        ret = f200.f200(meet=meet, event=ev, ui=ui)
     elif etype in (
             'sprint round',
             'sprint final',
     ):
-        ret = sprnd.sprnd(meet=meet, event=event, ui=ui)
+        ret = sprnd.sprnd(meet=meet, event=ev, ui=ui)
     elif etype == 'hour':
-        ret = hourrec.UCIHour(meet=meet, event=event, ui=ui)
+        ret = hourrec.UCIHour(meet=meet, event=ev, ui=ui)
     elif etype == 'team aggregate':
-        ret = aggregate.teamagg(meet=meet, event=event, ui=ui)
+        ret = aggregate.teamagg(meet=meet, event=ev, ui=ui)
     elif etype == 'indiv aggregate':
-        ret = aggregate.indivagg(meet=meet, event=event, ui=ui)
+        ret = aggregate.indivagg(meet=meet, event=ev, ui=ui)
     else:
-        ret = race.race(meet=meet, event=event, ui=ui)
+        ret = race.race(meet=meet, event=ev, ui=ui)
     return ret
 
 
@@ -381,7 +503,7 @@ class trackmeet:
         ret = None
         if evno in self.edb:
             eh = self.edb[evno]
-            ret = mkrace(meet=self, event=eh, ui=ui)
+            ret = mkrace(meet=self, ev=eh, ui=ui)
         return ret
 
     def menu_meet_save_cb(self, menuitem, data=None):
@@ -401,6 +523,7 @@ class trackmeet:
         metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
         metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
         metarace.sysconf.add_section('databridge', _DB_SCHEMA)
+        metarace.sysconf.add_section('standards', _STANDARDS_SCHEMA)
         cfgres = uiutil.options_dlg(window=self.window,
                                     title='Meet Properties',
                                     sections={
@@ -439,6 +562,11 @@ class trackmeet:
                                             'schema': _DB_SCHEMA,
                                             'object': metarace.sysconf,
                                         },
+                                        'standards': {
+                                            'title': 'Standards',
+                                            'schema': _STANDARDS_SCHEMA,
+                                            'object': metarace.sysconf,
+                                        },
                                     })
 
         # check for sysconf changes
@@ -448,7 +576,7 @@ class trackmeet:
         scbchange = False
         weatherchange = False
         for sec in ('export', 'timy', 'telegraph', 'sender', 'weather',
-                    'databridge'):
+                    'databridge', 'standards'):
             for key in cfgres[sec]:
                 if cfgres[sec][key][0]:
                     syschange = True
@@ -547,11 +675,18 @@ class trackmeet:
         self.running = False
         self.window.destroy()
 
+    def get_date(self):
+        """Return human-readable date summary for the meet."""
+        if self.startdate is not None:
+            return strops.date_string(self.startdate, self.enddate)
+        else:
+            return ''
+
     def report_strings(self, rep):
         """Copy meet information into the supplied report."""
         rep.strings['title'] = self.title
         rep.strings['host'] = self.host
-        rep.strings['datestr'] = strops.promptstr('Date:', self.date)
+        rep.strings['datestr'] = strops.promptstr('Date:', self.get_date())
         rep.strings['commstr'] = strops.promptstr('PCP:', self.pcp)
         rep.strings['orgstr'] = strops.promptstr('Organiser: ', self.organiser)
         rep.strings['diststr'] = self.document
@@ -562,7 +697,7 @@ class trackmeet:
                      subtitle='',
                      docstr='',
                      prov=False,
-                     doprint=True,
+                     doprint=None,
                      exportfile=None,
                      template=None):
         """Print the supplied sections in a standard report."""
@@ -577,48 +712,74 @@ class trackmeet:
         for sec in sections:
             rep.add_section(sec)
 
-        # write out to files if exportfile set
-        if exportfile:
-            rep.canonical = os.path.join(self.linkbase, exportfile + '.json')
-            ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
-            with metarace.savefile(ofile, mode='b') as f:
-                rep.output_pdf(f)
-            ofile = os.path.join(EXPORTPATH, exportfile + '.xlsx')
-            with metarace.savefile(ofile, mode='b') as f:
-                rep.output_xlsx(f)
-            ofile = os.path.join(EXPORTPATH, exportfile + '.json')
-            with metarace.savefile(ofile) as f:
-                rep.output_json(f)
-            lb = ''
-            lt = []
-            if self.mirrorpath:
-                lb = os.path.join(self.linkbase, exportfile)
-                lt = ['pdf', 'xlsx']
-            ofile = os.path.join(EXPORTPATH, exportfile + '.html')
-            with metarace.savefile(ofile) as f:
-                rep.output_html(f, linkbase=lb, linktypes=lt)
+        if self.doprint not in ('preview', 'dialog', 'direct'):
+            # write out to files if exportfile set
+            if exportfile:
+                _log.debug('Report: save to file %r', exportfile)
+                rep.canonical = os.path.join(self.linkbase,
+                                             exportfile + '.json')
+                ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
+                with metarace.savefile(ofile, mode='b') as f:
+                    rep.output_pdf(f)
+                ofile = os.path.join(EXPORTPATH, exportfile + '.xlsx')
+                with metarace.savefile(ofile, mode='b') as f:
+                    rep.output_xlsx(f)
+                ofile = os.path.join(EXPORTPATH, exportfile + '.json')
+                with metarace.savefile(ofile) as f:
+                    rep.output_json(f)
+                lb = ''
+                lt = []
+                if self.mirrorpath:
+                    lb = os.path.join(self.linkbase, exportfile)
+                    lt = ['pdf', 'xlsx']
+                ofile = os.path.join(EXPORTPATH, exportfile + '.html')
+                with metarace.savefile(ofile) as f:
+                    rep.output_html(f, linkbase=lb, linktypes=lt)
+            else:
+                _log.debug(
+                    'Report: save to file skipped, no filename provided')
 
-        if not doprint:
-            return False
+        if doprint is None:
+            doprint = self.doprint != 'save'
 
-        print_op = Gtk.PrintOperation.new()
-        print_op.set_allow_async(True)
-        print_op.set_print_settings(self.printprefs)
-        print_op.set_default_page_setup(self.pageset)
-        print_op.connect('begin_print', self.begin_print, rep)
-        print_op.connect('draw_page', self.draw_print_page, rep)
-        res = print_op.run(Gtk.PrintOperationAction.PREVIEW, None)
-        if res == Gtk.PrintOperationResult.APPLY:
-            self.printprefs = print_op.get_print_settings()
-            _log.debug('Updated print preferences')
-        elif res == Gtk.PrintOperationResult.IN_PROGRESS:
-            _log.debug('Print operation in progress')
+        if doprint:
+            _log.debug('Report: Print method: %r', self.doprint)
+            method = Gtk.PrintOperationAction.PREVIEW
+            if self.doprint == 'dialog':
+                method = Gtk.PrintOperationAction.PRINT_DIALOG
+            elif self.doprint == 'direct':
+                method = Gtk.PrintOperationAction.PRINT
 
-        # may be called via idle_add
+            print_op = Gtk.PrintOperation.new()
+            print_op.set_print_settings(self.printprefs)
+            print_op.set_default_page_setup(self.pageset)
+            print_op.connect('begin_print', self.begin_print, rep)
+            print_op.connect('draw_page', self.draw_print_page, rep)
+            print_op.connect('done', self.finish_print, rep)
+            print_op.set_allow_async(True)
+            res = print_op.run(method, self.window)
+            if res == Gtk.PrintOperationResult.APPLY:
+                self.printprefs = print_op.get_print_settings()
+                _log.debug('Updated print preferences')
+            elif res == Gtk.PrintOperationResult.IN_PROGRESS:
+                _log.debug('Print operation in progress')
+            elif res == Gtk.PrintOperationResult.ERROR:
+                printerr = print_op.get_error()
+                _log.error('Print operation error: %s', printerr.message)
+            else:
+                _log.error('Print operation cancelled')
+        else:
+            _log.debug('Report: Printing skipped, doprint: %r, method: %r',
+                       doprint, self.doprint)
         return False
+
+    def finish_print(self, operation, context, rep):
+        """Notify print completion."""
+        _log.debug('Printing report %s done.', rep.id)
 
     def begin_print(self, operation, context, rep):
         """Set print pages and units."""
+        _log.debug('Begin printing report %s.', rep.id)
         rep.start_gtkprint(context.get_cairo_context())
         operation.set_use_full_page(True)
         operation.set_n_pages(rep.get_pages())
@@ -626,6 +787,7 @@ class trackmeet:
 
     def draw_print_page(self, operation, context, page_nr, rep):
         """Draw to the nominated page."""
+        _log.debug('Draw page %d of report %s.', page_nr, rep.id)
         rep.set_context(context.get_cairo_context())
         rep.draw_page(page_nr)
 
@@ -952,11 +1114,16 @@ class trackmeet:
             sections.extend(self.curevent.result_report())
         self.print_report(sections, 'Result')
 
+    def menu_add_comp(self, menuitem, data=None):
+        """Add a new competition of the specified type."""
+        label = menuitem.get_label().lower()
+        GLib.idle_add(self.comp_add_dialog, label)
+
     def menu_race_make_activate_cb(self, menuitem, data=None):
         """Create and open a new race of the chosen type."""
         label = menuitem.get_label()
         etype = None
-        if label != 'Add new':
+        if label != 'Add Event':
             etype = event_type(label)
             if data is not None:
                 etype = data
@@ -1141,6 +1308,17 @@ class trackmeet:
             self.menu_race_decisions.set_sensitive(True)
             self.curevent.show()
 
+    def addcat(self, catid, catname):
+        """Add or update a category entry for the meet."""
+        ch = self.rdb.get_cat(catid)
+        if ch is not None:
+            ch['title'] = catname
+        else:
+            # add a new entry
+            dbr = riderdb.rider(no=catid, series='cat')
+            dbr.set_value('title', catname)
+            self.rdb.add_rider(dbr, overwrite=True)
+
     def addstarters(self, race, event, startlist):
         """Add each of the riders in startlist to the opened race."""
         starters = startlist.split()
@@ -1203,7 +1381,6 @@ class trackmeet:
         #                   1 -> rank (ps/omnium, pursuit)
         #                   2 -> time (sprint)
         #                   3 -> info (handicap)
-        # TODO: cache result gens
         if len(self.autorecurse) > MAX_AUTORECURSE:
             _log.debug('Recursion limit exceeded %s=%s', race.event['evid'],
                        autospec)
@@ -1284,6 +1461,11 @@ class trackmeet:
             delevent = None
 
     ## Data menu callbacks.
+    def menu_data_update_standards_cb(self, menuitem, data=None):
+        """Fetch and save current standards to meet folder."""
+        uiutil.do_standards_update()
+        return False
+
     def menu_data_import_activate_cb(self, menuitem, data=None):
         """Re-load event and rider info from disk."""
         if not uiutil.questiondlg(
@@ -1396,7 +1578,7 @@ class trackmeet:
                                   'team aggregate', 'indiv aggregate'):
                 series = ev['series'].lower()
                 if not series.startswith('t'):  # skip team events
-                    rl = mkrace(meet=self, event=ev, ui=False)
+                    rl = mkrace(meet=self, ev=ev, ui=False)
                     rl.loadconfig()
                     for rno in rl.get_startlist().split():
                         rno = rno.upper()
@@ -1645,7 +1827,7 @@ class trackmeet:
             _log.error('%s updating event index: %s', e.__class__.__name__, e)
             raise
 
-    def updatenexprev(self):
+    def updatenextprev(self):
         self.nextlinks = {}
         self.prevlinks = {}
         evlinks = {}
@@ -1672,7 +1854,7 @@ class trackmeet:
             prevno = evno
 
     def updateindex(self):
-        self.updatenexprev()  # re-compute next/prev link struct
+        self.updatenextprev()  # re-compute next/prev link struct
         self.check_export_path()
         orep = report.report()
         self.report_strings(orep)
@@ -1714,7 +1896,15 @@ class trackmeet:
         ievno = None
         lievno = None
         lrules = None
+        cursession = None
         for eh in self.edb:
+            # update session numbers on the way through
+            if eh['type'] == 'session':
+                cursession = eh['session']
+            else:
+                if cursession is not None and eh['session'] != cursession:
+                    eh['session'] = cursession
+
             if eh['result'] and eh['type'] in (
                     'classification', 'team aggregate',
                     'indiv aggregate'):  # include in result?
@@ -1751,8 +1941,16 @@ class trackmeet:
                         lievno = ievno
                 referno = evno
                 target = None
-                if eh['refe']:  # overwrite ref no, even on specials
-                    referno = eh['refe']
+                referid = eh['refe']
+                # use the sprint handler event for links when heat 2/3
+                if eh['type'] == 'sprint heat' and referid:
+                    if referid in self.edb:
+                        evno = referid
+                        refeh = self.edb[referid]
+                        referid = refeh['refe']
+
+                if referid:  # overwrite ref no, even on specials
+                    referno = referid
                     if referno != evno:
                         evanchor = evno.split('.')[0]
                         target = 'ev-' + str(evanchor).translate(
@@ -1770,6 +1968,7 @@ class trackmeet:
                     if ilaps is not None:
                         iextra = extra
                 rules = eh['rules']  # progression
+                # this is too fragile`
                 if eh['evov']:
                     evno = eh['evov'].strip()
                 sec.lines.append([evno, None, descr, extra, linkfile, target])
@@ -1875,7 +2074,7 @@ class trackmeet:
             self._exportBlocked.clear()
             _log.debug('Begin data export')
             self.check_export_path()
-            self.updatenexprev()  # re-compute next/prev link struct
+            self.updatenextprev()  # re-compute next/prev link struct
 
             # determine 'dirty' events
             dmap = {}
@@ -1895,12 +2094,16 @@ class trackmeet:
                 doexport = e['result']
                 e.set_value('dirty', False)
                 _log.debug('Data export event %r', evno)
-                r = mkrace(meet=self, event=e, ui=False)
-                r.loadconfig()
+                r = mkrace(meet=self, ev=e, ui=False)
 
+                # load event and populate all data bridge elements
+                r.loadconfig()
                 startrep = r.startlist_report()
                 startsec = None
+                resrep = r.result_report()
+                ressec = None
 
+                # if required, save report
                 if doexport:
                     orep = report.report()
                     orep.showcard = False
@@ -1923,10 +2126,6 @@ class trackmeet:
                         orep.prevlink = self.prevlinks[evno]
                     if evno in self.nextlinks:
                         orep.nextlink = self.nextlinks[evno]
-
-                    # update files and trigger mirror
-                    resrep = r.result_report()
-                    ressec = None
 
                     # build combined html style report
                     for sec in resrep:
@@ -1953,7 +2152,7 @@ class trackmeet:
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
 
-                # bridge data startlist/result & subfrags if required
+                # if required, bridge data startlist/result & subfrags
                 if self.eventcode:
                     r.data_bridge()
 
@@ -2180,14 +2379,19 @@ class trackmeet:
                 't': self.weather.t,
                 'h': self.weather.h,
                 'p': self.weather.p,
+                'd': self.weather.d,
             }
         return ret
 
-    def timer_log_env(self):
+    def timer_log_env(self, env=None):
         """Print the current weather observations if valid."""
-        if self.weather.valid():
-            lstr = '{0:0.1f}\u00b0C {1:0.1f}%rh {2:0.1f}hPa'.format(
-                self.weather.t, self.weather.h, self.weather.p)
+        if env is None:
+            env = self.get_weather()
+        if env is not None:
+            lstr = '{0:0.1f}\u00b0C {2:0.1f}hPa {1:0.1f}%rh'.format(
+                env['t'], env['p'], env['h'])
+            self.main_timer.printline(lstr)
+            lstr = 'Est. rho: ~{0:0.4f}kg/m^3'.format(env['d'])
             self.main_timer.printline(lstr)
 
     def footerline(self, event, count=None, label='Riders', showrecord=True):
@@ -2279,13 +2483,14 @@ class trackmeet:
         self.txt_announce(unt4.GENERAL_CLEARING)
 
     def txt_default(self):
+        datestr = self.get_date()
         self.txt_announce(
             unt4.unt4(xx=1,
                       yy=0,
                       erl=True,
                       text=strops.truncpad(
                           ' '.join([self.title, self.subtitle,
-                                    self.date]).strip(), ANNOUNCE_LINELEN - 2,
+                                    datestr]).strip(), ANNOUNCE_LINELEN - 2,
                           'c')))
 
     def txt_title(self, titlestr=''):
@@ -2339,7 +2544,6 @@ class trackmeet:
     def key_event(self, widget, event):
         """Collect key events on main window."""
         if event.type == Gdk.EventType.KEY_PRESS:
-            ##_log.debug('Key: %r', Gdk.keyval_name(event.keyval))
             key = Gdk.keyval_name(event.keyval) or 'None'
             if event.state & Gdk.ModifierType.CONTROL_MASK:
                 if key in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
@@ -2405,8 +2609,7 @@ class trackmeet:
                     _log.debug('resend blocked')
 
     def _recv_laps(self, laps=None):
-        """Receive updated lap from direclty connected lapspy"""
-        # TODO: publish to telegraph
+        """Receive updated lap from directly connected lapspy"""
         self.update_lapscore(strops.confopt_posint(laps, None))
         return False
 
@@ -2416,12 +2619,51 @@ class trackmeet:
     def _controlcb(self, topic=None, message=None):
         GLib.idle_add(self.remote_command, topic, message)
 
+    def _transponder(self, message):
+        """Process a velotrain passing message.
+        
+        Example object:
+        
+          {
+            "index": 281,
+            "date": "2026-02-06",
+            "time": "17:41:53.882",
+            "mpid": 6,
+            "refid": "100089",
+            "env": [28.7, 38.3, 1010.8],
+            "moto": null,
+            "elap": "56.23",
+            "lap": "27.68", "half": null, "qtr": null,
+            "200": "23.38", "100": "11.14", "50": null,
+            "text": "50m Split"
+          }
+        """
+        _log.debug('Velotrain passing: %s', message)
+        try:
+            jd = json.loads(message)
+            _log.debug('passing: %r', jd)
+            if 'time' in jd and 'mpid' in jd and 'refid' in jd:
+                chan = strops.id2chan(jd['mpid'])
+                ptime = tod.mktod(jd['time'])
+                if ptime is not None:
+                    ptime.chan = chan
+                    ptime.source = 'transponder'
+                    ptime.refid = jd['refid']
+                    ## TODO: these likely need separate handling
+                    #self._timercb(ptime)
+                    _log.debug('timercb: %r', ptime)
+        except Exception as e:
+            _log.debug('Velotrain %s: %s', e.__class__.__name__, e_)
+
     def remote_command(self, topic=None, message=None):
         path = topic.split('/')
         if path:
             cmd = path[-1]
             if cmd == 'laps':
                 self.update_lapscore(strops.confopt_posint(message, None))
+            elif cmd == 'passing':
+                # handle a velotrain style tyransponder report
+                self._transponder(message)
             else:
                 _log.debug('Unsupported control %r: %r', topic, message)
         return False
@@ -2525,6 +2767,9 @@ class trackmeet:
         # Load schema options into meet object
         cr.export_section('trackmeet', self)
 
+        if self.startdate is not None:
+            if self.enddate == self.startdate:
+                self.enddate = None
         if self.timerport:
             self.main_timer.setport(self.timerport)
         if self.gemport:
@@ -2705,7 +2950,7 @@ class trackmeet:
                         if ev['series'] in (oldSeries, newSeries):
                             _log.debug('Checking event %s series=%r',
                                        ev['evid'], ev['series'])
-                            r = mkrace(meet=self, event=ev, ui=False)
+                            r = mkrace(meet=self, ev=ev, ui=False)
                             r.readonly = False
                             r.loadconfig()
                             changed = False
@@ -2809,7 +3054,7 @@ class trackmeet:
             if ev['series'] == series:
                 if ev['type'] not in ('classification', 'team aggregate',
                                       'indiv aggregate'):
-                    r = mkrace(meet=self, event=ev, ui=False)
+                    r = mkrace(meet=self, ev=ev, ui=False)
                     r.readonly = False
                     r.loadconfig()
                     if r.inevent(riderNo):
@@ -3095,6 +3340,115 @@ class trackmeet:
                 _log.error('Event %r in view not found in model', evno)
         return ref
 
+    def comp_add_dialog(self, label=None):
+        """Run a competition builder dialog."""
+        return uiutil.comp_builder(window=self.window,
+                                   meet=self,
+                                   comptype=label)
+
+    def add_break_cb(self, menuitem=None, data=None):
+        """Create a new session entry."""
+        ev = Event(evid='b')
+        ev.set_value('type', 'break')
+        ev.set_value('result', False)
+        ev.set_value('index', True)
+        ev.set_value('program', True)
+        schema = _ADD_BREAK_SCHEMA
+        res = uiutil.options_dlg(window=self.window,
+                                 title='Add Break to Meet',
+                                 action=True,
+                                 sections={
+                                     'break': {
+                                         'title': 'break',
+                                         'schema': schema,
+                                         'object': ev,
+                                     },
+                                 })
+        if res['action'] == 0:  # OK
+            self.edb.add_event(ev)
+            self.eventcb(None)
+        return None
+
+    def add_session_cb(self, menuitem=None, data=None):
+        """Create a new session entry."""
+        sid = 0
+        for e in self.edb:
+            if e['type'] == 'session':
+                s = strops.confopt_posint(e['session'], 0)
+                sid = max(sid, s)
+        sid += 1
+        evid = 's.%d' % (sid, )
+        ev = Event(evid=evid)
+        ev.set_value('type', 'session')
+        ev.set_value('session', str(sid))
+        ev.set_value('prefix', 'Session %d' % (sid, ))
+        if sid == 1:
+            ev.set_value('rule', 'Competition starts XX')
+        else:
+            ev.set_value('rule', 'Competition resumes XX')
+        ev.set_value('result', False)
+        ev.set_value('index', True)
+        ev.set_value('program', True)
+        schema = _ADD_SESSION_SCHEMA
+        if self.startdate is not None:
+            options = {}
+            oneday = timedelta(days=1)
+            startdate = self.startdate
+            curdate = startdate
+            enddate = self.enddate
+            if enddate is None:
+                enddate = startdate
+            while curdate <= enddate:
+                options[curdate] = strops.date_string(curdate)
+                curdate += oneday
+            schema['date'] = {
+                'prompt': 'Date:',
+                'control': 'choice',
+                'options': options,
+                'value': startdate,
+                'hint': 'Session date',
+                'type': 'date',
+            }
+        else:
+            # date is missing from meet, use an altered schema
+            schema['date'] = {
+                'prompt': 'Date:',
+                'control': 'short',
+                'type': 'date',
+                'subtext': 'YYYY-MM-DD [required]',
+                'hint': 'Session date',
+                'value': date.today(),
+            }
+
+        res = uiutil.options_dlg(window=self.window,
+                                 title='Add Session to Meet',
+                                 action=True,
+                                 sections={
+                                     'session': {
+                                         'title': 'Session',
+                                         'schema': schema,
+                                         'object': ev,
+                                     },
+                                 })
+        if res['action'] == 0:  # OK
+            dv = res['session']['date'][2]
+            if dv is not None:  # date is present
+                tz = self.db.get_timezone()
+                sd = datetime.combine(date=dv, time=time(), tzinfo=tz)
+                st = res['session']['starttime'][2]
+                if st is not None:
+                    ev['starttime'] = tod.mergedate(st, sd)
+
+                    if ev['rule'].endswith('XX'):
+                        ev['rule'] = '%s %s' % (ev['rule'].rstrip('X'),
+                                                st.meridiem(secs=False))
+                et = res['session']['endtime'][2]
+                if et is not None:
+                    ev['endtime'] = tod.mergedate(et, sd)
+            self.edb.add_event(ev)
+            self.eventcb(None)
+        return None
+
     def event_popup_edit_cb(self, menuitem=None, data=None):
         """Edit event extended attributes."""
         evno = None
@@ -3134,6 +3488,7 @@ class trackmeet:
                 self.close_event()
 
             if newevno in self.edb:
+                # event id exists, adjust until a spare slot is found.
                 tmpevno = newevno
                 baseno = newevno.rsplit('.', 1)[0]
                 count = 0
@@ -3143,10 +3498,7 @@ class trackmeet:
                         baseno,
                         count,
                     )
-                _log.info('Backup existing event %s to %s', newevno, tmpevno)
-                self.eventno_change(oldevno=newevno,
-                                    newevno=tmpevno,
-                                    backup=True)
+                newevno = tmpevno
             _log.info('Update event %s to %s', oldevno, newevno)
             self.eventno_change(oldevno=oldevno, newevno=newevno, backup=False)
 
@@ -3200,11 +3552,6 @@ class trackmeet:
                     ev.set_value('reference', newevno)
                 # update evno references in event configs
                 if ev['type'] in ('classification', ):
-                    # TODO: update via schema
-                    # showevents: list of evnos to include with result export
-                    #  - same as depends in edb
-                    # placesrc: autospec places for result
-                    #  - same as auto starters in edb
                     dosave = False
                     config = self.event_configfile(ev['evid'])
                     ecr = jsonconfig.config()
@@ -3226,7 +3573,6 @@ class trackmeet:
                         with metarace.savefile(config) as f:
                             ecr.write(f)
                 elif ev['type'] in ('indiv aggregate', 'team aggregate'):
-                    # TODO: requires a method
                     _log.warning('change evno not supported on %r', ev['type'])
                     dosave = False
                     config = self.event_configfile(ev['evid'])
@@ -3240,9 +3586,6 @@ class trackmeet:
                             ecr.write(f)
                 elif ev['type'] in ('tempo', 'progressive', 'points', 'omnium',
                                     'madison'):
-                    # TODO: update via schema
-                    # sprintsource: { sid: autospec, ... }
-                    #    - same as autospec
                     dosave = False
                     config = self.event_configfile(ev['evid'])
                     ecr = jsonconfig.config()
@@ -3368,7 +3711,7 @@ class trackmeet:
                                         self.curevent.delrider(rno)
                                 self.curevent.event.set_value('dirty', True)
                             else:
-                                r = mkrace(meet=self, event=ev, ui=False)
+                                r = mkrace(meet=self, ev=ev, ui=False)
                                 r.readonly = False
                                 r.loadconfig()
                                 for rno in slist:
@@ -3627,7 +3970,8 @@ class trackmeet:
         self.subtitle = ''
         self.document = ''
         self.facility = ''
-        self.date = ''
+        self.startdate = None
+        self.enddate = None
         self.organiser = ''
         self.pcp = ''
         self.clubmode = True
@@ -3639,6 +3983,7 @@ class trackmeet:
         self.startpage = None
         self.endpages = 0
         self.padbook = 0
+        self.doprint = 'preview'
         self.nextlinks = {}
         self.prevlinks = {}
         self.commalloc = {}
@@ -3814,7 +4159,7 @@ class trackmeet:
 
         # get event db and pack into scrolled pane
         _log.debug('Add eventdb')
-        self.edb = eventdb()
+        self.edb = EventDb()
         self.edb.set_notify(self._ecb)
 
         # start timers
@@ -3832,6 +4177,7 @@ def edit_defaults():
     metarace.sysconf.add_section('timy', _TIMY_SCHEMA)
     metarace.sysconf.add_section('weather', _WEATHER_SCHEMA)
     metarace.sysconf.add_section('databridge', _DB_SCHEMA)
+    metarace.sysconf.add_section('standards', _STANDARDS_SCHEMA)
     cfgres = uiutil.options_dlg(title='Edit Default Configuration',
                                 sections={
                                     'trackmeet': {
@@ -3869,11 +4215,23 @@ def edit_defaults():
                                         'schema': _DB_SCHEMA,
                                         'object': metarace.sysconf,
                                     },
+                                    'standards': {
+                                        'title': 'Standards',
+                                        'schema': _STANDARDS_SCHEMA,
+                                        'object': metarace.sysconf,
+                                    },
                                 })
 
     # check for sysconf changes:
     syschange = False
+    dostandards = False
+
     for sec in cfgres:
+        if sec == 'standards':
+            if cfgres[sec]['factorupdateurl'][2]:
+                dostandards = True
+            elif cfgres[sec]['catupdateurl'][2]:
+                dostandards = True
         for key in cfgres[sec]:
             if cfgres[sec][key][0]:
                 syschange = True
@@ -3893,6 +4251,11 @@ def edit_defaults():
             metarace.sysconf.write(f)
     else:
         _log.info('Edit default: No changes to save')
+
+    # if standard urls defined, re-load
+    if dostandards:
+        t = uiutil.do_standards_update()
+        t.join()
     return 0
 
 

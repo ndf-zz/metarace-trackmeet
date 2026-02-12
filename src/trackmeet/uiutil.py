@@ -28,7 +28,8 @@ from metarace import tod
 from metarace import strops
 from metarace.jsonconfig import config
 from metarace.riderdb import rider
-from .eventdb import event
+from metarace.standards import Factors, CategoryInfo
+from .eventdb import Event
 
 _log = logging.getLogger('uiutil')
 _log.setLevel(logging.DEBUG)
@@ -52,6 +53,72 @@ _UPDATE_PROC = {
     'run': {
         'thread': None,
         'lock': threading.Lock()
+    },
+    'standards': {
+        'thread': None,
+        'lock': threading.Lock()
+    },
+}
+
+# common competition abbreviations
+_COMPABBREVS = {
+    'pursuit': 'ip',
+    'individualpursuit': 'ip',
+    'teampursuit': 'tp',
+    'teamsprint': 'ts',
+    'timetrial': 'tt',
+    'scratch': 'sc',
+    'points': 'p',
+    'keirin': 'k',
+    'sprint': 'sp',
+    'madison': 'm',
+    '': '',
+}
+
+# event builder schemas
+
+# Pursuit/ITT Builder Qualifying->Final, Medals, Series
+_PURSUIT_BUILDER = {
+    'ctype': {
+        'prompt': 'Pursuit',
+        'control': 'section',
+    },
+    'cat': {
+        'prompt': 'Category:',
+        'control': 'choice',
+        'defer': True,
+        'hint': 'Competitor category',
+    },
+    'series': {
+        'prompt': 'Number Series:',
+        'control': 'short',
+        'hint': 'Competitor number series',
+        'defer': True,
+    },
+    'code': {
+        'prompt': 'Competition ID:',
+        'control': 'short',
+        'hint': 'Competition identifier',
+        'value': 'pursuit',
+        'defer': True,
+    },
+    'dofinals': {
+        'prompt': 'Qualifying:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Include qualifying and final phases',
+        'value': True,
+        'defer': True,
+    },
+    'domedals': {
+        'prompt': 'Medals:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Include Gold Silver Bronze medals in classification',
+        'value': True,
+        'defer': True,
     },
 }
 
@@ -680,6 +747,479 @@ def run_update_check(callback=None, window=None):
             GLib.idle_add(callback, ret, window)
 
 
+def run_standards_update():
+    """Perform standards update."""
+    f = Factors()
+    f.update()
+    c = CategoryInfo()
+    c.update()
+    _UPDATE_PROC['standards']['lock'].release()
+    _UPDATE_PROC['standards']['thread'] = None
+
+
+def do_standards_update(window=None):
+    """Trigger standards update."""
+    if not _UPDATE_PROC['standards']['lock'].acquire(False):
+        _log.info('Standards update already in progress')
+        return None
+    tp = threading.Thread(target=run_standards_update, daemon=True)
+    tp.start()
+    _UPDATE_PROC['standards']['thread'] = tp
+    return tp
+
+
+def comp_builder(window, meet, comptype):
+    """Build a standards-based competition and add to meet."""
+    options_schema = None
+    catinfo = CategoryInfo()
+    catinfo.load()
+    title = 'Add Competition'
+    catlist = {}
+    for c, info in catinfo._store.items():
+        if info['Discipline'] in ('all', 'track'):
+            lbl = '%s: %s' % (c, info['Title'])
+            catlist[c] = lbl
+    if comptype == 'pursuit':
+        label = 'Individual Pursuit'
+        options_schema = _PURSUIT_BUILDER
+        # Overwrite schema values as required
+        options_schema['ctype']['prompt'] = label
+        options_schema['cat']['options'] = catlist
+        options_schema['series']['value'] = ''
+        options_schema['code']['value'] = 'ip'
+    elif comptype == 'team pursuit':
+        label = 'Team Pursuit'
+        options_schema = _PURSUIT_BUILDER
+        # Overwrite schema values as required
+        options_schema['ctype']['prompt'] = label
+        options_schema['cat']['options'] = catlist
+        options_schema['series']['value'] = 'tp'
+        options_schema['code']['value'] = 'tp'
+    elif comptype == 'team sprint':
+        label = 'Team Sprint'
+        options_schema = _PURSUIT_BUILDER
+        # Overwrite schema values as required
+        options_schema['ctype']['prompt'] = label
+        options_schema['cat']['options'] = catlist
+        options_schema['series']['value'] = 'ts'
+        options_schema['code']['value'] = 'ts'
+    elif comptype == 'time trial':
+        label = 'Time Trial'
+        options_schema = _PURSUIT_BUILDER
+        # Overwrite schema values as required
+        options_schema['ctype']['prompt'] = label
+        options_schema['cat']['options'] = catlist
+        options_schema['series']['value'] = ''
+        options_schema['code']['value'] = 'tt'
+
+    if options_schema is None:
+        _log.info('Missing schema for %s builder', comptype)
+        return
+
+    res = options_dlg(window=window,
+                      title=title,
+                      action=True,
+                      sections={
+                          'comp': {
+                              'title': 'Competition',
+                              'schema': options_schema,
+                              'object': {},
+                          }
+                      })
+    if res['action'] == 0:  # OK
+        if res['comp']['cat'][2]:  # cat is defined
+            cat = res['comp']['cat'][2]
+            category = catinfo.get_cat(cat)
+            meet.addcat(cat, category['Title'])
+            series = res['comp']['series'][2]
+            code = res['comp']['code'][2]
+            dofinals = res['comp']['dofinals'][2]
+            domedals = res['comp']['domedals'][2]
+            _log.debug('Building competition for cat=%s code=%s', cat, code)
+            if comptype in ('pursuit', 'team pursuit', 'team sprint'):
+                build_pursuit_comp(meet, label, cat, category, series, code,
+                                   dofinals, domedals)
+            elif comptype in ('time trial'):
+                build_itt_comp(meet, label, cat, category, series, code,
+                               dofinals, domedals)
+        else:
+            _log.info('No cat selected for new pursuit competion')
+    return False
+
+
+def comp_label_short(label):
+    """Return a short, ~2 character id for the given competition label."""
+    ret = ''
+    lcheck = label.lower().translate(strops.WEBFILE_UTRANS)
+
+    if lcheck in _COMPABBREVS:
+        ret = _COMPABBREVS[lcheck]
+    else:
+        ret = lcheck[0:2]
+    return ret
+
+
+def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
+                       domedals):
+    """Create pursuit-like events, add to meet."""
+
+    if cat in ('M9', 'W9', 'U9', 'M11', 'W11', 'U11', 'M13', 'W13', 'U13'):
+        _log.info('Straight finals forced for under 13 competitors')
+        dofinals = False
+    laps = None
+    distance = ''
+    if label == 'Team Sprint':
+        # assume three riders unless overridden
+        laps = 3
+        if category[label]:
+            laps = category[label]
+        dm = laps * meet.tracklen_n / meet.tracklen_d
+        distance = '%0.0f\u2006m' % (dm, )
+    elif category[label]:
+        dm = category[label]
+        distance = '%d\u2006m' % (dm, )
+        lc = meet.tracklen_d * dm / meet.tracklen_n
+        if (lc - int(lc)) < 0.01:  # probably even
+            laps = int(lc)
+
+    # check and clean competition code
+    if code is not None:
+        code = code.translate(strops.PRINT_UTRANS).strip()
+    else:
+        code = ''
+    if not code:
+        code = label.lower().translate(strops.WEBFILE_UTRANS)
+
+    # ensure series is set
+    if series is None:
+        series = ''
+
+    qualtype = 'indiv pursuit'
+    finaltype = 'pursuit race'
+    if label == 'Team Sprint':
+        qualtype = 'team sprint'
+        finaltype = 'team sprint race'
+    elif label == 'Team Pursuit':
+        qualtype = 'team pursuit'
+        finaltype = 'team pursuit race'
+
+    # find an unused event id for the catcomp
+    compid = comp_label_short(label)
+    catcomp = cat.lower() + compid
+    count = 1
+    while catcomp in meet.edb:
+        count += 1
+        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+
+    prefix = '%s %s' % (
+        category['Title'],
+        label,
+    )
+
+    if dofinals:
+        # qualifying
+        pqid = '%sq' % (catcomp, )
+        pqev = meet.edb.add_empty(evno=pqid, notify=False)
+        pqev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': qualtype,
+            'prefix': prefix,
+            'info': 'Qualifying',
+            'result': False,
+            'index': True,
+            'program': True,
+            'qualifiers': 4,
+            'laps': laps,
+            'distance': distance,
+            'rules': '1st & 2nd to gold final; 3rd & 4th to bronze',
+            'category': cat,
+            'competion': code,
+            'phase': 'qualifying',
+        })
+
+        # bronze final
+        pfbid = '%sfb' % (catcomp, )
+        pfbev = meet.edb.add_empty(evno=pfbid, notify=False)
+        pfbev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': finaltype,
+            'prefix': prefix,
+            'info': 'Bronze Final',
+            'result': False,
+            'index': True,
+            'program': True,
+            'depends': pqid,
+            'auto': '%s:3,4' % (pqid, ),
+            'placeholders': 2,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+            'contest': 'bronze',
+        })
+
+        # gold final
+        pfgid = '%sfg' % (catcomp, )
+        pfgev = meet.edb.add_empty(evno=pfgid, notify=False)
+        pfgev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': finaltype,
+            'prefix': prefix,
+            'info': 'Gold Final',
+            'result': False,
+            'index': True,
+            'program': True,
+            'depends': pqid,
+            'auto': '%s:1,2' % (pqid, ),
+            'placeholders': 2,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+            'contest': 'gold',
+        })
+
+        # classification
+        showevs = ' '.join((pqid, pfbid, pfgid))
+        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev.set_values({
+            'series':
+            series,
+            'type handler':
+            'classification',
+            'prefix':
+            prefix,
+            'result':
+            True,
+            'index':
+            False,
+            'program':
+            False,
+            'depends':
+            showevs,
+            'auto':
+            '%s:1,2; %s:1,2; %s:5-40' % (
+                pfgid,
+                pfbid,
+                pqid,
+            ),
+            'category':
+            cat,
+            'competion':
+            code,
+        })
+        c = meet.get_event(catcomp)
+        c.readonly = False
+        c.loadconfig()
+        if domedals:
+            c.medals = 'Gold Silver Bronze'
+        c.showevents = showevs
+        c.saveconfig()
+        c = None
+    else:
+        # straight final, time trial stylez
+        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev.set_values({
+            'series': series,
+            'type handler': qualtype,
+            'prefix': prefix,
+            'info': 'Final',
+            'result': True,
+            'index': True,
+            'program': True,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+        })
+
+
+def build_itt_comp(meet, label, cat, category, series, code, dofinals,
+                   domedals):
+    """Create time trial events, add to meet."""
+
+    if cat in (
+            'M9',
+            'W9',
+            'U9',
+            'M11',
+            'W11',
+            'U11',
+            'M13',
+            'W13',
+            'U13',
+            'MM1',
+            'MM2',
+            'MM3',
+            'MM4',
+            'MM5',
+            'MM6',
+            'MM7',
+            'MM8',
+            'MM9',
+            'MM10',
+            'MM',
+            'WM1',
+            'WM2',
+            'WM3',
+            'WM4',
+            'WM5',
+            'WM6',
+            'WM7',
+            'WM8',
+            'WM9',
+            'WM10',
+            'WM',
+    ):
+        _log.info('Straight finals forced for under 13/masters competitors')
+        dofinals = False
+    laps = None
+    distance = ''
+    if category[label]:
+        dm = category[label]
+        distance = '%d\u2006m' % (dm, )
+        lc = meet.tracklen_d * dm / meet.tracklen_n
+        if (lc - int(lc)) < 0.01:  # probably even
+            laps = int(lc)
+
+    # check and clean competition code
+    if code is not None:
+        code = code.translate(strops.PRINT_UTRANS).strip()
+    else:
+        code = ''
+    if not code:
+        code = label.lower().translate(strops.WEBFILE_UTRANS)
+
+    # ensure series is set
+    if series is None:
+        series = ''
+
+    # find an unused event id for the catcomp
+    compid = comp_label_short(label)
+    catcomp = cat.lower() + compid
+    count = 1
+    while catcomp in meet.edb:
+        count += 1
+        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+
+    prefix = '%s %s' % (
+        category['Title'],
+        label,
+    )
+
+    if dofinals:
+        # qualifying round, 2-up to select top 8
+        pqid = '%sq' % (catcomp, )
+        pqev = meet.edb.add_empty(evno=pqid, notify=False)
+        pqev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': 'indiv tt',
+            'prefix': prefix,
+            'info': 'Qualifying',
+            'result': False,
+            'index': True,
+            'program': True,
+            'qualifiers': 8,
+            'laps': laps,
+            'distance': distance,
+            'rules': 'Top 8 to final',
+            'category': cat,
+            'competion': code,
+            'phase': 'qualifying',
+        })
+        c = meet.get_event(pqid)
+        c.readonly = False
+        c.loadconfig()
+        c.timetype = 'dual'
+        c.saveconfig()
+        c = None
+
+        # final - 1 up, top 8
+        pfid = '%sf' % (catcomp, )
+        pfev = meet.edb.add_empty(evno=pfid, notify=False)
+        pfev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': 'indiv tt',
+            'prefix': prefix,
+            'info': 'Final',
+            'result': False,
+            'index': True,
+            'program': True,
+            'depends': pqid,
+            'auto': '%s:1-8' % (pqid, ),
+            'placeholders': 8,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+        })
+        c = meet.get_event(pfid)
+        c.readonly = False
+        c.loadconfig()
+        c.timetype = 'single'
+        c.saveconfig()
+        c = None
+
+        # classification
+        showevs = ' '.join((pqid, pfid))
+        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev.set_values({
+            'series': series,
+            'type handler': 'classification',
+            'prefix': prefix,
+            'result': True,
+            'index': False,
+            'program': False,
+            'depends': showevs,
+            'auto': '%s:1-8; %s:9-40' % (
+                pfid,
+                pqid,
+            ),
+            'category': cat,
+            'competion': code,
+        })
+        c = meet.get_event(catcomp)
+        c.readonly = False
+        c.loadconfig()
+        if domedals:
+            c.medals = 'Gold Silver Bronze'
+        c.showevents = showevs
+        c.saveconfig()
+        c = None
+    else:
+        # straight final, 1-up
+        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev.set_values({
+            'series': series,
+            'type handler': 'indiv tt',
+            'prefix': prefix,
+            'info': 'Final',
+            'result': True,
+            'index': True,
+            'program': True,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+        })
+        c = meet.get_event(catcomp)
+        c.readonly = False
+        c.loadconfig()
+        c.timetype = 'single'
+        c.saveconfig()
+        c = None
+
+
 def about_dlg(window, version=None):
     """Display shared about dialog."""
     modal = window is not None
@@ -996,7 +1536,7 @@ class option:
             if isinstance(self._obj, config):
                 self._attr = key
             elif 'attr' in schema:
-                if isinstance(self._obj, (rider, dict, event)):
+                if isinstance(self._obj, (rider, dict, Event)):
                     self._attr = schema['attr']
                 else:
                     if schema['attr'] is not None and hasattr(
@@ -1007,7 +1547,7 @@ class option:
         if 'value' in schema:
             self._value = schema['value']
         if self._attr is not None and self._value is None:
-            if isinstance(self._obj, (rider, event)):
+            if isinstance(self._obj, (rider, Event)):
                 self._value = self._obj[self._attr]
             elif isinstance(self._obj, config):
                 self._value = self._obj.get_value(self._section, self._attr)
@@ -1073,6 +1613,13 @@ class option:
                     ret = True
             else:
                 ret = True
+        elif self._type == 'date':
+            if newtext:
+                newval = strops.confopt_date(newtext)
+                if newval is not None:
+                    ret = True
+            else:
+                ret = True
         elif self._type == 'int':
             if newtext is not None and newtext != '':
                 newval = strops.confopt_int(newtext)
@@ -1126,6 +1673,9 @@ class option:
             if self._type == 'tod':
                 if self._value is not None:
                     ret = self._value.rawtime(places=self._places)
+            elif self._type == 'date':
+                if self._value is not None:
+                    ret = self._value.isoformat()
             else:
                 ret = str(self._value)
         return ret
@@ -1134,7 +1684,7 @@ class option:
         """Store new value in object and update obj if provided"""
         self._value = newval
         if self._obj is not None and self._attr is not None:
-            if isinstance(self._obj, (rider, event)):
+            if isinstance(self._obj, (rider, Event)):
                 # Don't trigger notify in this path - leave that to the caller
                 self._obj.set_value(self._attr, self._value)
             elif isinstance(self._obj, config):
@@ -1418,6 +1968,7 @@ def options_dlg(window=None, title='Options', sections={}, action=False):
          chan: timing channel
          bool: True/False
          tod: Time of day object with number of places in schema
+         date: datetime.date object
 
        Control types:
 

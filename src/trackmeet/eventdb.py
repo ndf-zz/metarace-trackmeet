@@ -78,6 +78,14 @@ _ALT_COLUMNS = {
 }
 
 
+def _clean_series(series):
+    ret = ''
+    if isinstance(series, str):
+        if series:
+            ret = series
+    return ret
+
+
 # Transition pre 1.13.3 event db to new format
 def _clean_autofield(starters):
     ret = starters.lower()
@@ -127,6 +135,7 @@ def _toboolstr(boolval):
 
 # for any non-strings, types as listed
 _EVENT_COLUMN_CONVERTERS = {
+    'seri': _clean_series,
     'resu': strops.confopt_bool,
     'inde': strops.confopt_bool,
     'prog': strops.confopt_bool,
@@ -476,12 +485,12 @@ def sub_autospec(autospec, oldevno, newevno):
     return autospec
 
 
-class event:
+class Event:
     """CSV-backed event listing."""
 
     def copy(self):
         """Return copy of this event with a blank ID"""
-        nev = event(evid=None)
+        nev = Event(evid=None)
         for k, v in self._store.items():
             if k != 'evid':
                 nev._store[k] = v
@@ -595,6 +604,11 @@ class event:
         """Alternate value fetch."""
         return self.__getitem__(key)
 
+    def set_values(self, updates):
+        """Set the key:value from updates dict."""
+        for key, value in updates.items():
+            self.set_value(key, value)
+
     def set_value(self, key, value):
         """Update a value without triggering notify."""
         key = colkey(key)
@@ -639,14 +653,14 @@ class event:
         return key in self._store
 
 
-class eventdb:
+class EventDb:
     """Event database."""
 
     def add_empty(self, evno=None, notify=True):
         """Add a new empty row to the event model."""
         if evno is None:
             evno = self.nextevno()
-        ev = event(evid=evno, notify=self._notify)
+        ev = Event(evid=evno, notify=self._notify)
         self._store[evno] = ev
         self._index.append(evno)
         if notify:
@@ -712,7 +726,7 @@ class eventdb:
         self._index.append(evno)
 
     def _loadrow(self, r, colspec):
-        nev = event()
+        nev = Event()
         for i in range(0, len(colspec)):
             if len(r) > i:  # column data in row
                 val = r[i].translate(strops.PRINT_UTRANS)
