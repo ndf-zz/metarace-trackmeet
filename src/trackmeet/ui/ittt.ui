@@ -258,6 +258,13 @@
       </object>
     </child>
     <child>
+      <object class="GtkMenuItem" id="tod_context_trace">
+        <property name="label">trace</property>
+        <property name="visible">True</property>
+        <signal name="activate" handler="tod_context_trace_activate_cb"/>
+      </object>
+    </child>
+    <child>
       <object class="GtkSeparatorMenuItem" id="tod_context_sep">
         <property name="visible">True</property>
       </object>
