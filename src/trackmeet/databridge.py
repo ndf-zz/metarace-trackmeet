@@ -142,13 +142,16 @@ class PublicEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, tod.tod):
-            b = (obj.timeval * 0).as_tuple()
-            places = min(-(b.exponent), 5)
-            return obj.isostr(places)  # retain truncation of original value
+            # retain precision up to 6 places v2.1.23+
+            return obj.isostr()
         elif type(obj) is datetime:
             ts = 'seconds'
             if obj.microsecond:
-                ts = 'milliseconds'
+                # try to reduce output when times are milliseconds
+                if obj.microsecond % 1000 != 0:
+                    ts = 'microseconds'
+                else:
+                    ts = 'milliseconds'
             return obj.isoformat(timespec=ts)
         elif isinstance(obj, date):
             return obj.isoformat()
@@ -485,7 +488,7 @@ class DataBridge():
         dataObj = {
             'title': None,
             'subtitle': None,
-            'info': None,
+            'info': _ornull(event['rules']),
             'distance': None,
             'laps': None,
             'status': None,
@@ -1013,8 +1016,11 @@ class DataBridge():
             if isinstance(data['endTime'], tod.tod):
                 etod = data['endTime']
                 data['endTime'] = tod.mergedate(data['endTime'], micros=True)
+
+        # fill elapsed time if not provided
         if stod and etod:
-            data['elapsed'] = (etod - stod).truncate(3)
+            if 'elapsed' not in data or data['elapsed'] is None:
+                data['elapsed'] = (etod - stod).truncate(3)
 
         # convert relative next path in data to meet path
         if 'next' in data and data['next']:
