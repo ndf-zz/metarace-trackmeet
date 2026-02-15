@@ -248,7 +248,7 @@ class teamagg(classification.classification):
             ret['competitors'] = self._startlines
         if self._reslines is not None:
             ret['lines'] = self._reslines
-        if self._detail is not None:
+        if self._detail is not None:  # filled by detail_report TODO: use recalc
             ret['detail'] = self._detail
         if len(self.decisions) > 0:
             ret['decisions'] = self.meet.decision_list(self.decisions)
@@ -478,8 +478,13 @@ class teamagg(classification.classification):
                 dbcno, junk = strops.bibstr2bibser(cno)
                 if cno in self.ptstally:
                     prevpts = self.prevpts[cno]
-                    self._detail[cno] = {}
-                    cObj = self._detail[cno]
+                    self._detail[cno] = {
+                        'startTime': None,
+                        'endTime': None,
+                        'weather': None,
+                        'splits': {},
+                    }
+                    cObj = self._detail[cno]['splits']
                     # enforce truncation of final tally
                     total = self.ptstally[cno]['total']
                     stotal = prevpts + total
