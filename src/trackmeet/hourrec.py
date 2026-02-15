@@ -1252,8 +1252,13 @@ class UCIHour:
             rno = ''
             if self._rider is not None:
                 rno = self._rider['no']
-            self._detail[rno] = {}
-            detail = self._detail[rno]
+            self._detail[rno] = {
+                'startTime': self._start,
+                'endTime': self._finish,
+                'weather': self._weather,
+                'splits': {}
+            }
+            detail = self._detail[rno]['splits']
             sec = report.lapsplits('laptimes')
             sec.places = 3
             sec.subheading = 'Lap Times'
@@ -1387,8 +1392,6 @@ class UCIHour:
         self._infoA = None
         self._labelA = None
         remain = None
-        if self._detail is not None:
-            ret['detail'] = self._detail
         if self._start is not None:
             self.onestart = True
             lpi = self.meet.tracklen_n / self.meet.tracklen_d
