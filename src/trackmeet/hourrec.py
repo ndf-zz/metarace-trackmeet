@@ -260,22 +260,13 @@ class UCIHour:
             else:
                 self._updateRider()
 
-    def _riderName(self):
-        nv = []
-        if self._rider is not None:
-            nv.append(self._rider.fitname(48))
-            if self._rider['nationality']:
-                nv.append('(%s)' % (self._rider['nationality'], ))
-            for field in ('class', 'categories', 'uciid'):
-                if self._rider[field]:
-                    nv.append(self._rider[field])
-        return ' '.join(nv)
-
     def _updateRider(self):
         """Update displayed rider information."""
+        if not self.winopen:
+            return
         if self._rider is not None:
             self._timer.bibent.set_text(self._rider['no'])
-            self._timer.biblbl.set_text(self._riderName())
+            self._timer.biblbl.set_text(self._rider.altname())
         else:
             _log.debug('Competitor information not set')
             self._timer.toidle()
@@ -472,15 +463,15 @@ class UCIHour:
             dbrno = self._rider['no']
             rnat = self._rider['nationality']
             rname = self._rider.resname()
-            rline = 'Rider: %s' % (self._riderName(), )
+            rline = 'Rider: %s' % (self._rider.altname(), )
             inf = self._rider['class']
-            pilot = self.meet.rdb.get_pilot_line(self._rider)
+            ph = self.meet.rdb.get_pilot(self._rider)
             pname = None
-            if pilot:
-                pname = pilot[2]
             sec.lines.append(['', rline])
-            if pilot:
-                sec.lines.append(pilot)
+            if ph is not None:
+                pname = ph.resname()
+                pline = 'Pilot: %s' % (ph.altname(pilot=True), )
+                sec.lines.append(['', pline])
             self._startlines.append({
                 'competitor': dbrno,
                 'nation': rnat,
@@ -1174,16 +1165,17 @@ class UCIHour:
         }]
         resline = self._reslines[0]
         if self._rider is not None:
-            rline = 'Rider: %s' % (self._riderName(), )
+            rline = 'Rider: %s' % (self._rider.altname(), )
             sec.lines.append(['', rline])
             resline['competitor'] = self._rider['no']
             resline['nation'] = self._rider['nation']
             resline['name'] = self._rider.resname()
             resline['info'] = self._rider['class']
             ph = self.meet.rdb.get_pilot(self._rider)
-
             if ph is not None:
                 resline['pilot'] = ph.resname()
+                pline = 'Pilot: %s' % (ph.altname(pilot=True), )
+                sec.lines.append(['', pline])
         if self._weather is not None:
             wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%, ~%0.4f\u2006kg/m\u00b3' % (
                 self._weather['t'],
@@ -1192,7 +1184,6 @@ class UCIHour:
                 self._weather['d'],
             )
             sec.lines.append(['', wstr])
-        # complete?
 
         if self.timerstat == 'finished':
             if self._D is not None and self._D > 0:
