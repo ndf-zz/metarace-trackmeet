@@ -1244,7 +1244,7 @@ class sprnd:
         self.meet.gemini.reset_fields()
         if self.timerstat == 'finished':
             if self.start is not None and self.finish is not None:
-                elap = self.finish - self.start
+                elap = (self.finish - self.start).truncate(2)
                 self.meet.scbwin.settime(elap.timestr(2))
                 self.meet.scbwin.setavg(elap.speedstr(200))  # fixed dist
                 self.meet.gemini.set_time(elap.rawtime(2))
@@ -1423,6 +1423,7 @@ class sprnd:
         startlist = []
         i = self.current_contest_combo.get_active_iter()
         name_w = self.meet.scb.linelen - 10
+        evoverride = None
         if i is not None:  # contest selected ok
             cid = self.contests.get_value(i, COL_CONTEST)
             evoverride = self.get_evoverride(self.contestheat(cid))
@@ -1505,7 +1506,7 @@ class sprnd:
             rt = self.meet.recover_time(self.startchan)
             if rt is not None:
                 # rt: (event, wallstart)
-                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                _log.info('Recovered start time: %s', rt[0].rawtime(1))
                 if self.timerstat == 'idle':
                     self.timerstat = 'armstart'
                 self.meet.main_timer.dearm(self.startchan)
@@ -1560,13 +1561,14 @@ class sprnd:
 
     def log_elapsed(self, contest=''):
         """Log race elapsed time on Timy."""
+        self.meet.timer_log_event(self.event)
         if contest:
-            self.meet.main_timer.printline('Ev ' + self.evno + ' [' + contest +
-                                           ']')
-        self.meet.main_timer.printline('      ST: ' + self.start.timestr(4))
-        self.meet.main_timer.printline('     FIN: ' + self.finish.timestr(4))
-        self.meet.main_timer.printline('    TIME: ' +
-                                       (self.finish - self.start).timestr(2))
+            self.meet.timer_log_msg('', contest)
+        elap = (self.finish - self.start).truncate(2)
+        self.meet.timer_log_env()
+        self.meet.timer_log_straight('', 'ST', self.start, 4)
+        self.meet.timer_log_straight('', 'FIN', self.finish, 4)
+        self.meet.timer_log_straight('', 'TIME', elap, 2)
 
     def set_finish(self, finish=''):
         """Set the race finish."""
@@ -1586,14 +1588,14 @@ class sprnd:
         """Update elapsed time in race ui and announcer."""
         self.curelap = None
         if self.start is not None and self.finish is not None:
-            et = self.finish - self.start
-            self.time_lbl.set_text(et.timestr(2))
-            self.curelap = et
+            elap = (self.finish - self.start).truncate(2)
+            self.time_lbl.set_text(elap.timestr(2))
+            self.curelap = elap
         elif self.start is not None:  # Note: uses 'local start' for RT
             runtm = (tod.now() - self.lstart).timestr(1)
             self.time_lbl.set_text(runtm)
         elif self.timerstat == 'armstart':
-            self.time_lbl.set_text(tod.tod(0).timestr(1))
+            self.time_lbl.set_text('       0.0   ')  # tod.ZERO.timestr(1)
         else:
             self.time_lbl.set_text('')
 
