@@ -51,8 +51,9 @@ _VIEWCOL_MEMBERS = 2  # Team member list col
 _HALFLAP_MIN = tod.mktod(6)  # minimum possible half lap
 _LAP_MIN = tod.mktod(12)  # minimum possible full lap
 _HALFLAP_MAX = tod.mktod(20)  # maximum first half lap
-_HALFLAP_MAXCHANGE = tod.mktod(0.8)  # max allowed half lap speed up
-_RIDERS_CLOSE = 0.2  # (s, float) warn when rider ETAs are close
+# TODO: Speedup should be a relative measure
+_HALFLAP_MAXCHANGE = tod.mktod(1.5)  # max allowed half lap speed up
+_RIDERS_CLOSE = 0.5  # (s, float) warn when rider ETAs are close
 _REARWHEEL = 0.990  # (m, float) typical wheelbase length
 _REARTHRESH = 0.01  # (s, float) rear wheel proximity threshold
 
@@ -338,8 +339,7 @@ class ittt:
                 else:
                     break
                 count += 1
-            _log.debug('Configured %r splits: %r', len(self.splitlist),
-                       self.splitlist)
+            _log.debug('Configured %r splits', len(self.splitlist))
             if self.winopen:
                 self.fs.splitlbls = self.splitlist
                 self.bs.splitlbls = self.splitlist
@@ -1210,7 +1210,7 @@ class ittt:
             sv.append(substr)
         if self.onestart:
             if rcount > 0 and pcount < rcount:
-                sv.append('STANDINGS')
+                sv.append('Standings')
                 doheats = True
             else:
                 sv.append('Result')
@@ -1230,7 +1230,7 @@ class ittt:
                     s.lines = newlines
                     if s.lines:
                         s.heading = None
-                        s.subheading = 'STARTLIST'
+                        s.subheading = 'Startlist'
                         ret.append(s)
 
         if len(self.decisions) > 0:
@@ -1247,10 +1247,12 @@ class ittt:
 
             # by default show each kilometre
             stride = 2.0 * 1000.0 * self.meet.tracklen_d / self.meet.tracklen_n
-            if splitlen < 4:  # show all
+            if splitlen <= 4:  # show all
                 stride = 1
-            elif splitlen < 8:  # show laps
+            elif splitlen <= 8:  # show laps
                 stride = 2
+            elif splitlen <= 16:  # show every 2nd lap
+                stride = 4
 
             sec.colheader = ['', '', '', '', '']
             showsplits = []
@@ -1259,24 +1261,32 @@ class ittt:
             _log.debug('stride=%r, spltlent=%r, splitlist: %r', stride,
                        splitlen, self.splitlist)
             while splitind < (len(self.splitlist) - 1):
-                sec.colheader.append(self.splitlist[splitind])
-                showsplits.append(self.splitlist[splitind])
+                sid = self.splitlist[splitind]
+                if sid in self.splitmap:
+                    hdr = '%0.0f\u2006m' % (self.splitmap[sid]['dist'], )
+                    sec.colheader.append(hdr)
+                    showsplits.append(sid)
                 splitoft += stride
                 splitind = int(round(splitoft))
             lastsplit = self.splitlist[-1]
-            showsplits.append(lastsplit)
-            sec.colheader.append(lastsplit)
+            # Don't include final distance on split summary
+            #showsplits.append(lastsplit)
+            #sec.colheader.append(lastsplit)
 
             sec.start = tod.ZERO
             sec.finish = maxtime + tod.tod(1)
             for r in self.riders:
                 # add each rider, even when there is no info to display
                 rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
+                bib = r[COL_NO]
                 rdata = {}
                 if self.teamnames:
                     rdata['no'] = None
                 else:
                     rdata['no'] = r[COL_NO]
+                linkfile = ('event_%s_detail_%s' % (self.evno, bib)).translate(
+                    strops.WEBFILE_UTRANS)
+                rdata['link'] = linkfile
                 rdata['name'] = rh.fitname(4, trunc=False)
                 rdata['cat'] = rh['class']
                 rdata['count'] = None
@@ -1288,8 +1298,12 @@ class ittt:
                 if stime is not None:
                     rsplits = r[COL_SPLITS]
                     for sid in showsplits:
-                        if sid == lastsplit and r[COL_NO] in rtimes:
-                            rdata['laps'].append(rtimes[r[COL_NO]])  # elap
+                        _log.debug('show split sid=%r', sid)
+                        if sid == lastsplit:
+                            pass
+                            # Don't include final distance on split summary
+                            # and r[COL_NO] in rtimes:
+                            # rdata['laps'].append(rtimes[r[COL_NO]])  # elap
                         elif sid in rsplits and rsplits[sid] is not None:
                             st = rsplits[sid] - stime
                             rdata['laps'].append(st)
@@ -2126,13 +2140,23 @@ class ittt:
             i = self._getiter(bib)
             if i is not None:
                 # repopulate detail objects (even for incomplete riders)
-                self._detail[bib] = {}
+                self._detail[bib] = {
+                    'startTime': None,
+                    'endTime': None,
+                    'weather': None,
+                    'splits': {},
+                }
                 detail = self._detail[bib]
                 stod = self.riders.get_value(i, COL_START)
                 ftod = self.riders.get_value(i, COL_FINISH)
-                lelap = None
+                lelap = tod.ZERO
                 lsplit = None
                 if stod is not None:  # start time mandatory
+                    detail['startTime'] = tod.mergedate(
+                        ltime=stod, date=self.event['start'], micros=True)
+                    if bib in self.compweather and self.compweather[bib]:
+                        detail['weather'] = self.compweather[bib]
+                    dsplits = detail['splits']
                     rsplits = self.riders.get_value(i, COL_SPLITS)
                     for sid in self.splitlist[0:-1]:  # all but full distance
                         lsplit = sid
@@ -2150,7 +2174,7 @@ class ittt:
                                 if lelap is not None:
                                     interval = elap - lelap
                                 lelap = elap
-                            detail[splitidx] = {
+                            dsplits[splitidx] = {
                                 'label': splitlbl,
                                 'rank': rank,
                                 'elapsed': elap,
@@ -2163,6 +2187,8 @@ class ittt:
                             if fullap:
                                 lelap = None
                     if ftod is not None:
+                        detail['endTime'] = tod.mergedate(
+                            ltime=ftod, date=self.event['start'], micros=True)
                         if lelap != tod.ZERO and lsplit is not None:
                             # at least one split entry
                             splitlbl = self._eventlen
@@ -2171,7 +2197,7 @@ class ittt:
                             interval = None
                             if lelap is not None:
                                 interval = elap - lelap
-                            detail[splitidx] = {
+                            dsplits[splitidx] = {
                                 'label': splitlbl,
                                 'rank': finrank,
                                 'elapsed': elap,
@@ -2221,11 +2247,12 @@ class ittt:
         if st is None:
             st = tod.ZERO
         if ft is not None:
+            elap = (ft - st).truncate(self.precision)
             lastlap = None
             if lt is not None:
-                lastlap = (ft - lt).truncate(self.precision)
-            self.results.insert((ft - st).truncate(self.precision), lastlap,
-                                bib)
+                lelap = (lt - st).truncate(self.precision)
+                lastlap = elap - lelap
+            self.results.insert(elap, lastlap, bib)
         else:  # DNF/Catch/etc
             self.results.insert(comment, None, bib)
         if splits is not None:
@@ -2236,7 +2263,7 @@ class ittt:
                 if sid in self.splitmap:
                     self.splitmap[sid]['data'].remove(bib)
                     if split is not None:
-                        splitval = split - st
+                        splitval = (split - st).truncate(self.precision)
                         self.splitmap[sid]['data'].insert(splitval, None, bib)
                 else:
                     _log.info('Unknown split %r for rider %r', sid, bib)
@@ -2739,21 +2766,6 @@ class ittt:
             self.settimes(sel[1], comment='dns')
             GLib.idle_add(self.delayed_announce)
 
-    def _riderName(self, dbr, pilot=False):
-        nv = []
-        if dbr is not None:
-            nv.append(dbr.fitname(48))
-            if dbr['nationality']:
-                nv.append('(%s)' % (dbr['nationality'], ))
-            if not pilot:
-                if dbr['categories']:
-                    nv.append(dbr.primary_cat())
-                if dbr['class']:
-                    nv.append(dbr['class'])
-            if dbr['uciid']:
-                nv.append(dbr['uciid'])
-        return ' '.join(nv)
-
     def detail_report(self, bib):
         """Return a timing detail report for the nominated rider."""
         ret = []
@@ -2776,30 +2788,18 @@ class ittt:
             rh = self.meet.rdb.get_rider(bib, self.series)
             if rh is not None:
                 namerows = []
-                namerows.append('%s' % (self._riderName(rh), ))
+                namerows.append('%s' % (rh.altname(), ))
 
                 ph = self.meet.rdb.get_pilot(rh)
                 if ph is not None:
                     namerows.append('\t%s [pilot]' %
-                                    (self._riderName(ph, pilot=True), ))
+                                    (ph.altname(pilot=True), ))
                 if self.teamnames or self.series.startswith('tm'):
                     for member in r[COL_MEMBERS].split():
                         trh = self.meet.rdb.fetch_bibstr(member)
                         if trh is not None:
-                            namerows.append('\t%s' % (self._riderName(trh), ))
+                            namerows.append('\t%s' % (trh.altname(), ))
                 sec.lines.append(['', '\n'.join(namerows)])
-
-            # start time
-            if r[COL_START] is not None:
-                stxt = ''
-                st = r[COL_START]
-                if self.event['start'] is not None:
-                    dt = self.event['start']
-                    stxt = 'Start: %s, %s' % (st.meridiem(secs=False),
-                                              dt.date().isoformat())
-                else:
-                    stxt = 'Start: %s' % (st.meridiem(secs=False), )
-                sec.lines.append(['', stxt])
 
             # Facility
             if self.meet.facility:
@@ -2817,6 +2817,18 @@ class ittt:
                     env['d'],
                 )
                 sec.lines.append(['', wstr])
+
+            # start time
+            if r[COL_START] is not None:
+                stxt = ''
+                st = r[COL_START]
+                if self.event['start'] is not None:
+                    dt = self.event['start']
+                    stxt = 'Start: %s, %s' % (st.meridiem(secs=False),
+                                              dt.date().isoformat())
+                else:
+                    stxt = 'Start: %s' % (st.meridiem(secs=False), )
+                sec.lines.append(['', stxt])
 
             # Result
             rank = None
@@ -2836,27 +2848,35 @@ class ittt:
                 else:
                     rank = pls
             if rank or time:
-                rv = ['Result:']
+                rv = []
+                if self.finished:
+                    rv.append('Result:')
+                else:
+                    rv.append('Standing:')
                 if time:
                     rv.append(time)
                 if rank:
                     rv.append('(%s)' % (rank, ))
+                if r[COL_PLACE]:
+                    if self.qualified(pls):
+                        rv.append('Qualified')
                 sec.lines.append(['', '\u3000'.join(rv)])
-                ##! TODO: Include weather-adjusted time where relevant/possible
 
             # include split times
             if bib in self._detail:
-                detail = self._detail[bib]
-                secid = 'splits-%s-%s' % (str(self.evno).translate(
-                    strops.WEBFILE_UTRANS), bib)
-                sec = report.lapsplits(secid)
-                ret.append(sec)
-                sec.places = self.precision
-                sec.weather = env
-                sec.onecol = True  # force single column
-                sec.subheading = 'Split Times'
-                for d in detail.values():
-                    sec.lines.append(d)
+                if 'splits' in self._detail[bib] and self._detail[bib][
+                        'splits']:
+                    detail = self._detail[bib]['splits']
+                    secid = 'splits-%s-%s' % (str(self.evno).translate(
+                        strops.WEBFILE_UTRANS), bib)
+                    sec = report.lapsplits(secid)
+                    ret.append(sec)
+                    sec.places = self.precision
+                    sec.weather = env
+                    sec.onecol = True  # force single column
+                    sec.subheading = 'Split Times'
+                    for d in detail.values():
+                        sec.lines.append(d)
 
         return ret
 
@@ -2867,7 +2887,7 @@ class ittt:
             bib = self.riders.get_value(sel[1], COL_NO)
             secs = self.detail_report(bib)
             self.meet.print_report(secs,
-                                   'Timing Detail',
+                                   docstr='Timing Detail',
                                    exportfile='timing_detail')
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
@@ -2888,7 +2908,7 @@ class ittt:
                 sec.nobreak = True
                 sec.lines = [[None, None, line] for line in self.traces[bib]]
                 self.meet.print_report([sec],
-                                       'Timing Trace',
+                                       docstr='Chronometer Trace',
                                        exportfile='timing_trace')
 
     def now_button_clicked_cb(self, button, entry=None):
