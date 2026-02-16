@@ -594,19 +594,20 @@ class race:
             self.setfinished()
 
     def log_elapsed(self):
-        """Log race elapsed time on Timy."""
-        self.meet.main_timer.printline(self.meet.racenamecat(self.event))
-        self.meet.main_timer.printline('      ST: ' + self.start.timestr(4))
-        self.meet.main_timer.printline('     FIN: ' + self.finish.timestr(4))
-        self.meet.main_timer.printline('    TIME: ' +
-                                       (self.finish - self.start).timestr(2))
+        """Log race elapsed time to chronometer trace."""
+        elap = (self.finish - self.start).truncate(2)
+        self.meet.timer_log_event(self.event)
+        self.meet.timer_log_env()
+        self.meet.timer_log_straight('', 'ST', self.start, 4)
+        self.meet.timer_log_straight('', 'FIN', self.finish, 4)
+        self.meet.timer_log_straight('', 'TIME', elap, 2)
 
     def set_elapsed(self):
         """Update elapsed time in race ui and announcer."""
         if self.winopen:
             if self.start is not None and self.finish is not None:
-                et = self.finish - self.start
-                self.time_lbl.set_text(et.timestr(2))
+                elap = (self.finish - self.start).truncate(2)
+                self.time_lbl.set_text(elap.timestr(2))
             elif self.start is not None:  # Note: uses 'local start' for RT
                 runtm = (tod.now() - self.lstart).timestr(1)
                 self.time_lbl.set_text(runtm)
@@ -653,15 +654,15 @@ class race:
 
             tp = ''
             if self.start is not None and self.finish is not None:
-                et = self.finish - self.start
+                elap = (self.finish - self.start).truncate(2)
                 if self.timetype == '200m':
                     tp = '200m: '
                 else:
                     tp = 'Time: '
-                tp += et.timestr(2) + '    '
+                tp += elap.timestr(2) + '    '
                 dist = self.meet.get_distance(self.distance, self.units)
                 if dist:
-                    tp += 'Avg: ' + et.speedstr(dist)
+                    tp += 'Avg: ' + elap.speedstr(dist)
             self.meet.txt_setline(21, tp)
             self.resend_current()
         return False
@@ -965,7 +966,7 @@ class race:
             if not wastimer:
                 self.meet.scbwin.reset()
             if self.start is not None and self.finish is not None:
-                elap = self.finish - self.start
+                elap = (self.finish - self.start).truncate(2)
                 self.meet.scbwin.settime(elap.timestr(2))
                 dist = self.meet.get_distance(self.distance, self.units)
                 if dist:
@@ -1038,7 +1039,8 @@ class race:
             # previously, winner was displayed on gemini here
         ts = None
         if self.start is not None and self.finish is not None:
-            ts = (self.finish - self.start).timestr(2)
+            elap = (self.finish - self.start).truncate(2)
+            ts = elap.timestr(2)  # use padded fixed-width string
         if self.doscbplaces:
             fmt = ((3, 'l'), (3, 'r'), ' ', (self.meet.scb.linelen - 12, 'l'),
                    (5, 'r'))
@@ -1404,7 +1406,7 @@ class race:
             rt = self.meet.recover_time(self.startchan)
             if rt is not None:
                 # rt: (event, wallstart)
-                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                _log.info('Recovered start time: %s', rt[0].rawtime(1))
                 if self.timerstat == 'idle':
                     self.timerstat = 'armstart'
                 self.meet.main_timer.dearm(self.startchan)
@@ -1504,9 +1506,11 @@ class race:
                         r[COL_DNFCODE] = 'dnf'  # patch any missing codes
                     rank = r[COL_DNFCODE]
             time = None
-            if self.finish is not None and ft is None:
-                time = (self.finish - self.start).rawtime(2)
-                ft = True
+            if ft is None:
+                if self.finish is not None and self.start is not None:
+                    elap = (self.finish - self.start).truncate(2)
+                    time = elap.rawtime(2)
+                    ft = True
             yield (bib, rank, time, info)
 
     def data_bridge(self):
@@ -1532,7 +1536,8 @@ class race:
         first = True
         fs = ''
         if self.finish is not None and self.start is not None:
-            fs = (self.finish - self.start).rawtime(2)
+            elap = (self.finish - self.start).truncate(2)
+            fs = elap.rawtime(2)
         rcount = 0
         pcount = 0
         rtot = len(self.riders)  # hack until somethng better
