@@ -267,8 +267,8 @@ class DataBridge():
         data['label'] = _ornull(event['info'])
         if 'phases' not in data:
             data['phases'] = {}
-        if 'warnings' not in data:
-            data['warnings'] = {}
+        if 'penalties' not in data:
+            data['penalties'] = {}
         if 'records' not in data:
             data['records'] = {}
 
@@ -280,7 +280,7 @@ class DataBridge():
         # prepare export object
         compObj = self._competitions[fragment]
         for k in ('label', 'competitorType', 'category', 'title', 'status',
-                  'phases', 'events', 'warnings', 'records'):
+                  'phases', 'events', 'penalties', 'records'):
             if k in data and data[k]:
                 compObj[k] = data[k]
             else:
@@ -552,6 +552,7 @@ class DataBridge():
         data['competitorType'] = event.competitor_type()
         data['laps'] = _ornull(event['laps'])
         data['distance'] = _ornull(event['distance'])
+        data['startTime'] = _ornull(event['start'])
         if 'events' not in data:
             data['events'] = {}
         if 'status' not in data:
@@ -882,7 +883,7 @@ class DataBridge():
                             'status': None,
                             'phases': {},
                             'events': {},
-                            'warnings': {},
+                            'penalties': {},
                             'records': {},
                         }
                         self._competitions[catComp] = compObj
