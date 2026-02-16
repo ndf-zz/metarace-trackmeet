@@ -1672,7 +1672,8 @@ class option:
         if self._value is not None:
             if self._type == 'tod':
                 if self._value is not None:
-                    ret = self._value.rawtime(places=self._places)
+                    prec = min(self._places, self._value.precision())
+                    ret = self._value.rawtime(places=prec)
             elif self._type == 'date':
                 if self._value is not None:
                     ret = self._value.isoformat()
