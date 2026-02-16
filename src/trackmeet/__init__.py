@@ -1498,7 +1498,6 @@ class trackmeet:
             self.finalresult()
         except Exception as e:
             _log.error('%s writing result: %s', e.__class__.__name__, e)
-            raise
 
     def finalresult(self):
         provisional = self.provisional  # may be overridden below
@@ -1797,7 +1796,6 @@ class trackmeet:
             self.printprogram()
         except Exception as e:
             _log.error('%s writing report: %s', e.__class__.__name__, e)
-            raise
 
     def menu_data_collect_activate_cb(self, menuitem, data=None):
         """Export race program."""
@@ -1805,7 +1803,6 @@ class trackmeet:
             self.numbercollect()
         except Exception as e:
             _log.error('%s writing report: %s', e.__class__.__name__, e)
-            raise
 
     def menu_data_pausebridge_activate_cb(self, menuitem, data=None):
         """Update event index"""
@@ -1825,7 +1822,6 @@ class trackmeet:
 
         except Exception as e:
             _log.error('%s updating event index: %s', e.__class__.__name__, e)
-            raise
 
     def updatenextprev(self):
         self.nextlinks = {}
@@ -2103,7 +2099,7 @@ class trackmeet:
                 resrep = r.result_report()
                 ressec = None
 
-                # if required, save report
+                # if required, save result report
                 if doexport:
                     orep = report.report()
                     orep.showcard = False
@@ -2151,6 +2147,48 @@ class trackmeet:
                     ofile = os.path.join(EXPORTPATH, jbase)
                     with metarace.savefile(ofile) as f:
                         orep.output_json(f)
+
+                # dump detail reports for ip, tt, ts, tp, f200
+                if etype in ('indiv tt', 'team sprint', 'team sprint race',
+                             'indiv pursuit', 'pursuit race', 'team pursuit',
+                             'team pursuit race', 'flying 200', 'flying lap'):
+                    for res in r.result_gen():
+                        bib = res[0]
+                        exportfile = ('event_%s_detail_%s' %
+                                      (r.evno, bib)).translate(
+                                          strops.WEBFILE_UTRANS)
+                        _log.debug('Saving detail report to %r', exportfile)
+                        drep = report.report()
+                        drep.set_provisional(self.provisional)
+                        if self.provisional:
+                            drep.reportstatus = 'provisional'
+                        else:
+                            drep.reportstatus = 'final'
+                        self.report_strings(drep)
+                        drep.strings['subtitle'] = self.subtitle.strip()
+                        drep.shortname = 'Timing Detail'
+                        drep.strings['docstr'] = 'Timing Detail'
+                        for sec in r.detail_report(bib):
+                            drep.add_section(sec)
+                        drep.canonical = os.path.join(self.linkbase,
+                                                      exportfile + '.json')
+                        ofile = os.path.join(EXPORTPATH, exportfile + '.pdf')
+                        with metarace.savefile(ofile, mode='b') as f:
+                            drep.output_pdf(f)
+                        ofile = os.path.join(EXPORTPATH, exportfile + '.xlsx')
+                        with metarace.savefile(ofile, mode='b') as f:
+                            drep.output_xlsx(f)
+                        ofile = os.path.join(EXPORTPATH, exportfile + '.json')
+                        with metarace.savefile(ofile) as f:
+                            drep.output_json(f)
+                        lb = ''
+                        lt = []
+                        if self.mirrorpath:
+                            lb = os.path.join(self.linkbase, exportfile)
+                            lt = ['pdf', 'xlsx']
+                        ofile = os.path.join(EXPORTPATH, exportfile + '.html')
+                        with metarace.savefile(ofile) as f:
+                            drep.output_html(f, linkbase=lb, linktypes=lt)
 
                 # if required, bridge data startlist/result & subfrags
                 if self.eventcode:
