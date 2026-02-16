@@ -159,6 +159,8 @@ class f200:
         ret = {}
         ret['competitionType'] = 'single'  # for all flying 200/lap
         ret['status'] = self._status
+        if self._weather is not None:
+            ret['weather'] = self._weather
         if self._startlines is not None:
             ret['competitors'] = self._startlines
         if self._reslines is not None:
@@ -184,6 +186,8 @@ class f200:
         if self._endA is not None:
             ret['startTime'] = self._startA
             ret['endTime'] = self._endA
+            ret['elapsed'] = (self._endA - self._startA).truncate(
+                self.precision)
         elif self.lstart is not None:
             ret['startTime'] = self.lstart
 
@@ -235,10 +239,12 @@ class f200:
             st = model.get_value(iter, COL_START)
             if st is None:
                 st = tod.tod(0)
-            mstr = (ft - st).rawtime(3)
+            elap = (ft - st).truncate(self.precision)
+            mstr = elap.rawtime(self.precision)
             sstr = ''
             if sp is not None:
-                sstr = '/' + (ft - sp).rawtime(3)
+                selap = (sp - st).truncate(self.precision)
+                sstr = '/' + (elap - selap).rawtime(self.precision)
             cr.set_property('text', mstr + sstr)
         else:
             cr.set_property('text', '')
@@ -282,12 +288,14 @@ class f200:
                 'distance': defdistance,
                 'distunits': defunits,
                 'autoarm': defautoarm,
+                'precision': 3,
                 'weather': None,
             }
         })
         cr.add_section('event')
         cr.add_section('riders')
         cr.add_section('traces')
+        cr.add_section('weather')  # for each heat/competitor
         if not cr.load(self.configfile):
             _log.info('%r not read, loading defaults', self.configfile)
 
@@ -299,6 +307,7 @@ class f200:
         self.distance = strops.confopt_dist(cr.get('event', 'distance'))
         self.units = strops.confopt_distunits(cr.get('event', 'distunits'))
         self.autoarm = strops.confopt_bool(cr.get('event', 'autoarm'))
+        self.precision = cr.get_int('event', 'precision', 3)
 
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
@@ -334,6 +343,8 @@ class f200:
             if not self.readonly:
                 if cr.has_option('traces', r):
                     self.traces[r] = cr.get('traces', r)
+            if cr.has_option('weather', r):
+                self.compweather[r] = cr.get('weather', r)
             self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
         self.placexfer()
 
@@ -399,6 +410,7 @@ class f200:
         cw.set('event', 'autoarm', self.autoarm)
         cw.set('event', 'startlist', self.get_startlist(reorder=False))
         cw.set('event', 'inomnium', self.inomnium)
+        cw.set('event', 'precision', self.precision)
 
         _log.debug('winopen: %r', self.winopen)
         if self.winopen:
@@ -421,6 +433,7 @@ class f200:
 
         cw.add_section('riders')
         cw.add_section('traces')
+        cw.add_section('weather')
 
         # save out all starters
         for r in self.riders:
@@ -430,7 +443,7 @@ class f200:
             tl = [r[COL_START], r[COL_FINISH], r[COL_100]]
             for t in tl:
                 if t is not None:
-                    slice.append(t.rawtime())
+                    slice.append(str(t.timeval))
                 else:
                     slice.append(None)
             cw.set('riders', rno, slice)
@@ -438,6 +451,10 @@ class f200:
             # save timing traces
             if rno in self.traces:
                 cw.set('traces', rno, self.traces[rno])
+
+            # save weather
+            if rno in self.compweather and self.compweather[rno]:
+                cw.set('weather', rno, self.compweather[rno])
 
         cw.set('event', 'id', EVENT_ID)
         _log.debug('Saving event config %r', self.configfile)
@@ -605,8 +622,9 @@ class f200:
                     tmstr = ''
                     et = None
                     if r[COL_START] is not None and r[COL_FINISH] is not None:
-                        et = (r[COL_FINISH] - r[COL_START]).truncate(3)
-                        tmstr = '200m: ' + et.rawtime(3).rjust(12)
+                        et = (r[COL_FINISH] - r[COL_START]).truncate(
+                            self.precision)
+                        tmstr = '200m: ' + et.rawtime(self.precision).rjust(12)
                     cmtstr = ''
                     if et is not None:
                         cmtstr = strops.truncpad(
@@ -637,7 +655,8 @@ class f200:
                 tmstr = '       '  # 7 ch
                 if r[COL_START] is not None and r[COL_FINISH] is not None:
                     tmstr = strops.truncpad(
-                        (r[COL_FINISH] - r[COL_START]).rawtime(3), 7, 'r')
+                        (r[COL_FINISH] - r[COL_START]).rawtime(self.precision),
+                        7, 'r')
                 self.meet.txt_postxt(
                     curline, posoft, ' '.join(
                         (placestr, bibstr, namestr, tmstr)))
@@ -764,7 +783,8 @@ class f200:
                     else:
                         rank = pls
                 if r[COL_FINISH] is not None:
-                    time = (r[COL_FINISH] - r[COL_START]).truncate(3)
+                    time = (r[COL_FINISH] - r[COL_START]).truncate(
+                        self.precision)
 
             yield (bib, rank, time, info)
 
@@ -821,24 +841,21 @@ class f200:
                         rank = pls
                     pcount += 1
                 if r[COL_FINISH] is not None:
-                    time = (r[COL_FINISH] - r[COL_START]).truncate(3)
+                    time = (r[COL_FINISH] - r[COL_START]).truncate(
+                        self.precision)
                     rtod = time
                     if ftime is None:
                         ftime = time
                     else:
                         dtod = time - ftime
-                        dtime = '+' + dtod.rawtime(2)
+                        dtime = '+' + dtod.rawtime(min(self.precision, 2))
 
-                    spplc = 3
-                    if r[COL_START] != tod.ZERO:
-                        rtime = time.rawtime(3)
-                    else:
-                        rtime = time.rawtime(2) + '\u2007'
-                        spplc = 2
+                    rtime = time.rawtime(self.precision)
                     rstime = rtime
                     if r[COL_100] is not None:
-                        sp100 = (r[COL_100] - r[COL_START]).truncate(spplc)
-                        stime = '(%s)\u3000' % (sp100.rawtime(spplc))
+                        sp100 = (r[COL_100] - r[COL_START]).truncate(
+                            self.precision)
+                        stime = '(%s)\u3000' % (sp100.rawtime(self.precision))
                         rstime = stime + rtime
             if rank:
                 sec.lines.append([rank, rno, rname, rcls, rstime, dtime])
@@ -923,7 +940,7 @@ class f200:
     def split_trig(self, sp, t):
         """Register lap trigger."""
         bib = sp.getrider()
-        elap = (t - self.curstart).truncate(3)
+        elap = (t - self.curstart).truncate(self.precision)
         self.splits.insert(elap, None, bib)
         rank = self.splits.rank(bib)  # 0-based rank
         self.log_split(sp.getrider(), self.curstart, t)
@@ -984,7 +1001,7 @@ class f200:
             _log.warning('Rider %r not in model, finish time not stored',
                          sp.getrider())
         place = self.riders.get_value(ri, COL_PLACE)
-        elap = (t - self.curstart).truncate(3)
+        elap = (t - self.curstart).truncate(self.precision)
         self._startA = self.curstart
         self._endA = t
         self._labelA = self._lenlabel
@@ -1004,7 +1021,7 @@ class f200:
         if self._competitorA:
             self._competitorA['rank'] = self._rankA
             self._competitorA['class'] = '%d.' % (self._rankA, )
-            self._competitorA['result'] = self._timeA.rawtime(3)
+            self._competitorA['result'] = self._timeA.rawtime(self.precision)
             if self._rankA > 1:
                 self._competitorA['extra'] = '+' + self._downA.rawtime(2)
             if self.qualified(place):
@@ -1044,7 +1061,7 @@ class f200:
                 if self.timerstat == 'idle':
                     self.toarmstart()
                 if self.fs.status == 'armstart':
-                    _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                    _log.info('Recovered start time: %s', rt[0].rawtime(1))
                     self.meet.main_timer.dearm(self.chan_S)
                     self.torunning(rt[0], rt[1])
                     GLib.idle_add(self.armfinish, self.fs, True)
@@ -1092,7 +1109,7 @@ class f200:
         """Display time to beat."""
         if len(self.results) > 0:
             scb.setr2('Fastest:')
-            scb.sett2(self.results[0][0].timestr(3))
+            scb.sett2(self.results[0][0].timestr(self.precision))
         return False
 
     def clear_200_ttb(self, scb, r2='', t2=''):
@@ -1240,56 +1257,85 @@ class f200:
         place = 1
         for t in self.results:
             bib = t[0].refid
-            self._detail[bib] = {}
-            detail = self._detail[bib]
-            splitrank = 0
-            srank = self.splits.rank(bib)
-            if srank is not None:
-                splitrank = srank + 1
-            split = None
-            if splitrank > 0:
-                split = self.splits[splitrank - 1][0]
-                detail[self._splitlen] = {
-                    'label': self._splitlabel,
-                    'rank': splitrank,
-                    'elapsed': split,
-                    'interval': split,
-                    'points': None,
-                }
-            if t[0] > tod.FAKETIMES['max']:
-                if t[0] == tod.FAKETIMES['rel']:
-                    place = self.results.rank(bib) + 1
-                    self.onestart = True
-                elif t[0] == tod.FAKETIMES['abd']:
-                    place = 'abd'
-                elif t[0] == tod.FAKETIMES['dsq']:
-                    place = 'dsq'
-                elif t[0] == tod.FAKETIMES['dns']:
-                    place = 'dns'
-                elif t[0] == tod.FAKETIMES['dnf']:
-                    place = 'dnf'
-            else:
-                place = self.results.rank(bib) + 1
-                self.onestart = True
-                interval = None
-                if split is not None:
-                    interval = t[0] - split
-                detail[self._finlen] = {
-                    'label': self._lenlabel,
-                    'rank': place,
-                    'elapsed': t[0],
-                    'interval': interval,
-                    'points': None,
-                }
             i = self._getiter(bib)
             if i is not None:
-                if place == 'comment':  # superfluous but ok
-                    place = self.riders.get_value(i, COL_COMMENT)
-                self.riders.set_value(i, COL_PLACE, str(place))
-                self.riders.swap(self.riders.get_iter(count), i)
-                count += 1
+                # repopulate detail objects (even for incomplete riders)
+                self._detail[bib] = {
+                    'startTime': None,
+                    'endTime': None,
+                    'weather': None,
+                    'splits': {},
+                }
+                detail = self._detail[bib]
+                dsplits = detail['splits']
+                stod = self.riders.get_value(i, COL_START)
+                ftod = self.riders.get_value(i, COL_FINISH)
+                splittod = self.riders.get_value(i, COL_100)
+                splitelap = None
+                splitrank = 0
+                lelap = None
+                elap = None
+                place = None
+                if stod is not None:  # start time mandatory
+                    detail['startTime'] = tod.mergedate(
+                        ltime=stod, date=self.event['start'], micros=True)
+                    if bib in self.compweather and self.compweather[bib]:
+                        detail['weather'] = self.compweather[bib]
+
+                    # split time
+                    if splittod is not None:
+                        splitelap = (splittod - stod).truncate(self.precision)
+                        srank = self.splits.rank(bib)
+                        if srank is not None:
+                            splitrank = srank + 1
+                        dsplits[self._splitlen] = {
+                            'label': self._splitlabel,
+                            'rank': splitrank,
+                            'elapsed': splitelap,
+                            'interval': splitelap,
+                            'points': None,
+                            'distance': self._splitdist,
+                        }
+
+                    # finish time
+                    if ftod is not None:
+                        place = self.results.rank(bib) + 1
+                        detail['endTime'] = tod.mergedate(
+                            ltime=ftod, date=self.event['start'], micros=True)
+                        elap = (ftod - stod).truncate(self.precision)
+                        if splitelap is not None:
+                            lelap = elap - splitelap
+                        dsplits[self._finlen] = {
+                            'label': self._lenlabel,
+                            'rank': place,
+                            'elapsed': elap,
+                            'interval': lelap,
+                            'points': None,
+                            'distance': self._findist,
+                        }
+
+                # allocate places
+                if t[0] > tod.FAKETIMES['max']:
+                    if t[0] == tod.FAKETIMES['rel']:
+                        self.onestart = True
+                    elif t[0] == tod.FAKETIMES['abd']:
+                        place = 'abd'
+                    elif t[0] == tod.FAKETIMES['dsq']:
+                        place = 'dsq'
+                    elif t[0] == tod.FAKETIMES['dns']:
+                        place = 'dns'
+                    elif t[0] == tod.FAKETIMES['dnf']:
+                        place = 'dnf'
+                else:
+                    self.onestart = True
+                    if place == 'comment':  # superfluous but ok
+                        place = self.riders.get_value(i, COL_COMMENT)
+                    self.riders.set_value(i, COL_PLACE, str(place))
+                    self.riders.swap(self.riders.get_iter(count), i)
+                    count += 1
             else:
                 _log.warning('Rider %r not found in model, check places', bib)
+
         tcount = len(self.riders)
         self._standingstr = ''
         self._status = None
@@ -1323,12 +1369,13 @@ class f200:
         if st is None:
             st = tod.ZERO
         if ft is not None:
+            elap = (ft - st).truncate(self.precision)
             last100 = None
             if split is not None:
-                stime = (split - st).truncate(3)
-                self.splits.insert(stime, None, bib)  # save first 100 split
-                last100 = (ft - split).truncate(3)  # and prepare last 100
-            elap = (ft - st).truncate(3)
+                selap = (split - st).truncate(self.precision)
+                self.splits.insert(selap, None,
+                                   bib)  # save first 100 split elapsed
+                last100 = elap - selap  # use elapsed for last 100
             self.results.insert(elap, last100, bib)
         else:  # DNF/etc
             self.results.insert(comment, None, bib)
@@ -1469,15 +1516,23 @@ class f200:
             self.showtimerwin()
             self.meet.delayimp('0.01')
             if self.fs.status == 'armstart':
+                heatweather = self.meet.get_weather()
                 bib = self.fs.getrider()
+                self.compweather[bib] = heatweather
                 if bib not in self.traces:
                     self.traces[bib] = []
+
+                # connect trace handler
                 self.fslog = uiutil.traceHandler(self.traces[bib])
                 logging.getLogger().addHandler(self.fslog)
                 self.meet.scbwin.sett1('       0.0     ')
                 nstr = self.fs.biblbl.get_text()
+
+                # log heat prefix to trace
                 self.meet.timer_log_msg(bib, nstr)
-                self.meet.timer_log_env()
+                self.meet.timer_log_env(heatweather)
+
+                # init gemini board
                 self.meet.gemini.set_bib(bib)
                 self.meet.gemini.set_time(' 0.0 ')
                 self.meet.gemini.set_rank('')
@@ -1633,18 +1688,137 @@ class f200:
             self.settimes(sel[1], comment='dns')
             GLib.idle_add(self.delayed_announce)
 
+    def detail_report(self, bib):
+        """Return a timing detail report for the nominated rider."""
+        ret = []
+        secid = 'detail-%s-%s' % (str(self.evno).translate(
+            strops.WEBFILE_UTRANS), bib)
+        sec = report.bullet_text(secid)
+        sec.nobreak = True
+        sec.heading = self.event.get_info(showevno=True)
+        sec.subheading = '\u3000'.join((
+            self.event['distance'],
+            self.event['rules'],
+        )).strip()
+        if self._detail is None:
+            self.placexfer()
+        ret.append(sec)
+        r = self._getrider(bib)
+        if r is not None:
+            rh = self.meet.rdb.get_rider(bib, self.series)
+            if rh is not None:
+                namerows = []
+                namerows.append('%s' % (rh.altname(), ))
+
+                ph = self.meet.rdb.get_pilot(rh)
+                if ph is not None:
+                    namerows.append('\t%s [pilot]' %
+                                    (ph.altname(pilot=True), ))
+                sec.lines.append(['', '\n'.join(namerows)])
+
+            # Facility
+            if self.meet.facility:
+                sec.lines.append(
+                    ['', 'Facility code: %s' % (self.meet.facility, )])
+
+            # Weather
+            env = None
+            if bib in self.compweather and self.compweather[bib]:
+                env = self.compweather[bib]
+                wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%, ~%0.4f\u2006kg/m\u00b3' % (
+                    env['t'],
+                    env['p'],
+                    env['h'],
+                    env['d'],
+                )
+                sec.lines.append(['', wstr])
+
+            # start time
+            if r[COL_START] is not None:
+                stxt = ''
+                st = r[COL_START]
+                if self.event['start'] is not None:
+                    dt = self.event['start']
+                    stxt = 'Start: %s, %s' % (st.meridiem(secs=False),
+                                              dt.date().isoformat())
+                else:
+                    stxt = 'Start: %s' % (st.meridiem(secs=False), )
+                sec.lines.append(['', stxt])
+
+            # Result
+            rank = None
+            time = None
+            if r[COL_FINISH] is not None:
+                tt = (r[COL_FINISH] - r[COL_START]).truncate(self.precision)
+                time = tt.rawtime(self.precision)
+            if r[COL_PLACE]:
+                pls = r[COL_PLACE]
+                if pls.isdigit():
+                    rank = '%s.' % (r[COL_PLACE], )
+                else:
+                    rank = pls
+            if rank or time:
+                rv = []
+                if self.finished:
+                    rv.append('Result:')
+                else:
+                    rv.append('Standing:')
+                if time:
+                    rv.append(time)
+                if rank:
+                    rv.append('(%s)' % (rank, ))
+                if r[COL_PLACE]:
+                    if self.qualified(pls):
+                        rv.append('Qualified')
+                sec.lines.append(['', '\u3000'.join(rv)])
+
+            # include split times
+            if bib in self._detail:
+                if 'splits' in self._detail[bib] and self._detail[bib][
+                        'splits']:
+                    detail = self._detail[bib]['splits']
+                    secid = 'splits-%s-%s' % (str(self.evno).translate(
+                        strops.WEBFILE_UTRANS), bib)
+                    sec = report.lapsplits(secid)
+                    ret.append(sec)
+                    sec.places = self.precision
+                    sec.weather = env
+                    sec.onecol = True  # force single column
+                    sec.subheading = 'Split Times'
+                    for d in detail.values():
+                        sec.lines.append(d)
+
+        return ret
+
     def tod_context_print_activate_cb(self, menuitem, data=None):
-        """Print Rider trace"""
+        """Print standalone timing detail report."""
+        sel = self.view.get_selection().get_selected()
+        if sel is not None:
+            bib = self.riders.get_value(sel[1], COL_NO)
+            secs = self.detail_report(bib)
+            self.meet.print_report(secs,
+                                   docstr='Timing Detail',
+                                   exportfile='timing_detail')
+
+    def tod_context_trace_activate_cb(self, menuitem, data=None):
+        """Print chronometer trace."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
             bib = self.riders.get_value(sel[1], COL_NO)
             if bib in self.traces:
                 secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
-                sec = report.preformat_text(secid)
+                sec = report.threecol_section(secid)
+                sec.heading = self.event.get_info(showevno=True)
+                lapstring = strops.lapstring(self.event['laps'])
+                sec.subheading = '\u3000'.join(
+                    (lapstring, self.event['distance'],
+                     self.event['rules'])).strip()
+
+                sec.monospace = True
                 sec.nobreak = True
-                sec.lines = self.traces[bib]
+                sec.lines = [[None, None, line] for line in self.traces[bib]]
                 self.meet.print_report([sec],
-                                       'Timing Trace',
+                                       docstr='Chronometer Trace',
                                        exportfile='timing_trace')
 
     def now_button_clicked_cb(self, button, entry=None):
@@ -1768,21 +1942,25 @@ class f200:
         """Print split log."""
         slbl = '100m'
         if self.evtype == 'flying lap':
-            slbl = 'int'
-        self.meet.timer_log_straight(bib, slbl, split - start, 3)
+            slbl = '-200m'
+        selap = (split - start).truncate(self.precision)
+        self.meet.timer_log_straight(bib, slbl, selap, self.precision)
 
     def log_elapsed(self, bib, start, finish, split=None, manual=False):
         """Print elapsed log info."""
         if manual:
             self.meet.timer_log_msg(bib, '- Manual Adjust -')
+        elap = (finish - start).truncate(self.precision)
         self.meet.timer_log_straight(bib, 'ST', start)
         self.meet.timer_log_straight(bib, 'FIN', finish)
         if split is not None:
             slbl = 'L100'
             if self.evtype == 'flying lap':
                 slbl = 'L200'
-            self.meet.timer_log_straight(bib, slbl, finish - split, 3)
-        self.meet.timer_log_straight(bib, 'TIME', finish - start, 3)
+            selap = (split - start).truncate(self.precision)
+            self.meet.timer_log_straight(bib, slbl, elap - selap,
+                                         self.precision)
+        self.meet.timer_log_straight(bib, 'TIME', elap, self.precision)
 
     def show(self):
         """Show race window."""
@@ -1815,6 +1993,7 @@ class f200:
         self.chan_S = 4
         self.chan_I = 5
         self.chan_F = 1
+        self.precision = 3
 
         # race run time attributes
         self.onestart = False
@@ -1831,6 +2010,7 @@ class f200:
         self._standingstr = ''
         self.context_menu = None
         self.traces = {}
+        self.compweather = {}  # per competitor weather record
         self._winState = {}  # cache ui settings for headless load/save
         self._status = None
         self._startlines = None
@@ -1846,7 +2026,9 @@ class f200:
         self._endA = None
         self._splitlabel = None
         self._splitlen = None
+        self._splitdist = None
         self._finlen = None
+        self._findist = None
         self._lenlabel = None
         self._weather = None
         self._remcount = None
@@ -1865,15 +2047,20 @@ class f200:
 
         self._splitlabel = '100\u2006m'
         self._splitlen = '100'
+        self._splitdist = 100
         self._finlen = '200'
+        self._findist = 200
         self._lenlabel = '200\u2006m'
         tmlbl = '200m/L100m'
         if self.evtype == 'flying lap':
+            # Split is on last 200m
             tmlbl = 'Time/L200m'
-            self._splitlabel = '-200\u2006m'  # this should be config'd
-            self._splitlen = '-200'  # this should be config'd
+            self._splitlabel = '-200\u2006m'
+            self._splitlen = '-200'
+            self._findist = self.meet.tracklen_n / self.meet.tracklen_d
+            self._splitdist = self._findist - 200.0
             self._finlen = 'lap'
-            self._lenlabel = 'Lap'
+            self._lenlabel = '%0.0f\u2006m' % (self._findist, )
 
         # show window
         if ui:
