@@ -85,7 +85,7 @@ key_falsestart = 'F6'
 
 
 class ps:
-    """Data handling for point score omnium scratch and Madison races."""
+    """Data handling for points omnium scratch and Madison races."""
 
     def force_running(self, start=None):
         """Set event timer to running."""
@@ -248,7 +248,7 @@ class ps:
         cr.add_section('laplabels')
         cr.add_section('points')
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         self.inomnium = cr.get_bool('event', 'inomnium')
         if self.inomnium:
@@ -303,17 +303,22 @@ class ps:
                 _log.debug('sp0 is none')
                 # Domestic rule: Adjust points when distance < 15km
                 racelen = self.meet.get_distance(self.distance, 'laps')
+                if racelen is not None and not self.event['dist']:
+                    # patch the distance string in event listing
+                    self.event['dist'] = '%0.1f\u2006km' % (racelen / 1000.0, )
                 if self.evtype == 'scratch':
                     _log.debug('Scratch race override')
                     cr.set('sprintpoints', '0', '0')
-                elif self.meet.domestic and racelen < 15000:
-                    _log.debug('< 15km: Gain/Lose 10pts per lap')
-                    cr.set('event', 'tenptlaps', True)
-                    # may be further overridden by tempo/progressive
-                    cr.set('sprintpoints', '0', '5 3 2 1')
-                else:
-                    _log.debug('Award double points on final sprint')
-                    cr.set('sprintpoints', '0', '10 6 4 2')
+                elif self.evtype in ('omnium', 'points', 'madison'):
+                    if racelen is not None:
+                        if self.meet.domestic and racelen < 15000:
+                            _log.debug('< 15km: Gain/Lose 10pts per lap')
+                            cr.set('event', 'tenptlaps', True)
+                            # may be further overridden by tempo/progressive
+                            cr.set('sprintpoints', '0', '5 3 2 1')
+                        else:
+                            _log.debug('Award double points on final sprint')
+                            cr.set('sprintpoints', '0', '10 6 4 2')
 
                 if progressivepoints:
                     fl = self.distance - 1
@@ -655,7 +660,8 @@ class ps:
         self._reslines = []
         fs = ''
         if self.finish is not None and self.start is not None:
-            fs = (self.finish - self.start).rawtime(2)
+            elap = (self.finish - self.start).truncate(2)
+            fs = elap.rawtime(2)
         fl = None
         ll = None
         pcount = 1
@@ -1323,11 +1329,11 @@ class ps:
 
             tp = ''
             if self.start is not None and self.finish is not None:
-                et = self.finish - self.start
-                tp = 'Time: ' + et.timestr(2) + '    '
+                elap = (self.finish - self.start).truncate(2)
+                tp = 'Time: ' + elap.timestr(2) + '    '
                 dist = self.meet.get_distance(self.distance, self.units)
                 if dist:
-                    tp += 'Avg: ' + et.speedstr(dist)
+                    tp += 'Avg: ' + elap.speedstr(dist)
             self.meet.txt_postxt(4, 40, tp)
 
             # do result standing
@@ -1659,7 +1665,7 @@ class ps:
         if self.timerstat == 'finished':
             if not wastimer:
                 self.meet.scbwin.reset()
-            elap = self.finish - self.start
+            elap = (self.finish - self.start).truncate(2)
             self.meet.scbwin.settime(elap.timestr(2))
             dist = self.meet.get_distance(self.distance, self.units)
             if dist:
@@ -1693,7 +1699,7 @@ class ps:
             rt = self.meet.recover_time('C0')
             if rt is not None:
                 # rt: (event, wallstart)
-                _log.info('Recovered start time: %s', rt[0].rawtime(3))
+                _log.info('Recovered start time: %s', rt[0].rawtime(1))
                 if self.timerstat == 'idle':
                     self.timerstat = 'armstart'
                 self.meet.main_timer.dearm('C0')
@@ -1705,10 +1711,10 @@ class ps:
         """Handle a timer event"""
         chan = strops.chan2id(e.chan)
         if chan == 0:
-            _log.debug('Start impulse %s', e.rawtime(3))
+            _log.debug('Start impulse')
             self.starttrig(e, tod.now())
         elif chan == 1:
-            _log.debug('Finish impulse %s', e.rawtime(3))
+            _log.debug('Finish impulse')
             self.fintrig(e)
         return False
 
@@ -1847,23 +1853,24 @@ class ps:
         """Update displayed elapsed race time."""
         if self.winopen:
             if self.start is not None and self.finish is not None:
-                et = self.finish - self.start
-                self.time_lbl.set_text(et.timestr(2))
+                elap = (self.finish - self.start).truncate(2)
+                self.time_lbl.set_text(elap.timestr(2))
             elif self.start is not None:
                 runtm = (tod.now() - self.lstart).timestr(1)
                 self.time_lbl.set_text(runtm)
             elif self.timerstat == 'armstart':
-                self.time_lbl.set_text(tod.tod(0).timestr(1))
+                self.time_lbl.set_text('       0.0   ')  # tod.ZERO.timestr(1)
             else:
                 self.time_lbl.set_text('')
 
     def log_elapsed(self):
-        """Log elapsed time on timy receipt"""
-        self.meet.main_timer.printline(self.meet.racenamecat(self.event))
-        self.meet.main_timer.printline('      ST: ' + self.start.timestr(4))
-        self.meet.main_timer.printline('     FIN: ' + self.finish.timestr(4))
-        self.meet.main_timer.printline('    TIME: ' +
-                                       (self.finish - self.start).timestr(2))
+        """Log race elapsed time to chronometer trace."""
+        elap = (self.finish - self.start).truncate(2)
+        self.meet.timer_log_event(self.event)
+        self.meet.timer_log_env()
+        self.meet.timer_log_straight('', 'ST', self.start, 4)
+        self.meet.timer_log_straight('', 'FIN', self.finish, 4)
+        self.meet.timer_log_straight('', 'TIME', elap, 2)
 
     def set_running(self):
         """Set timer to running"""
@@ -1985,9 +1992,16 @@ class ps:
                         # it's a "laps to go" sprint
                         lapoft = totcontests - totsprints
                         cursprint = lastsprint - lapoft
-                        if width is not None and width < 25:
-                            ret += ' - Sprint {0}/{1}'.format(
-                                cursprint, totsprints)
+                        if width is not None:
+                            if width < 24:
+                                ret += 'Sprint {0}/{1}'.format(
+                                    cursprint, totsprints)
+                            elif width < 32:
+                                ret += ' - Sprint {0}/{1}'.format(
+                                    cursprint, totsprints)
+                            else:
+                                ret += ' After Sprint {0} of {1}'.format(
+                                    cursprint, totsprints)
                         else:
                             ret += ' After Sprint {0} of {1}'.format(
                                 cursprint, totsprints)
