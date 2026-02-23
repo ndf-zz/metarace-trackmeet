@@ -66,23 +66,35 @@ key_rel_b = 'F12'
 _STD_CONTESTS = {
     1: ('bye', ),
     2: ('1v2', ),
+
     3: ('bye', '2v3'),
     4: ('1v4', '2v3'),
+
     5: ('bye', 'bye', 'bye', '4v5'),
     6: ('bye', 'bye', '3v6', '4v5'),
     7: ('bye', '2v7', '3v6', '4v5'),
     8: ('1v8', '2v7', '3v6', '4v5'),
+
     9: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', 'bye', '8v9'),
     10: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'),
     11: ('bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'),
+
+    # AU special case
     12: ('1v12', '2v11', '3v10', '4v9', '5v8', '6v7'),
+
     13: ('bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'),
-    #14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
+    14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     15: ('bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     16: ('1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
-    # [3.2.050]
+
+    # [3.2.050] Olympic 1/32 Final
     28: ('bye', 'bye', 'bye', 'bye', '5v28', '6v27', '7v26', '8v25', '9v24',
          '10v23', '11v22', '12v21', '13v20', '14v19', '15v18', '16v17'),
+
+    # AU special case, replaces Olympic 1/32+rep
+    32: ('1v32', '2v31', '3v30', '4v29', '5v28', '6v27', '7v26', '8v25',
+         '9v24', '10v23', '11v22', '12v21', '13v20', '14v19', '15v18', '16v17'),
+
 }
 
 _CONFIG_SCHEMA = {
@@ -106,16 +118,16 @@ _CONFIG_SCHEMA = {
         'defer': False,
     },
     'heat2evno': {
-        'prompt': 'Heat 2 Evno:',
-        'hint': 'Event number label for heat 2 (if best of three)',
+        'prompt': 'Heat 2 ID:',
+        'hint': 'Event ID for heat 2 (if best of three)',
         'control': 'short',
         'default': None,
         'defer': True,
         'attr': 'heat2evno',
     },
     'heat3evno': {
-        'prompt': 'Heat 3 Evno:',
-        'hint': 'Event number label for heat 3 (if best of three)',
+        'prompt': 'Heat 3 ID:',
+        'hint': 'Event ID for heat 3 (if best of three)',
         'control': 'short',
         'default': None,
         'defer': True,
@@ -834,7 +846,7 @@ class sprnd:
         cr.add_section('event', _CONFIG_SCHEMA)
         cr.add_section('contests')
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         # event metas
         self._weather = cr.get('event', 'weather')
@@ -848,6 +860,8 @@ class sprnd:
             # placeholders is set and contests are not
             if self.event['info'] == 'Final' and self.event['plac'] == 4:
                 contestlist = ('Bronze', 'Gold')
+            elif self.event['info'] == 'Final' and self.event['plac'] == 2:
+                contestlist = ('Gold',)
             else:
                 if self.event['plac'] in _STD_CONTESTS:
                     contestlist = _STD_CONTESTS[self.event['plac']]
@@ -1803,8 +1817,8 @@ class sprnd:
                         ltime = tod.mktod(c[COL_B_QUAL])
                     lr = True  # include rank on loser rider
                 if not 'bye' in c[COL_CONTEST]:
-                    if ltime is None or not self.otherstime:
-                        ltime = tod.MAX
+                    if self.otherstime and ltime is not None:
+                        lsort = ltime
                     others.append((lsort, -placeoft, lose, lr, ltime))
                 time = None
                 yield (win, rank, wtime, info)
