@@ -469,7 +469,7 @@ class race:
         cr.add_section('event')
         cr.add_section('riders')
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:

@@ -270,7 +270,7 @@ class teamagg(classification.classification):
         })
         cr.add_section('event', _CONFIG_SCHEMA)
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
         cr.export_section('event', self)
 
         self.decisions = cr.get('event', 'decisions')

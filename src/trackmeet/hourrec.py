@@ -345,7 +345,7 @@ class UCIHour:
         cr.add_section('event', _CONFIG_SCHEMA)
         cr.add_section('timing', _TIMING_SCHEMA)
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         self.decisions = cr.get('event', 'decisions')
         cr.export_section('event', self)  # pull in config from schema

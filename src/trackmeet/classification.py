@@ -99,7 +99,7 @@ class classification:
         })
         cr.add_section('event')
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         if 'omnium' in self.event['competition']:
             # pre-load source events by searching event db unless config'd
