@@ -716,7 +716,7 @@ class ittt:
             count = placeholders
             miss = 2000
             while len(self.riders) < count:
-                self.addrider(str(miss))  # WARNING!
+                self.addrider(str(miss))
                 miss += 1
         blanknames = False
         if placeholders > 0:
@@ -1115,16 +1115,19 @@ class ittt:
         for r in self.riders:
             rcount += 1
             rno = r[COL_NO]
-            rh = self.meet.rdb.get_rider(rno, self.series)
-            if rh is None:
-                self.meet.rdb.add_empty(rno, self.series)
-                rh = self.meet.rdb.get_rider(rno, self.series)
+            dbrno = None
+            rname = None
+            rnat = None
+            rcls = None
+            pilot = None
             rank = None
-            dbrno = rh['no']
-            rname = rh.resname()
-            rnat = rh['nation']
-            rcls = rh['class']
-            pilot = self.meet.rdb.get_pilot_line(rh)
+            rh = self.meet.rdb.get_rider(rno, self.series)
+            if rh is not None:
+                dbrno = rh['no']
+                rname = rh.resname()
+                rnat = rh['nation']
+                rcls = rh['class']
+                pilot = self.meet.rdb.get_pilot_line(rh)
             if self.teamnames:
                 rno = ' '  # force name
             rtime = None
@@ -1276,10 +1279,16 @@ class ittt:
             sec.start = tod.ZERO
             sec.finish = maxtime + tod.tod(1)
             for r in self.riders:
-                # add each rider, even when there is no info to display
-                rh = self.meet.rdb.get_rider(r[COL_NO], self.series)
-                bib = r[COL_NO]
+                # add each rider, unless there is no info to display
                 rdata = {}
+                rdata['name'] = 'unknown'
+                rdata['cat'] = None
+
+                bib = r[COL_NO]
+                rh = self.meet.rdb.get_rider(bib, self.series)
+                if rh is not None:
+                    rdata['name'] = rh.fitname(4, trunc=False)
+                    rdata['cat'] = rh['class']
                 if self.teamnames:
                     rdata['no'] = None
                 else:
@@ -1287,13 +1296,12 @@ class ittt:
                 linkfile = ('event_%s_detail_%s' % (self.evno, bib)).translate(
                     strops.WEBFILE_UTRANS)
                 rdata['link'] = linkfile
-                rdata['name'] = rh.fitname(4, trunc=False)
-                rdata['cat'] = rh['class']
                 rdata['count'] = None
                 rdata['place'] = r[COL_PLACE]
                 rdata['elapsed'] = None
                 rdata['average'] = None
                 rdata['laps'] = []
+                rsplits = None
                 stime = r[COL_START]
                 if stime is not None:
                     rsplits = r[COL_SPLITS]
@@ -1309,8 +1317,10 @@ class ittt:
                             rdata['laps'].append(st)
                         else:
                             rdata['laps'].append(None)
-                sec.lines.append(rdata)
-            ret.append(sec)
+                if rsplits:
+                    sec.lines.append(rdata)
+            if sec.lines:
+                ret.append(sec)
         return ret
 
     def editent_cb(self, entry, col):
@@ -1638,7 +1648,7 @@ class ittt:
             if downtod is not None:
                 compObj['extra'] = downtod.rawtime(2)
             if self.qualified(place):
-                self._competitorA['badges'].append('qualified')
+                compObj['badges'].append('qualified')
 
         # then report to scb, announce and result
         if self.timerwin and type(self.meet.scbwin) is scbwin.scbtt:
@@ -2161,7 +2171,8 @@ class ittt:
                     for sid in self.splitlist[0:-1]:  # all but full distance
                         lsplit = sid
                         fullap = self.splitmap[sid]['lap']
-                        if rsplits and sid in rsplits and rsplits[sid] is not None:
+                        if rsplits and sid in rsplits and rsplits[
+                                sid] is not None:
                             sdist = self.splitmap[sid]['dist']
                             splitlbl = '%0.0f\u2006m' % (sdist, )
                             splitidx = '%0.0f' % (sdist, )
