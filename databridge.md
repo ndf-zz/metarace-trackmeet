@@ -1,6 +1,6 @@
 # Trackmeet "Data Bridge" Schema
 
-__Updated: 2026-02-09__
+__Updated: 2026-02-23__
 
 
 ## Overview
@@ -23,7 +23,7 @@ via MQTT (telegraph) or HTTP.
    - Competitor: A single rider, a Madison pair or a team of riders. [1]
    - Category: A competitor's category
      Eg: ME "Men Elite", WE "Women Elite", MJ "Men Junior",
-     PARA "Para-cycling", M15 "Men Under 15", W17 "Women Under 17" [2,3]
+     PARA "Para Cycling", M15 "Men Under 15", W17 "Women Under 17" [2,3]
    - Phase: Within a competition, phases progress competitors
      toward a final result. The final phase of a competition
      will be labelled "Final" in the subtitle. [4,5]
@@ -40,7 +40,7 @@ via MQTT (telegraph) or HTTP.
    - Result: A summary of the outcomes of a competition fragment,
      or a virtual standing if the result is partially determined.
    - Event: A heat, contest or phase on the meet schedule
-     identified uniquely by a short string, usually numeric. Eg:
+     identified by a short string, usually numeric. Eg:
      38 "Event 38: W15 Sprint Semi Final Heat 3". Normally
      referred to as "Event number", but may also be any string.
      An event may reference more than one specific path, and include
@@ -78,8 +78,6 @@ via MQTT (telegraph) or HTTP.
      conduct in the event, usually to last place in the heat/contest.
      A relegation does not disqualify a competitor, and there may be
      no mention in the result why the relegation occurred.
-   - Medals: The 1st, 2nd and 3rd placed competitors in a competition
-     will be awarded Gold, Silver and Bronze medals (respectively).
    - Title/Champion: The best-placed eligible competitor in a
      competition will be awarded the title. Eg:
      Men Elite Sprint Australian Champion.
@@ -88,10 +86,10 @@ Notes:
 
    1. Competition type determines whether competitors are riders,
       pairs or teams.
-   2. Para-cyclists will be assigned an additional sport class
+   2. Para cyclists will be assigned an additional sport class
       based on impairment, eg MC2 "Men Cycle 2", WB "Women Tandem",
       multiple sport classes may be present in a single competition.
-   3. Tandem para-cyclists are individual competitors with an
+   3. Tandem para cyclists are individual competitors with an
       associated pilot rider. Pilot details are usually displayed
       on results and startlists immediately under the rider. A pilot's
       competitor ID is the same as their rider.
@@ -124,7 +122,7 @@ Cycling startlists and results should adhere to the following conventions:
      eg: '1.', '2.' unless they are one of the special values:
      'dns', 'dnf', 'abd' or 'dsq'.
    - A virtual classification, eg during qualifying or for an intermediate
-     time split should be surrounded with parentheses: (3.), italicised: __3.__,
+     time split should be surrounded with parentheses: (3.),
      or formatted in such a way that is is obviously not a confirmed place.
      Places are confirmed when then fragment status is 'provisional' or
      'final'.
@@ -222,7 +220,7 @@ also include a serial number and last updated field:
 
 key | type | descr
 --- | --- | ---
-serial | integer | Endpoint serial number
+serial | numeric | Endpoint serial number
 updated | 8601DT | Date and time of last update
 
 These keys are omitted from examples below for clarity.
@@ -231,7 +229,7 @@ These keys are omitted from examples below for clarity.
 #### [MEET]
 
 The meet object is a top level identifier.
-It contains string information about the organisation,
+It contains information about the organisation,
 date summary, president of the commissaires'
 panel (PCP), schedule of events and a list of categories.
 
@@ -255,11 +253,11 @@ Example:
 	2025atc
 	{
 	 "title": "AusCycling Track National Championships",
-	 "subtitle": "Junior, Under 19, Elite and Para-Cycling",
+	 "subtitle": "Junior, Under 19, Elite and Para Cycling",
 	 "organiser": "AusCycling",
 	 "location": "Anna Meares Velodrome, Brisbane",
-	 "pcp": "Wayne Pomario",
-	 "date": "March 22-30, 2025",
+	 "pcp": "John Smith",
+	 "date": "22 - 30 March, 2025",
 	 "timezone": "Australia/Brisbane",
 	 "startDate": "2025-03-22",
 	 "endDate": "2025-03-30",
@@ -355,6 +353,7 @@ competitionType | string | Competition type indicator
 eventStart | 8601DT | Rough start time for start of event
 startTime | 8601DT | Rolling clock start time
 endTime | 8601DT | Rolling clock end time
+elapsed | 8601I | Elapsed time for heat/event after finish
 competitorA | RESULTLINE | "A" Competitor (pursuit, tt, 200)
 labelA | string | Text prefix for "A" split (pursuit, tt, 200, mass start)
 timeA | 8601I | Elapsed time for "A" split (pursuit, tt, 200, mass start)
@@ -409,7 +408,7 @@ Example:
 	2025atc/1
 	{
 	 "title": "AusCycling Track National Championships",
-	 "subtitle": "Junior, Under 19, Elite and Para-Cycling",
+	 "subtitle": "Junior, Under 19, Elite and Para Cycling",
 	 "location": "Anna Meares Velodrome, Brisbane",
 	 "label": "Session 1",
 	 "startTime": "2025-03-24T13:00:00+10:00",
@@ -489,8 +488,8 @@ records | object | Mapping of record types to RECORD objects
 Subtopics available under [COMPETITION]:
 
   - startlist: Startlist object for the whole competition
-  - result: Overall result for whole competition, including medals
-    and national title winner.
+  - result: Overall result for whole competition,
+    may include medals and national title winner.
   - [PHASE]: Details for the competition phase with ID [PHASE]
 
 Example:
@@ -572,10 +571,10 @@ Subtopics available under [CONTEST]:
 
 Example:
 
-	2025atc/M15/sprint/semi/1v4
+	2025atc/M15/sprint/1.2/1v4
 	{
-	 "title": "Men Under 15 Sprint",
-	 "subtitle": "Semi Final - 1v4",
+	 "title": "Men Under 15 Sprint 1/2 Final",
+	 "subtitle": "1v4",
 	 "label": "1v4",
 	 "status": "provisional",
 	 "info": null,
@@ -608,10 +607,10 @@ Subtopics available under [HEAT]:
 
 Example:
 
-	2025atc/M15/sprint/semi/1v4/2
+	2025atc/M15/sprint/1.2/1v4/2
 	{
-	 "title": "Men Under 15 Sprint",
-	 "subtitle": "Semi Final - 1v4 Heat 2",
+	 "title": "Men Under 15 Sprint 1/2 Final",
+	 "subtitle": "1v4 Heat 2",
 	 "label": "Heat 2",
 	 "status": "final",
 	 "info": null,
@@ -623,8 +622,7 @@ Example:
 
 #### .../startlist
 
-A startlist for the parent competition, phase, contest
-or heat.
+A startlist for the competition, phase, contest, heat.
 
 key | type | descr
 --- | --- | ---
@@ -661,8 +659,7 @@ Example:
 
 #### .../result
 
-A result for the parent competition, phase, contest
-or heat.
+A result for the competition, phase, contest, heat.
 
 key | type | descr
 --- | --- | ---
@@ -756,6 +753,7 @@ Detail information for a single competitor
 key | type | descr
 --- | --- | ---
 startTime | 8601DT | Date and time of heat start (if known)
+endTime | 8601DT | Date and time of heat end (if known)
 weather | WEATHER | weather observations at beginning of heat
 splits | object | Map of split ids to SPLIT objects
 
@@ -764,6 +762,7 @@ Example:
 
 	{
 	 "startTime": "20260210T19:02:23.456+10:00",
+	 "endTime": "20260210T19:04:16.271+10:00",
 	 "weather": { "t": 32.5, "p": 1019.0, "h" ...
 	 "splits": {
 	  "100": { ...
@@ -779,7 +778,7 @@ key | type | descr
 label | string | Label for this split/sprint
 rank | integer | Competitor's ranking at this split - may be null
 elapsed | 8601I | Elapsed time to this split/sprint (if known)
-interval | 8601I | Interval since previous full lap (null for half-laps)
+interval | 8601I | Lap time or last 100m for flying 200, last 200m for flying lap
 points | numeric | Points awarded to competitor at this sprint
 distance | numeric | Distance in metres to this split (if relevant)
 
@@ -795,10 +794,6 @@ Example for a 100m split in a flying 200m time trial:
 	}
 
 
-*Note:* Due to rounding, the sum of split intervals
-may not equal elapsed time.
-
-
 #### RIDER
 
 RIDER objects provide information on an individual rider
@@ -811,10 +806,11 @@ first  | string | Rider first name
 last   | string | Rider last name
 nation | string | IOC 3 letter nation code
 uciid  | string | UCI 11 digit unique identifier or null if not known
-dob    | 8601D | Date of birth
+yob    | integer | Year of birth
 state  | string | State of rider's Australian club or null if not known
 org    | string | Club, team or organisation string
 penalties | list | List of PENALTY objects issued to competitor
+resname | string | Formatted name with organisation
 
 
 #### TEAM
@@ -831,6 +827,7 @@ nation | string | IOC 3 letter nation code
 state | string | Team state of origin if known
 members | array | Ordered list of rider IDs eligible to participate in team
 penalties | list | List of PENALTY objects issued to competitor
+resname | string | Formatted name with organisation
 
 
 #### PAIR
@@ -847,6 +844,7 @@ state | string | Competitor state (if valid)
 black | string | Competitor ID of rider carrying black number
 red | string | Competitor ID of rider carrying red number
 penalties | list | List of PENALTY objects issued to competitor
+resname | string | Formatted name with organisation
 
 
 #### WEATHER
@@ -855,16 +853,16 @@ Local weather observation.
 
 key | type | descr
 --- | --- | ---
-t | number | Temperature in degrees Celsius
-h | number | Relative humidity percentage
-p | number | Atmospheric pressure in hectopascals (hPa)
-d | number | Estimated air density (~kg/m^3)
+t | numeric | Temperature in degrees Celsius
+h | numeric | Relative humidity percentage
+p | numeric | Atmospheric pressure in hectopascals (hPa)
+d | numeric | Estimated air density (~kg/m^3)
 
 
 #### PENALTY
 
 Summary of a penalty issued to a rider for dangerous
-riding or an infringement of the rules. Note that any
+riding or an infringement of the rules. Any
 combination of warning, fine, rel, dsq may be present
 in a single penalty.
 
@@ -881,7 +879,7 @@ reason | string | Full text of the warning
 
 #### RECORD
 
-*Note:* Record data TBC
+**Note:** Record data TBC
 
 Record data for a [CATEGORY]/[COMPETITION]. A competitor beating
 a current record is announced as having bettered the record. A new
@@ -910,7 +908,7 @@ members | array | Ordered set of team members if competitor was team
 
    - string: Unicode string
    - integer: Integral numeric value
-   - number: Numeric value (double precision float)
+   - numeric: Numeric value (double precision float)
    - bool: Boolean value True/False
    - array []: Ordered list of objects
    - object {}: Collection of name-value pairs
@@ -961,7 +959,7 @@ members | array | Ordered set of team members if competitor was team
        - "madison": Madison
        - "scratch": Scratch Race
        - "elimination": Elimination Race
-   - Para-cycling sport class labels (16.4.003):
+   - Para cycling sport class labels (16.4.003):
        - "MB"
        - "WB"
        - "MC1"
@@ -978,9 +976,9 @@ members | array | Ordered set of team members if competitor was team
        - "single": Single competitor in each heat (tt, 200)
        - "dual": A/B competitors (tt, pursuit, team sprint, team pursuit)
        - "bunch": Mass start (scratch, points etc)
-       - "hour": UCI Hour Record (TBC)
-       - "classification": Final classification for a competition - includes
-         medals and champion badges when relevant. May include lower
+       - "hour": UCI Hour Record
+       - "classification": Final classification for a competition - may
+         include medals and champion badges when relevant. May include lower
          places before finals are complete.
        - null: Listing does not have a specific type
    - Badges:

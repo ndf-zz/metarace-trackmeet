@@ -59,8 +59,10 @@ _PHASES = {
     'rep1': 'Repechage 1',
     'rep2': 'Repechage 2',
     'rep3': 'Repechage 3',
-    'qf': 'Quarter Final',
-    'sf': 'Semi Final',
+    'sf': '1/2 Final',  # deprecated
+    '1.2': '1/2 Final',
+    'qf': '1/4 Final',  # deprecated
+    '1.4': '1/4 Final',
     '1.8': '1/8 Final',
     '1.16': '1/16 Final',
     'final': 'Final',
@@ -102,8 +104,13 @@ def _colkey(col):
 
 
 def _ornull(text):
-    """Return the text, or None if it is an empty string"""
+    """Return the text, or None if it is an empty string."""
     return text if text else None
+
+
+def _asinteger(text):
+    """Return an integer or None."""
+    return strops.confopt_posint(text, None)
 
 
 def _asevno(text):
@@ -654,9 +661,10 @@ class DataBridge():
                     'last': _ornull(c['last'].strip().upper()),
                     'nation': _ornull(c['nation']),
                     'uciid': _ornull(c['uciid']),
-                    'dob': _ornull(c['dob']),
-                    'state': _ornull(c['data']),
+                    'yob': _asinteger(c['yob']),
+                    'state': _ornull(c['state']),
                     'org': _ornull(c['org']),
+                    'penalties': [],
                     'resname': _ornull(c.resname()),
                 }
             elif ser.startswith('tm'):  # Madison pair
@@ -677,10 +685,11 @@ class DataBridge():
                     'number': cno,
                     'name': _ornull(c['first'].strip()),
                     'nation': _ornull(c['nation']),
-                    'state': _ornull(c['data']),
+                    'state': _ornull(c['state']),
                     'black': blackRid,
                     'red': redRid,
                     'org': _ornull(c['org']),
+                    'penalties': [],
                     'resname': _ornull(c.resname()),
                 }
             elif ser.startswith('t'):  # Team Entry
@@ -693,9 +702,10 @@ class DataBridge():
                     'code': cno,
                     'name': _ornull(c['first'].strip()),
                     'nation': _ornull(c['nation']),
-                    'state': _ornull(c['data']),
+                    'state': _ornull(c['state']),
                     'members': members,
                     'org': _ornull(c['org']),
+                    'penalties': [],
                     'resname': _ornull(c.resname()),
                 }
             else:  # Rider
@@ -706,9 +716,10 @@ class DataBridge():
                     'last': _ornull(c['last'].strip().upper()),
                     'nation': _ornull(c['nation']),
                     'uciid': _ornull(c['uciid']),
-                    'dob': _ornull(c['dob']),
-                    'state': _ornull(c['data']),
+                    'yob': _asinteger(c['yob']),
+                    'state': _ornull(c['state']),
                     'org': _ornull(c['org']),
+                    'penalties': [],
                     'resname': _ornull(c.resname()),
                 }
 
@@ -1263,7 +1274,7 @@ class DataBridge():
 
         self._cache[path] = dt
         nt = datetime.now(tz=self._tz)
-        dataObj['serial'] = int(nt.timestamp())
+        dataObj['serial'] = nt.timestamp()
         dataObj['updated'] = nt
         msg = json.dumps(dataObj, cls=PublicEncoder)
 
