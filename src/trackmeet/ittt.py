@@ -410,7 +410,7 @@ class ittt:
         cr.add_section('traces')
         cr.add_section('weather')  # for each heat/competitor
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         self.chan_S = strops.confopt_chan(cr.get('event', 'chan_S'), defchans)
         self.chan_A = strops.confopt_chan(cr.get('event', 'chan_A'), defchana)
@@ -2161,7 +2161,7 @@ class ittt:
                     for sid in self.splitlist[0:-1]:  # all but full distance
                         lsplit = sid
                         fullap = self.splitmap[sid]['lap']
-                        if sid in rsplits and rsplits[sid] is not None:
+                        if rsplits and sid in rsplits and rsplits[sid] is not None:
                             sdist = self.splitmap[sid]['dist']
                             splitlbl = '%0.0f\u2006m' % (sdist, )
                             splitidx = '%0.0f' % (sdist, )

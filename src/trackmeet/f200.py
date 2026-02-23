@@ -297,7 +297,7 @@ class f200:
         cr.add_section('traces')
         cr.add_section('weather')  # for each heat/competitor
         if not cr.load(self.configfile):
-            _log.info('%r not read, loading defaults', self.configfile)
+            _log.debug('%r not read, loading defaults', self.configfile)
 
         self.chan_S = strops.confopt_chan(cr.get('event', 'chan_S'), defchans)
         self.chan_I = strops.confopt_chan(cr.get('event', 'chan_I'), defchans)
@@ -886,7 +886,7 @@ class f200:
             sv.append(substr)
         if self.onestart:
             if rcount > 0 and pcount < rcount:
-                sv.append('STANDINGS')
+                sv.append('Standings')
                 doheats = True
             else:
                 sv.append('Result')
@@ -904,7 +904,7 @@ class f200:
                     s.lines = newlines
                     if s.lines:
                         s.heading = None
-                        s.subheading = 'STARTLIST'
+                        s.subheading = 'Startlist'
                         ret.append(s)
 
         if len(self.decisions) > 0:
