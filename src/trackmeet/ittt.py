@@ -150,6 +150,12 @@ class ittt:
                 elif key == key_abort_B:
                     self.abortrider(self.bs)
                     return True
+                elif key == key_catch_A:
+                    self.walkover(self.fs)
+                    return True
+                elif key == key_catch_B:
+                    self.walkover(self.bs)
+                    return True
             elif key[0] == 'F':
                 if key == key_armstart:
                     self.armstart()
@@ -2346,6 +2352,30 @@ class ittt:
             self.meet.timer_log_msg(bib, '- Abort -')
             GLib.idle_add(self.delayed_announce)
 
+    def walkover(self, sp):
+        """Walk over sp, declaring them the winner 3.2.060."""
+        if not self.difftime:
+            # walk over only applies to final rounds
+            _log.info('Rider %r walkover ignored', sp.getrider())
+        elif self.timetype != 'single':
+            op = self.t_other(sp)
+            bib = op.getrider()
+            ri = self._getiter(bib)
+            if ri is not None:
+                self.settimes(ri,
+                              st=self.curstart,
+                              splits=op.splits,
+                              comment='lose')
+                op.tofinish('lose')
+            bib = sp.getrider()
+            ri = self._getiter(bib)
+            if ri is not None:
+                self.settimes(ri,
+                              st=self.curstart,
+                              splits=sp.splits,
+                              comment='w/o')
+            self.meet.timer_log_msg(bib, '- Walk-Over -')
+
     def catchrider(self, sp):
         """Selected lane has caught other rider."""
         if not self.difftime:
@@ -2921,6 +2951,8 @@ class ittt:
                 self.meet.print_report([sec],
                                        docstr='Chronometer Trace',
                                        exportfile='timing_trace')
+            else:
+                _log.info('No trace recorded for rider %s', bib)
 
     def now_button_clicked_cb(self, button, entry=None):
         """Set specified entry to the current time."""
