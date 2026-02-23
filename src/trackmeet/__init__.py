@@ -1733,7 +1733,7 @@ class trackmeet:
                         for rid in rlist:
                             nr = self.rdb.get_rider(rid)
                             if nr is not None:
-                                if nr['no'] and nr['last']:
+                                if nr['no'] and (nr['last'] or nr['first']):
                                     rno = strops.bibstr_key(nr['no'])
                                     aux.append((
                                         rno,
@@ -1922,11 +1922,13 @@ class trackmeet:
                     evno = None
                     if eh['type'] == 'session' and ievno != ' ':
                         if len(isec.lines) > 3:
+                            # break before section
                             isec.breakhints.append(len(isec.lines))
                         isec.lines.append(['', '', ''])
                         ievno = ' '
+                    elif eh['type'] == 'break':
+                        ievno = ''
                     else:
-                        pass
                         ievno = ''
                 else:
                     if ievno == lievno:
@@ -1938,12 +1940,18 @@ class trackmeet:
                 referno = evno
                 target = None
                 referid = eh['refe']
-                # use the sprint handler event for links when heat 2/3
+                descr = ' '.join([eh['pref'], eh['info']]).strip()
+
                 if eh['type'] == 'sprint heat' and referid:
+                    # use the sprint handler event for links when heat 2/3
                     if referid in self.edb:
                         evno = referid
                         refeh = self.edb[referid]
                         referid = refeh['refe']
+                elif eh['type'] == 'sprint final':
+                    # add heat 1 if not already part of info
+                    if 'heat' not in descr.lower():
+                        descr += ' Heat 1'
 
                 if referid:  # overwrite ref no, even on specials
                     referno = referid
@@ -1955,7 +1963,6 @@ class trackmeet:
                 if referno:
                     linkfile = 'event_' + str(referno).translate(
                         strops.WEBFILE_UTRANS)
-                descr = ' '.join([eh['pref'], eh['info']]).strip()
                 extra = None
                 iextra = None
                 if eh['laps']:
@@ -2394,6 +2401,18 @@ class trackmeet:
     def delayimp(self, dtime):
         """Set the impulse delay time."""
         self.main_timer.delaytime(dtime)
+
+    def elapsed(self, start, finish, places=3):
+        """Return an elapsed tod for the provided start and finish tod."""
+        ret = None
+        if start is not None and finish is not None:
+            ret = (finish - start).truncate(places)
+            if ret > tod.MAXELAP:
+                _log.warning('ToD overflow: st=%s ft=%s et=%s',
+                             start.rawtime(), finish.rawtime(),
+                             ret.rawtime(places))
+                ret = None
+        return ret
 
     def timer_log_event(self, ev=None):
         self.main_timer.printline(self.racenamecat(ev, slen=20, halign='l'))
@@ -3853,7 +3872,7 @@ class trackmeet:
                         os.rename(conf, bakfile)
                     _log.debug('Reset event %r', evt)
                     evh = self.edb[evt]
-                    evh['start'] = None
+                    evh['start time'] = None
 
             # Re-open curevent if closed
             if wasOpen is not None:
@@ -3900,6 +3919,11 @@ class trackmeet:
                     if self.curevent is not None and self.curevent.evno == evt:
                         self.close_event()
                     _log.debug('Deleting event %r', evt)
+                    # Backup config
+                    conf = self.event_configfile(evt)
+                    if os.path.isfile(conf):
+                        bakfile = conf + '.old'
+                        os.rename(conf, bakfile)
                     del self.edb[evt]
             self._ecb(None)
             _log.info('Deleted %d event%s', cnt, strops.plural(cnt))
