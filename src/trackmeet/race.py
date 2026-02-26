@@ -438,12 +438,11 @@ class race:
             deftimetype = '200m'
             defdistunits = 'metres'
             defdistance = '200'
+        elimrow = None
         if self.winopen:
             if self.evtype == 'elimination':
-                i = self.action_model.append(['Eliminate', 'out'])
+                elimrow = self.action_model.append(['Eliminate', 'out'])
                 self.action_model.append(['Un-Eliminate', 'in'])
-                if i is not None:
-                    self.ctrl_action_combo.set_active_iter(i)
             else:
                 self.action_model.append(['Withdraw', 'out'])
                 self.action_model.append(['Un-Withdraw', 'in'])
@@ -511,6 +510,11 @@ class race:
             self.info_expand.set_expanded(
                 strops.confopt_bool(cr.get('event', 'showinfo')))
             self.ctrl_places.set_text(self.places)
+            if self.evtype == 'elimination':
+                if len(self.riders) > 0:
+                    # riders in model, select the eliminate entry
+                    if elimrow is not None:
+                        self.ctrl_action_combo.set_active_iter(elimrow)
         else:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
@@ -1339,12 +1343,10 @@ class race:
             self.riders[path][col] = new_text
             rNo = self.riders[path][COL_NO]
             dbr = self.meet.rdb.get_rider(rNo, self.series)
-            if dbr is None:
-                # Assume one is required
-                self.meet.rdb.add_empty(rNo, self.series)
-                dbr = self.meet.rdb.get_rider(rNo, self.series)
-            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
-            dbr.rename(new_text)
+            if dbr is not None:
+                dbr.rename(new_text)
+            else:
+                self.meet.rdb.match_add(rNo, self.series, new_text)
 
     def gotorow(self, i=None):
         """Select row for specified iterator."""
