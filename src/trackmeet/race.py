@@ -109,6 +109,17 @@ class race:
                 # riders db changed, handled by meet object
                 pass
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        # qualification is based on place, not rank
+        ret = False
+        if self.event['topn']:  # integer
+            if place and place.isdigit():
+                qrank = int(place)
+                if qrank <= self.event['topn']:
+                    ret = True
+        return ret
+
     def eventcb(self, event):
         """Event change notification function"""
         if self.winopen:
@@ -682,17 +693,13 @@ class race:
         sec = report.twocol_startlist(secid)
 
         sec.nobreak = True
-        headvec = self.event.get_info(showevno=True).split()
+        stat = None
         if not program:
-            headvec.append('Start List')
+            stat = 'Start List'
         else:
             rankcol = ' '
-        sec.heading = ' '.join(headvec)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            sec.subheading = substr
+        sec.heading = self.event.get_info(showevno=True, extra=stat)
+        sec.subheading = self.event.subhead()
 
         self._startlines = []
         self.reorder_riders()
@@ -1531,9 +1538,6 @@ class race:
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
         sec.lines = []
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
         self._reslines = []
         first = True
         fs = ''
@@ -1553,6 +1557,7 @@ class race:
             rname = ''
             rnat = None
             pilot = None
+            qualified = False
             inf = ''
             if rh is not None:
                 rname = rh.resname()
@@ -1563,6 +1568,8 @@ class race:
             if r[COL_INRACE]:
                 if self.onestart and r[COL_PLACE] != '':
                     plstr = r[COL_PLACE]
+                    qualified = self.qualified(plstr)
+
                     if r[COL_PLACE].isdigit():
                         plstr += '.'
                         pcount = int(r[COL_PLACE])
@@ -1581,10 +1588,19 @@ class race:
                     inf = r[COL_INFO]
 
             if plstr:  # don't emit a row for unplaced riders
+                badges = []
+                rescls = inf
+                if qualified:
+                    badges.append('qualified')
+                    if inf:
+                        rescls = 'Q ' + inf
+                    else:
+                        rescls = 'Q'
+
                 if not first:
-                    sec.lines.append([plstr, rno, rname, inf, None, None])
+                    sec.lines.append([plstr, rno, rname, rescls, None, None])
                 else:
-                    sec.lines.append([plstr, rno, rname, inf, fs, None])
+                    sec.lines.append([plstr, rno, rname, rescls, fs, None])
                     first = False
                 if pilot:
                     sec.lines.append(pilot)
@@ -1600,14 +1616,13 @@ class race:
                     'name': rname,
                     'pilot': pname,
                     'info': inf,
+                    'badges': badges,
                 })
 
-        subv = []
-        if substr:
-            subv.append(substr)
+        stand = None
         if self.onestart:
-            subv.append(self.standingstr())
-        sec.subheading = '\u3000'.join(subv)
+            stand = self.standingstr()
+        sec.subheading = self.event.subhead(extra=stand)
 
         ret.append(sec)
 
