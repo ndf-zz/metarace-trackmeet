@@ -171,6 +171,15 @@ _CONFIG_SCHEMA = {
         'attr': 'provisional',
         'default': True,
     },
+    'flatindex': {
+        'prompt': 'Index:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Single?',
+        'hint': 'Use single-page index of events',
+        'attr': 'flatindex',
+        'default': False,
+    },
     'riderlist': {
         'prompt': 'Rider List:',
         'control': 'check',
@@ -329,6 +338,11 @@ _CONFIG_SCHEMA = {
         'hint': 'Event code saved in reports',
         'attr': 'eventcode',
     },
+    'email': {
+        'prompt': 'Contact:',
+        'hint': 'Email address for report issues link',
+        'attr': 'email',
+    },
     'indexlink': {
         'prompt': 'Index link:',
         'hint': 'Meet-level link to parent folder',
@@ -473,7 +487,7 @@ def mkrace(meet, ev, ui=True):
     ):
         ret = ps.ps(meet=meet, event=ev, ui=ui)
     elif etype == 'classification':
-        ret = classification.classification(meet=meet, event=ev, ui=ui)
+        ret = classification.Classification(meet=meet, event=ev, ui=ui)
     elif etype in (
             'flying 200',
             'flying lap',
@@ -691,6 +705,10 @@ class trackmeet:
         rep.strings['commstr'] = strops.promptstr('PCP:', self.pcp)
         rep.strings['orgstr'] = strops.promptstr('Organiser: ', self.organiser)
         rep.strings['diststr'] = self.document
+        if self.email:
+            rep.email = self.email
+        if self.eventcode:
+            rep.meetcode = self.eventcode
 
     ## Report print support
     def print_report(self,
@@ -837,16 +855,7 @@ class trackmeet:
         sec = report.section(secid)
         sec.nobreak = True
         sec.heading = event.event.get_info(showevno=True)
-        lapstring = strops.lapstring(event.event['laps'])
-        subv = []
-        for subp in (
-                lapstring,
-                event.event['distance'],
-                event.event['rules'],
-        ):
-            if subp:
-                subv.append(subp)
-        sec.subheading = '\u3000'.join(subv)
+        sec.subheading = event.event.subhead()
 
         for rno in event.get_startlist().split():
             rname = ''
@@ -895,13 +904,7 @@ class trackmeet:
         sec = report.section(secid)
         sec.nobreak = True
         sec.heading = event.event.get_info(showevno=True)
-        lapstring = strops.lapstring(event.event['laps'])
-        subv = []
-        for subp in (lapstring, event.event['distance'], event.event['rules'],
-                     event.standingstr()):
-            if subp:
-                subv.append(subp)
-        sec.subheading = '\u3000'.join(subv)
+        sec.subheading = event.event.subhead(extra=event.standingstr())
 
         for r in event.result_gen():
             rno = r[0]
@@ -1332,20 +1335,28 @@ class trackmeet:
             else:
                 race.addrider(st)
 
-    def autoplace_riders(self, race, autospec='', infocol=None, final=False):
-        """Fetch a flat list of places from the autospec.
+    def autoplace_riders(self, autospec='', final=True):
+        """Fetch a flattened list of places from the autospec.
 
-        If final not set, return standings from incomplete event
+        If final is False, return standings from an incomplete event
+
         """
         places = {}
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
             specvec = egroup.split(':')
+            if len(specvec) == 1:
+                # assume all places required
+                specvec.append('1-')
             if len(specvec) == 2:
                 evno = specvec[0].strip()
                 if evno not in self.autorecurse:
                     self.autorecurse.add(evno)
                     placeset = strops.placeset(specvec[1])
+                    lastplace = placeset[-1]
+                    allafter = False
+                    if specvec[1].endswith('-'):
+                        allafter = True
                     if evno in self.edb:
                         e = self.edb[evno]
                         h = mkrace(self, e, False)
@@ -1353,12 +1364,13 @@ class trackmeet:
                         isFinal = h.standingstr() == 'Result'
                         if not final or isFinal:
                             for ri in h.result_gen():
-                                if isinstance(ri[1],
-                                              int) and ri[1] in placeset:
+                                if isinstance(ri[1], int):
                                     rank = ri[1]
-                                    if rank not in places:
-                                        places[rank] = []
-                                    places[rank].append(ri[0])
+                                    if rank in placeset or (rank > lastplace
+                                                            and allafter):
+                                        if rank not in places:
+                                            places[rank] = []
+                                        places[rank].append(ri[0])
                         h = None
                     else:
                         _log.warning('Autospec event not found: %r', evno)
@@ -1367,16 +1379,25 @@ class trackmeet:
                     _log.debug('Ignoring loop in auto placelist: %r', evno)
             else:
                 _log.warning('Ignoring erroneous autospec group: %r', egroup)
-        ## TODO: insert placeholders 'X' for missing ranks and return
-        ##       entries for all ranks 1-max
-        ret = ''
-        for place in sorted(places):
-            ret += ' ' + '-'.join(places[place])
+        ret = []
+        if places:
+            maxrank = max(places)
+            upto = 1
+            for idx in range(maxrank):
+                place = idx + 1
+                if place in places:
+                    ret.append('-'.join(places[place]))
+                    upto += len(places[place])
+                else:
+                    if place >= upto:
+                        ret.append('X')
+                        upto = place + 1
+
         _log.debug('Place set: %r', ret)
-        return ret
+        return ' '.join(ret)
 
     def autostart_riders(self, race, autospec='', infocol=None, final=True):
-        """Try to fetch the startlist from race result info."""
+        """Add starters to race based on provided autospec."""
         # infocol allows selection of seeding value for subsequent ruonds
         # possible values:
         #                   1 -> rank (ps/omnium, pursuit)
@@ -1386,6 +1407,9 @@ class trackmeet:
             _log.debug('Recursion limit exceeded %s=%s', race.event['evid'],
                        autospec)
             return
+
+        teamdest = race.evtype in ('team sprint', 'team sprint race',
+                                   'team pursuit', 'team pursuit race')
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
             specvec = egroup.split(':')
@@ -1401,6 +1425,10 @@ class trackmeet:
                         ## load the place set map rank -> [(rider,seed),..]
                         h = mkrace(self, e, False)
                         h.loadconfig()
+                        teamsrc = h.evtype in ('team sprint',
+                                               'team sprint race',
+                                               'team pursuit',
+                                               'team pursuit race')
 
                         # Source is finished or omnium and dest not class
                         if h.finished or (h.evtype == 'omnium'
@@ -1420,17 +1448,19 @@ class trackmeet:
                                     evplacemap[rank].append((ri[0], seed))
                         else:
                             _log.debug('Event %r not final', evno)
-                        h = None
                         # maintain ordering of autospec
                         for p in placeset:
                             if p in evplacemap:
                                 for ri in evplacemap[p]:
-                                    # look up members if series matches
-                                    #if race.series.startswith('t'):
-                                    #_log.debug('Fetch members')
-                                    # race.get_members()
                                     race.addrider(ri[0], ri[1])
+                                    if teamsrc and teamdest:
+                                        newmembers = h.get_members(ri[0])
+                                        oldmembers = race.get_members(ri[0])
+                                        if newmembers and not oldmembers:
+                                            # only add if not already set
+                                            race.set_members(ri[0], newmembers)
                         self.autorecurse.remove(evno)
+                        h = None
                     else:
                         _log.debug('Ignoring loop in auto startlist: %r', evno)
                 else:
@@ -1851,8 +1881,25 @@ class trackmeet:
             prevno = evno
 
     def updateindex(self):
-        self.updatenextprev()  # re-compute next/prev link struct
+        # update the coarse next/prev links
+        self.updatenextprev()
+
+        # dump data bridge root elements if meetcode set
+        if self.eventcode:
+            self.db.updateMeet()
+
+        # check for existing export path
         self.check_export_path()
+
+        if self.flatindex:
+            self.updateflatindex()
+        else:
+            self.updatefullindex()
+        return False
+
+    def updatefullindex(self):
+        """Update standard, multi-session index of events."""
+
         orep = report.report()
         self.report_strings(orep)
         orep.strings['docstr'] = ''
@@ -1888,6 +1935,7 @@ class trackmeet:
         sec = report.event_index('eventindex')
         sec.heading = 'Index of Events'
         isec = report.section('eventindex')
+        isec.grey = False
         isec.heading = 'Event Index'
         #sec.subheading = Date?
         ievno = None
@@ -1991,11 +2039,132 @@ class trackmeet:
         ofile = os.path.join(EXPORTPATH, jbase)
         with metarace.savefile(ofile) as f:
             orep.output_json(f)
+        GLib.idle_add(self.mirror_start)
 
-        # dump data bridge root elements if meetcode set
-        if self.eventcode:
-            self.db.updateMeet()
+    def updateflatindex(self):
+        """Update a flat, carnival style single index of events.
 
+        Notes:
+
+           - will suppress classification events unless index option is set
+           - any event with index set will have the result flag forced true
+        """
+
+        orep = report.report()
+        self.report_strings(orep)
+        orep.strings['docstr'] = ''
+        orep.strings['subtitle'] = self.subtitle
+        orep.set_provisional(self.provisional)
+        orep.shortname = self.shortname
+        if self.indexlink:
+            orep.indexlink = self.indexlink
+        if self.nextlink:
+            orep.nextlink = self.nextlink
+        if self.prevlink:
+            orep.prevlink = self.prevlink
+        if self.provisional:
+            orep.reportstatus = 'provisional'
+        else:
+            orep.reportstatus = 'final'
+
+        pfilebase = 'program'
+        pfile = os.path.join(EXPORTPATH, pfilebase + '.pdf')
+        rfilebase = 'result'
+        rfile = os.path.join(EXPORTPATH, rfilebase + '.pdf')
+
+        lt = []
+        lb = None
+        if os.path.exists(rfile):
+            lt = ['pdf', 'xlsx']
+            lb = os.path.join(self.linkbase, rfilebase)
+        elif os.path.exists(pfile):
+            lt = ['pdf', 'xlsx']
+            lb = os.path.join(self.linkbase, pfilebase)
+        sec = report.event_index('eventindex')
+        sec.heading = 'Index of Events'
+        isec = report.section('eventindex')
+        isec.heading = 'Event Index'
+        ievno = None
+        lievno = None
+        lrules = None
+        cursession = None
+        for eh in self.edb:
+            # update session numbers on the way through
+            if eh['type'] == 'session':
+                cursession = eh['session']
+            else:
+                if cursession is not None and eh['session'] != cursession:
+                    eh['session'] = cursession
+
+            if eh['inde']:  # include in index?
+                # ensure result flag is set
+                if not eh['result']:
+                    eh.set_value('result', True)
+                    eh.set_value('dirty', True)
+                evno = eh['evid']
+                ievno = eh.get_bridge_evno()
+                ilaps = eh['laps']
+                irules = eh['rules']
+                if eh['type'] in ('break', 'session'):
+                    evno = None
+                    if eh['type'] == 'session' and ievno != ' ':
+                        if len(isec.lines) > 3:
+                            # break before section
+                            isec.breakhints.append(len(isec.lines))
+                        isec.lines.append(['', '', ''])
+                        ievno = ' '
+                    elif eh['type'] == 'break':
+                        ievno = ''
+                    else:
+                        ievno = ''
+                else:
+                    if ievno == lievno:
+                        ievno = ' '
+                        irules = None
+                        ilaps = None
+                    else:
+                        lievno = ievno
+                referno = evno
+                descr = ' '.join([eh['pref'], eh['info']]).strip()
+
+                if eh['type'] == 'sprint heat' and eh['refe']:
+                    # use the sprint handler event for links when heat 2/3
+                    if eh['refe'] in self.edb:
+                        evno = referid
+                elif eh['type'] == 'sprint final':
+                    # add heat 1 if not already part of info
+                    if 'heat' not in descr.lower():
+                        descr += ' Heat 1'
+
+                linkfile = None
+                if referno:
+                    linkfile = 'event_' + str(referno).translate(
+                        strops.WEBFILE_UTRANS)
+                extra = None
+                iextra = None
+                if eh['laps']:
+                    extra = '%s\u2006Lap%s' % (eh['laps'],
+                                               strops.plural(eh['laps']))
+                    if ilaps is not None:
+                        iextra = extra
+                rules = eh['rules']  # progression
+                # this is too fragile`
+                if eh['evov']:
+                    evno = eh['evov'].strip()
+                sec.lines.append([evno, None, descr, extra, linkfile, None])
+                isec.lines.append([ievno, ' ', descr, iextra, None, irules])
+        if sec.lines:
+            orep.add_section(sec)
+            self._indexsec = isec
+        basename = 'index'
+        orep.canonical = os.path.join(self.linkbase, basename + '.json')
+        ofile = os.path.join(EXPORTPATH, basename + '.html')
+        with metarace.savefile(ofile) as f:
+            orep.output_html(f, linkbase=lb, linktypes=lt)
+        jbase = basename + '.json'
+        ofile = os.path.join(EXPORTPATH, jbase)
+        with metarace.savefile(ofile) as f:
+            orep.output_json(f)
         GLib.idle_add(self.mirror_start)
 
     def mirror_start(self, dirty=None):
@@ -2126,10 +2295,9 @@ class trackmeet:
                     # in page links
                     orep.shortname = evstr
                     orep.indexlink = './'  # url to program of events
-                    if evno in self.prevlinks:
-                        orep.prevlink = self.prevlinks[evno]
-                    if evno in self.nextlinks:
-                        orep.nextlink = self.nextlinks[evno]
+
+                    # enable browser back button
+                    orep.prevlink = True
 
                     # build combined html style report
                     for sec in resrep:
@@ -2157,10 +2325,10 @@ class trackmeet:
                         orep.output_json(f)
                     sleep(0)
 
-                # dump detail reports for ip, tt, ts, tp, f200
+                # dump detail reports for ip, tt, ts, tp
                 if etype in ('indiv tt', 'team sprint', 'team sprint race',
                              'indiv pursuit', 'pursuit race', 'team pursuit',
-                             'team pursuit race', 'flying 200', 'flying lap'):
+                             'team pursuit race'):
                     for res in r.result_gen():
                         if res[1]:
                             bib = res[0]
@@ -2176,6 +2344,7 @@ class trackmeet:
                             else:
                                 drep.reportstatus = 'final'
                             self.report_strings(drep)
+                            drep.prevlink = True
                             drep.strings['subtitle'] = self.subtitle.strip()
                             drep.shortname = 'Timing Detail'
                             drep.strings['docstr'] = 'Timing Detail'
@@ -4055,6 +4224,7 @@ class trackmeet:
         self.communiques = False
         self.domestic = True
         self.riderlist = False
+        self.flatindex = False
         self.startpage = None
         self.endpages = 0
         self.padbook = 0
@@ -4069,6 +4239,7 @@ class trackmeet:
         self.mirrorcmd = None
         self.shortname = ''
         self.eventcode = ''
+        self.email = ''
         self.indexlink = '../'
         self.prevlink = None
         self.nextlink = None
