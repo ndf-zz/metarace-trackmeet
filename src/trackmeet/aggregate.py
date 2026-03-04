@@ -180,7 +180,7 @@ _CONFIG_SCHEMA = {
 }
 
 
-class teamagg(classification.classification):
+class teamagg(classification.Classification):
     """Crude Teams Aggregate - based on organisation field"""
 
     def ridercb(self, rider):
@@ -318,21 +318,10 @@ class teamagg(classification.classification):
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.units = 'pt'
-        sec.nobreak = True  # TODO: check in comp
+        sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        subvec = []
-        if self.curlabel:
-            subvec.append(self.curlabel)
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            subvec.append(substr)
-        stat = self.standingstr()
-        if stat:
-            subvec.append(stat)
-        if subvec:
-            sec.subheading = '\u3000'.join(subvec)
+        sec.subheading = self.event.subhead(prefix=self.curlabel,
+                                            extra=self.standingstr())
 
         teamnames = self.series.startswith('t')
         self._reslines = []
@@ -1092,19 +1081,8 @@ class indivagg(teamagg):
         sec = report.section(secid)
         sec.units = 'pt'
         sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        subvec = []
-        if self.curlabel:
-            subvec.append(self.curlabel)
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            subvec.append(substr)
-        stat = self.standingstr()
-        if stat:
-            subvec.append(stat)
-        if subvec:
-            sec.subheading = '\u3000'.join(subvec)
+        sec.subheading = self.event.subhead(prefix=self.curlabel,
+                                            extra=self.standingstr())
 
         self._reslines = []
         self._sreslines = []

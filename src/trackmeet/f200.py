@@ -571,15 +571,10 @@ class f200:
         sec = report.dual_ittt_startlist(secid)
         sec.nobreak = True
         sec.set_single()  # 200s are one-up
-        headvec = self.event.get_info(showevno=True).split()
-        if not program:
-            headvec.append('Start List')
-        sec.heading = ' '.join(headvec)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            sec.subheading = substr
+        stat = None if program else 'Start List'
+        sec.heading = self.event.get_info(showevno=True, extra=stat)
+        sec.subheading = self.event.subhead()
+
         sec.lines = self.get_heats()
 
         # Prizemoney line
@@ -805,9 +800,7 @@ class f200:
         sec = report.section(secid)
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
+
         sec.lines = []
         self._reslines = []
         ftime = None
@@ -858,11 +851,16 @@ class f200:
                         stime = '(%s)\u3000' % (sp100.rawtime(self.precision))
                         rstime = stime + rtime
             if rank:
-                sec.lines.append([rank, rno, rname, rcls, rstime, dtime])
                 finriders.add(rno)
                 badges = []
+                rescls = rcls
                 if qualified:
                     badges.append('qualified')
+                    if rcls:
+                        rescls = 'Q ' + rcls
+                    else:
+                        rescls = 'Q'
+                sec.lines.append([rank, rno, rname, rescls, rstime, dtime])
                 pname = None
                 if pilot:
                     sec.lines.append(pilot)
@@ -881,16 +879,14 @@ class f200:
                 })
 
         doheats = False
-        sv = []
-        if substr:
-            sv.append(substr)
+        stand = None
         if self.onestart:
             if rcount > 0 and pcount < rcount:
-                sv.append('Standings')
+                stand = 'Standings'
                 doheats = True
             else:
-                sv.append('Result')
-        sec.subheading = '\u3000'.join(sv)
+                stand = 'Result'
+        sec.subheading = self.event.subhead(stand)
 
         ret.append(sec)
 
@@ -1240,12 +1236,10 @@ class f200:
             self.riders[path][col] = new_text
             rNo = self.riders[path][COL_NO]
             dbr = self.meet.rdb.get_rider(rNo, self.series)
-            if dbr is None:
-                # Assume one is required
-                self.meet.rdb.add_empty(rNo, self.series)
-                dbr = self.meet.rdb.get_rider(rNo, self.series)
-            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
-            dbr.rename(new_text)
+            if dbr is not None:
+                dbr.rename(new_text)
+            else:
+                self.meet.rdb.match_add(rNo, self.series, new_text)
 
     def placexfer(self):
         """Transfer places into model."""
@@ -1696,10 +1690,7 @@ class f200:
         sec = report.bullet_text(secid)
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
-        sec.subheading = '\u3000'.join((
-            self.event['distance'],
-            self.event['rules'],
-        )).strip()
+        sec.subheading = self.event.subhead()
         if self._detail is None:
             self.placexfer()
         ret.append(sec)
@@ -1716,20 +1707,14 @@ class f200:
                                     (ph.altname(pilot=True), ))
                 sec.lines.append(['', '\n'.join(namerows)])
 
-            # Facility
-            if self.meet.facility:
-                sec.lines.append(
-                    ['', 'Facility code: %s' % (self.meet.facility, )])
-
             # Weather
             env = None
             if bib in self.compweather and self.compweather[bib]:
                 env = self.compweather[bib]
-                wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%, ~%0.4f\u2006kg/m\u00b3' % (
+                wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%' % (
                     env['t'],
                     env['p'],
                     env['h'],
-                    env['d'],
                 )
                 sec.lines.append(['', wstr])
 
@@ -1739,9 +1724,11 @@ class f200:
                 st = r[COL_START]
                 if self.event['start'] is not None:
                     dt = self.event['start']
-                    stxt = 'Start: %s, %s' % (st.meridiem(secs=False),
-                                              dt.date().isoformat())
+                    stxt = 'Start: %s %s %s' % (dt.date().isoformat(),
+                                                st.meridiem(secs=False),
+                                                dt.strftime('%Z'))
                 else:
+                    tzs = ''
                     stxt = 'Start: %s' % (st.meridiem(secs=False), )
                 sec.lines.append(['', stxt])
 
@@ -1770,7 +1757,7 @@ class f200:
                 if r[COL_PLACE]:
                     if self.qualified(pls):
                         rv.append('Qualified')
-                sec.lines.append(['', '\u3000'.join(rv)])
+                sec.lines.append(['', ' '.join(rv)])
 
             # include split times
             if bib in self._detail:
@@ -1780,6 +1767,7 @@ class f200:
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
                     sec = report.lapsplits(secid)
+                    sec.colheader = ['Split', '', 'Elapsed']
                     ret.append(sec)
                     sec.places = self.precision
                     sec.weather = env

@@ -117,6 +117,23 @@ class ittt:
                 # riders db changed, handled by meet object
                 pass
 
+    def get_members(self, rno):
+        """Return team members for the provided competitor."""
+        ret = ''
+        if self.teamnames:
+            rh = self._getrider(rno)
+            if rh is not None:
+                ret = rh[COL_MEMBERS]
+        return ret
+
+    def set_members(self, rno, members):
+        """Set team members for the provided competitor."""
+        ret = ''
+        if self.teamnames:
+            rh = self._getrider(rno)
+            if rh is not None:
+                rh[COL_MEMBERS] = members
+
     def eventcb(self, event):
         """Event change notification function"""
         if self.winopen:
@@ -446,6 +463,7 @@ class ittt:
 
         # re-load starters and results
         self.onestart = False
+        rdetail = False
         rlist = cr.get('event', 'startlist').upper().split()
         for r in rlist:
             nr = [r, '', '', '', '', '', '', None, None, None, None]
@@ -462,6 +480,11 @@ class ittt:
                     nr[COL_SEED] = ril[1]
                 if len(ril) >= 3:  # write heat into rec
                     nr[COL_MEMBERS] = ril[2]
+                    if nr[COL_MEMBERS]:
+                        # assume manual edit was made
+                        _log.debug('Set members on %s to %r', r,
+                                   nr[COL_MEMBERS])
+                        rdetail = True
                 if len(ril) >= 4:  # Start ToD and others
                     st = tod.mktod(ril[3])
                     if st is not None:
@@ -475,6 +498,7 @@ class ittt:
                 nr[COL_NAME] = dbr.listname()
                 if not nr[COL_MEMBERS]:
                     # pull in members from riderdb if not yet defined
+                    _log.debug('Replace members on %s from rdb', r)
                     nr[COL_MEMBERS] = dbr['members']
             nri = self.riders.append(nr)
             if not self.readonly:
@@ -490,7 +514,7 @@ class ittt:
             self.settimes(nri, st, ft, lt, sp, doplaces=False, comment=co)
         self.placexfer()
 
-        if not self.onestart and self.event['auto']:
+        if not rdetail and not self.onestart and self.event['auto']:
             self.riders.clear()
             self.meet.autostart_riders(self,
                                        self.event['auto'],
@@ -648,19 +672,10 @@ class ittt:
                 # tm for madison support events
                 sec.showheats = True
 
-        headvec = self.event.get_info(showevno=True).split()
-        if not program:
-            headvec.append('Start List')
-        sec.heading = ' '.join(headvec)
+        stat = None if program else 'Start List'
+        sec.heading = self.event.get_info(showevno=True, extra=stat)
+        sec.subheading = self.event.subhead()
 
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join((
-            lapstring,
-            self.event['distance'],
-            self.event['rules'],
-        )).strip()
-        if substr:
-            sec.subheading = substr
         if self.event['plac']:
             sec.lines = self.get_heats(placeholders=self.event['plac'])
         else:
@@ -1104,12 +1119,7 @@ class ittt:
         sec = report.section(secid)
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join((
-            lapstring,
-            self.event['distance'],
-            self.event['rules'],
-        )).strip()
+
         sec.lines = []
         self._reslines = []
         ftime = None
@@ -1172,11 +1182,16 @@ class ittt:
                     elif r[COL_COMMENT] not in ('abd', 'dns', 'dsq', 'dnf'):
                         rtime = 'ntr'
             if rank:
-                sec.lines.append([rank, rno, rname, rcls, rtime, dtime])
                 finriders.add(rno)
                 badges = []
+                rescls = rcls
                 if qualified:
                     badges.append('qualified')
+                    if rcls:
+                        rescls = 'Q ' + rcls
+                    else:
+                        rescls = 'Q'
+                sec.lines.append([rank, rno, rname, rescls, rtime, dtime])
                 pname = None
                 if pilot:
                     sec.lines.append(pilot)
@@ -1214,16 +1229,14 @@ class ittt:
                     'badges': badges,
                 })
         doheats = False
-        sv = []
-        if substr:
-            sv.append(substr)
+        stand = None
         if self.onestart:
             if rcount > 0 and pcount < rcount:
-                sv.append('Standings')
+                stand = 'Standings'
                 doheats = True
             else:
-                sv.append('Result')
-        sec.subheading = '\u3000'.join(sv)
+                stand = 'Result'
+        sec.subheading = self.event.subhead(extra=stand)
 
         ret.append(sec)
 
@@ -2020,7 +2033,7 @@ class ittt:
             _log.warning('Removed rider %r was in event %r result', bib,
                          self.evno)
             self.results.remove(bib)
-            for split in self.splitap.values():
+            for split in self.splitmap.values():
                 split['data'].remove(bib)
             if bib in self.traces:
                 del self.traces[bib]
@@ -2096,18 +2109,21 @@ class ittt:
                 if nno not in nr:
                     nr.append(nno)
             self.riders[path][col] = ' '.join(nr)
-            dbr = self.meet.rdb.get_rider(self.riders[path][COL_NO],
-                                          self.series)
-            if dbr is not None:
-                newmbrs = []
-                oldmbrs = dbr['members'].split()
-                for rno in oldmbrs:
-                    nno = strops.bibstr(rno)
-                    newmbrs.append(nno)
-                for rno in nr:
-                    if rno not in newmbrs:
-                        newmbrs.append(rno)
-                dbr['members'] = ' '.join(newmbrs)
+            if nr:
+                # write changes to riderdb
+                dbr = self.meet.rdb.get_rider(self.riders[path][COL_NO],
+                                              self.series)
+                if dbr is not None:
+                    newmbrs = []
+                    oldmbrs = dbr['members'].split()
+                    for rno in oldmbrs:
+                        nno = strops.bibstr(rno)
+                        newmbrs.append(nno)
+
+                    for rno in nr:
+                        if rno not in newmbrs:
+                            newmbrs.append(rno)
+                    dbr['members'] = ' '.join(newmbrs)
 
     def _editname_cb(self, cell, path, new_text, col):
         """Edit the rider name if possible."""
@@ -2116,12 +2132,10 @@ class ittt:
             self.riders[path][col] = new_text
             rNo = self.riders[path][COL_NO]
             dbr = self.meet.rdb.get_rider(rNo, self.series)
-            if dbr is None:
-                # Assume one is required
-                self.meet.rdb.add_empty(rNo, self.series)
-                dbr = self.meet.rdb.get_rider(rNo, self.series)
-            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
-            dbr.rename(new_text)
+            if dbr is not None:
+                dbr.rename(new_text)
+            else:
+                self.meet.rdb.match_add(rNo, self.series, new_text)
 
     def placexfer(self):
         """Transfer places into model."""
@@ -2503,7 +2517,7 @@ class ittt:
                         ret = (tn[0] + tn[1], '')
                     elif mc == 3:
                         ret = (tn[0] + tn[1], tn[2])
-                    else:
+                    elif mc > 0:
                         ret = (tn[0] + tn[1], tn[2] + tn[3])
         return ret
 
@@ -2815,12 +2829,7 @@ class ittt:
         sec = report.bullet_text(secid)
         sec.nobreak = True
         sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        sec.subheading = '\u3000'.join((
-            lapstring,
-            self.event['distance'],
-            self.event['rules'],
-        )).strip()
+        sec.subheading = self.event.subhead()
         if self._detail is None:
             self.placexfer()
         ret.append(sec)
@@ -2842,20 +2851,14 @@ class ittt:
                             namerows.append('\t%s' % (trh.altname(), ))
                 sec.lines.append(['', '\n'.join(namerows)])
 
-            # Facility
-            if self.meet.facility:
-                sec.lines.append(
-                    ['', 'Facility code: %s' % (self.meet.facility, )])
-
             # Weather
             env = None
             if bib in self.compweather and self.compweather[bib]:
                 env = self.compweather[bib]
-                wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%, ~%0.4f\u2006kg/m\u00b3' % (
+                wstr = 'Weather: %0.1f\u2006\u2103, %0.1f\u2006hPa, %0.1f\u2006%%' % (
                     env['t'],
                     env['p'],
                     env['h'],
-                    env['d'],
                 )
                 sec.lines.append(['', wstr])
 
@@ -2865,9 +2868,11 @@ class ittt:
                 st = r[COL_START]
                 if self.event['start'] is not None:
                     dt = self.event['start']
-                    stxt = 'Start: %s, %s' % (st.meridiem(secs=False),
-                                              dt.date().isoformat())
+                    stxt = 'Start: %s %s %s' % (dt.date().isoformat(),
+                                                st.meridiem(secs=False),
+                                                dt.strftime('%Z'))
                 else:
+                    tzs = ''
                     stxt = 'Start: %s' % (st.meridiem(secs=False), )
                 sec.lines.append(['', stxt])
 
@@ -2901,7 +2906,7 @@ class ittt:
                 if r[COL_PLACE]:
                     if self.qualified(pls):
                         rv.append('Qualified')
-                sec.lines.append(['', '\u3000'.join(rv)])
+                sec.lines.append(['', ' '.join(rv)])
 
             # include split times
             if bib in self._detail:
@@ -2911,6 +2916,7 @@ class ittt:
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
                     sec = report.lapsplits(secid)
+                    sec.colheader = ['Split', 'Lap', 'Elapsed']
                     ret.append(sec)
                     sec.places = self.precision
                     sec.weather = env
@@ -2940,10 +2946,7 @@ class ittt:
                 secid = 'trace-' + str(bib).translate(strops.WEBFILE_UTRANS)
                 sec = report.threecol_section(secid)
                 sec.heading = self.event.get_info(showevno=True)
-                lapstring = strops.lapstring(self.event['laps'])
-                sec.subheading = '\u3000'.join(
-                    (lapstring, self.event['distance'],
-                     self.event['rules'])).strip()
+                sec.subheading = self.event.subhead()
 
                 sec.monospace = True
                 sec.nobreak = True

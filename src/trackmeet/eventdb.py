@@ -520,7 +520,7 @@ class Event:
             coldump = tuple(_EVENT_COLUMNS)
         return (self._get_colstr(c) for c in coldump)
 
-    def get_info(self, showevno=False):
+    def get_info(self, showevno=False, extra=None):
         """Return a concatenated and stripped event information string."""
         rv = []
         if showevno and self['type'] != 'break':
@@ -531,7 +531,24 @@ class Event:
             rv.append(self['pref'])
         if self['info']:
             rv.append(self['info'])
+        if extra:
+            rv.append(extra)
         return ' '.join(rv)
+
+    def subhead(self, extra=None, prefix=None):
+        """Return standard report subheading for event."""
+        ret = []
+        if prefix:
+            ret.append(prefix)
+        if self['laps']:
+            ret.append(strops.lapstring(self['laps']))
+        if self['distance']:
+            ret.append(self['distance'])
+        if self['rules']:
+            ret.append(self['rules'])
+        if extra:
+            ret.append(extra)
+        return '\u3000'.join(ret)
 
     def get_type(self):
         """Return event type string."""

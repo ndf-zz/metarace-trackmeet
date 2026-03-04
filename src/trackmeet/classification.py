@@ -42,8 +42,52 @@ key_abort = 'F5'  # (+CTRL)
 key_startlist = 'F3'
 key_results = 'F4'
 
+_CONFIG_SCHEMA = {
+    'etype': {
+        'prompt': 'Classification',
+        'control': 'section',
+    },
+    'override': {
+        'prompt': 'Override:',
+        'hint': 'Manual override of final places',
+        'default': '',
+        'attr': 'override',
+    },
+    'placesrc': {
+        'prompt': 'Places:',
+        'hint': 'Autospec places definition for qualified competitors',
+        'default': '',
+        'attr': 'placesrc',
+    },
+    'medals': {
+        'prompt': 'Medals:',
+        'hint': 'List of medals awarded',
+        'default': '',
+        'attr': 'medals',
+    },
+    'others': {
+        'prompt': 'Others:',
+        'hint':
+        'Autospec list of unqualified competitors, to be ranked as others',
+        'default': '',
+        'attr': 'others',
+    },
+    'othersrc': {
+        'prompt': 'Others Source:',
+        'control': 'short',
+        'hint': 'Optional event ID to use for ranking others',
+        'attr': 'othersrc',
+    },
+    'showevents': {
+        'prompt': 'Show Events:',
+        'hint': 'Include listed event ids in result report exports',
+        'default': '',
+        'attr': 'showevents',
+    },
+}
 
-class classification:
+
+class Classification:
 
     def ridercb(self, rider):
         """Rider change notification"""
@@ -87,24 +131,19 @@ class classification:
         """Load race config from disk."""
         findsource = False
 
-        cr = jsonconfig.config({
-            'event': {
+        cr = jsonconfig.config(
+            {'event': {
                 'id': EVENT_ID,
                 'showinfo': False,
-                'showevents': '',
                 'decisions': [],
-                'placesrc': '',
-                'medals': ''
-            }
-        })
-        cr.add_section('event')
+            }})
+        cr.add_section('event', _CONFIG_SCHEMA)
         if not cr.load(self.configfile):
             _log.debug('%r not read, loading defaults', self.configfile)
 
         if 'omnium' in self.event['competition']:
-            # pre-load source events by searching event db unless config'd
-            if not cr.get('event', 'placesrc'):
-                cr.set('event', 'medals', 'Gold Silver Bronze')
+            if not cr.get_value('event', 'placesrc'):
+                # pre-load source events by searching event db
                 sources = {
                     'scratch': None,
                     'tempo': None,
@@ -167,18 +206,15 @@ class classification:
             else:
                 _log.debug('Omnium already configured')
         else:
-            # try to pre-load the places and showevents
+            # import showevents and places from event
             if self.event['depends']:
-                if not cr.get('event', 'showevents'):
+                if not cr.get_value('event', 'showevents'):
                     cr.set('event', 'showevents', self.event['depends'])
             if self.event['auto']:
-                if not cr.get('event', 'placesrc'):
+                if not cr.get_value('event', 'placesrc'):
                     cr.set('event', 'placesrc', self.event['auto'])
 
-        self.showevents = cr.get('event', 'showevents')
-        self.placesrc = cr.get('event', 'placesrc')
-        self.medals = cr.get('event', 'medals')
-        self.decisions = cr.get('event', 'decisions')
+        cr.export_section('event', self)  # pull in config from schema
 
         if self.winopen:
             self.update_expander_lbl_cb()
@@ -199,17 +235,10 @@ class classification:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        headvec = [
-            'Event', self.evno, ':', self.event['pref'], self.event['info']
-        ]
-        if not program:
-            headvec.append('- Start List')
-        sec.heading = ' '.join(headvec)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = ' '.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            sec.subheading = substr
+
+        stat = None if program else 'Start List'
+        sec.heading = self.event.get_info(showevno=True, extra=stat)
+        sec.subheading = self.event.subhead()
 
         self._startlines = []
         # only write out data bridge starters
@@ -257,11 +286,8 @@ class classification:
             _log.error('Attempt to save readonly event')
             return
         cw = jsonconfig.config()
-        cw.add_section('event')
-        cw.set('event', 'showevents', self.showevents)
-        cw.set('event', 'placesrc', self.placesrc)
-        cw.set('event', 'medals', self.medals)
-        cw.set('event', 'decisions', self.decisions)
+        cw.add_section('event', _CONFIG_SCHEMA)
+        cw.import_section('event', self)
         if self.winopen:
             cw.set('event', 'showinfo', self.info_expand.get_expanded())
         else:
@@ -324,18 +350,11 @@ class classification:
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         sec = report.section(secid)
         sec.nobreak = True
-        sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        subvec = []
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            subvec.append(substr)
-        stat = self.standingstr()
-        if stat:
-            subvec.append(stat)
-        if subvec:
-            sec.subheading = '\u3000'.join(subvec)
+        sec.heading = self.event.get_info(showevno=False)
+        stat = None
+        if self.finished:
+            stat = self.standingstr()
+        sec.subheading = self.event.subhead(stat)
 
         teamnames = self.series.startswith('t')
         prevmedal = ''
@@ -386,13 +405,16 @@ class classification:
                 badges = [mds.lower()]
             if medal == '' and prevmedal != '':
                 # add empty line
-                sec.lines.append([None, None, None])
+                if self.finished:
+                    sec.lines.append([None, None, None])
             prevmedal = medal
 
-            sec.lines.append([rank, rno, rname, rcls, None, medal])
+            if self.finished:
+                sec.lines.append([rank, rno, rname, rcls, None, medal])
             pname = None
             if pilot:
-                sec.lines.append(pilot)
+                if self.finished:
+                    sec.lines.append(pilot)
                 pname = pilot[2]
             self._reslines.append({
                 'rank': pcount,
@@ -405,7 +427,7 @@ class classification:
                 'badges': badges,
                 'members': members,
             })
-            if tlink:
+            if tlink and self.finished:
                 sec.lines.extend(tlink)
         ret.append(sec)
 
@@ -493,76 +515,130 @@ class classification:
         """Update internal model."""
         self.riders.clear()
 
-        # Create ordered place lookup
-        currank = 0
-        lookup = {}
-        for p in self.placesrc.split(';'):
-            placegroup = p.strip()
-            if placegroup:
-                #_log.debug('Adding place group %r at rank %r', placegroup,
-                #currank)
-                if placegroup == 'X':
-                    _log.debug('Added placeholder at rank %r', currank)
-                    currank += 1
-                else:
-                    specvec = placegroup.split(':')
-                    if len(specvec) == 2:
-                        evno = specvec[0].strip()
-                        if evno not in lookup:
-                            lookup[evno] = {}
-                        if evno != self.evno:
-                            placeset = strops.placeset(specvec[1])
-                            for i in placeset:
-                                lookup[evno][i] = currank
-                                currank += 1
-                        else:
-                            _log.warning('Ignored ref to self %r at rank %r',
-                                         placegroup, currank)
-                    else:
-                        _log.warning('Invalid placegroup %r at rank %r',
-                                     placegroup, currank)
-            else:
-                _log.debug('Empty placegroup at rank %r', currank)
-
-        # Create an ordered list of rider numbers using lookup
-        placemap = {}
+        # places first: determine how many places are to be awarded directly
         maxcrank = 0
-        self.finished = True  # Assume finished unless one source is not
-        for evno in lookup:
-            r = self.meet.get_event(evno, False)
-            if r is None:
-                _log.warning('Event %r not found for lookup %r', evno,
-                             lookup[evno])
-                return
-            r.loadconfig()  # now have queryable event handle
-            if r.finished:
-                for res in r.result_gen():
-                    if isinstance(res[1], int):
-                        if res[1] in lookup[evno]:
-                            crank = lookup[evno][res[1]] + 1
-                            maxcrank = max(maxcrank, crank)
-                            #_log.debug(
-                            #'Assigned place %r to rider %r at rank %r',
-                            #crank, res[0], res[1])
-                            if crank not in placemap:
-                                placemap[crank] = []
-                            placemap[crank].append(res[0])
+        placemap = {}
+        if self.override:
+            # final ranking has been manually specificed
+            cp = 1
+            for placegroup in self.override.split():
+                if placegroup.upper() != 'X':  # skip these entirely
+                    placemap[cp] = []
+                    for rno in placegroup.split('-'):
+                        if rno.upper() != 'X':
+                            ## TODO: sort group members by rider no
+                            placemap[cp].append(rno)
+                cp += 1
+            maxcrank = max(placemap)
+            _log.debug('Manual override: %r', placemap)
+        else:
+            # fill places using an ordered lookup
+            currank = 0
+            lookup = {}
+            for p in self.placesrc.split(';'):
+                placegroup = p.strip()
+                if placegroup:
+                    _log.debug('Adding place group %r at rank %r', placegroup,
+                               currank)
+                    if placegroup.upper() == 'X':
+                        _log.debug('Added placeholder at rank %r', currank)
+                        currank += 1
+                    else:
+                        specvec = placegroup.split(':')
+                        if len(specvec) == 2:
+                            evno = specvec[0].strip()
+                            if evno not in lookup:
+                                lookup[evno] = {}
+                            if evno != self.evno:
+                                placeset = strops.placeset(specvec[1])
+                                for i in placeset:
+                                    lookup[evno][i] = currank
+                                    currank += 1
+                            else:
+                                _log.warning(
+                                    'Ignored ref to self %r at rank %r',
+                                    placegroup, currank)
+                        else:
+                            _log.warning('Invalid placegroup %r at rank %r',
+                                         placegroup, currank)
+                else:
+                    _log.debug('Empty placegroup at rank %r', currank)
+            _log.debug('currank=%r, lookup=%r', currank, lookup)
+            maxcrank = currank
+
+            # Create an ordered list of rider numbers using lookup
+            self.finished = True  # Assume finished unless one source is not
+            for evno in lookup:
+                r = self.meet.get_event(evno, False)
+                if r is None:
+                    _log.warning('Event %r not found for lookup %r', evno,
+                                 lookup[evno])
+                    return
+                r.loadconfig()  # now have queryable event handle
+                if r.finished:
+                    for res in r.result_gen():
+                        if isinstance(res[1], int):
+                            if res[1] in lookup[evno]:
+                                crank = lookup[evno][res[1]] + 1
+                                _log.debug(
+                                    'Assigned place %r to rider %r at rank %r',
+                                    crank, res[0], res[1])
+                                if crank not in placemap:
+                                    placemap[crank] = []
+                                placemap[crank].append(res[0])
+                else:
+                    self.finished = False
+                r = None
+
+        # if required and maxcrank is set, group and place others
+        if maxcrank > 0 and self.others:
+            maxcrank += 1
+            others = self.meet.autoplace_riders(autospec=self.others)
+            oset = set()
+            for placegroup in others.split():
+                for rno in placegroup.split('-'):
+                    if rno and rno.upper() != 'X':
+                        oset.add(rno)
+            if self.othersrc:
+                # others ranked according to places in othersrc
+                othermap = {}
+                otherplaces = self.meet.autoplace_riders(self.othersrc)
+                opcnt = 0
+                for placegroup in otherplaces.split():
+                    othermap[opcnt] = []
+                    pgcount = 0
+                    for rno in placegroup.split('-'):
+                        if rno and rno in oset:
+                            othermap[opcnt].append(rno)
+                            oset.remove(rno)
+                            # at this stage, only the relative ranking matters
+                            pgcount += 1
+                    opcnt += pgcount
+                # add any residual to last place
+                if oset:
+                    othermap[opcnt] = [
+                        rno for rno in sorted(oset, key=strops.riderno_key)
+                    ]
+                _log.debug('Rank others using othermap=%r', othermap)
+                # offset other places by maxcrank
+                for crank, places in othermap.items():
+                    placemap[maxcrank + crank] = places
             else:
-                self.finished = False
-            r = None
+                # others are all placed equally
+                placemap[maxcrank] = [
+                    rno for rno in sorted(oset, key=strops.riderno_key)
+                ]
 
         # Add riders to model in rank order
-        i = 1
-        while i <= maxcrank:
-            if i in placemap:
-                for r in placemap[i]:
-                    self.addrider(r, str(i))
-            i += 1
+        _log.debug('Placemap: %r', placemap)
+        for place, group in placemap.items():
+            for r in group:
+                self.addrider(r, str(place))
 
         if len(self.riders) > 0:  # got at least one result to report
             self.onestart = True
 
-        # Mark medals/awards if required and determine status
+        # Mark medals/awards if required and roughly determine status
         self._standingstat = ''
         self._status = None
         firstplace = False
@@ -571,8 +647,9 @@ class classification:
         medalcount = 0
         mplace = 1
         for m in self.medals.split():
-            medalmap[mplace] = m
-            mplace += 1
+            if m.upper() != 'X':
+                medalmap[mplace] = m
+                mplace += 1
         mtotal = len(medalmap)
         for r in self.riders:
             rks = r[COL_PLACE]
@@ -730,39 +807,24 @@ class classification:
 
     def do_properties(self):
         """Run race properties dialog."""
-        b = uiutil.builder('classification_properties.ui')
-        dlg = b.get_object('properties')
-        dlg.set_transient_for(self.meet.window)
-        se = b.get_object('race_series_entry')
-        se.set_text(self.series)
-        ee = b.get_object('race_showevents_entry')
-        ee.set_text(self.showevents)
-        pe = b.get_object('race_placesrc_entry')
-        pe.set_text(self.placesrc)
-        me = b.get_object('race_medals_entry')
-        me.set_text(self.medals)
-        response = dlg.run()
-        if response == 1:  # id 1 set in glade for "Apply"
-            _log.debug('Updating event properties')
-            self.placesrc = pe.get_text()
-            self.medals = me.get_text()
-            self.showevents = ee.get_text()
-
-            # update series
-            ns = se.get_text()
-            if ns != self.series:
-                self.series = ns
-                self.event['seri'] = ns
-
+        res = uiutil.options_dlg(
+            window=self.meet.window,
+            action=True,
+            title='Classification Properties',
+            sections={
+                'hour': {
+                    'title': 'Configuration',
+                    'schema': _CONFIG_SCHEMA,
+                    'object': self,
+                },
+            },
+        )
+        if res['action'] == 0:  # OK
             self.recalculate()
             GLib.idle_add(self.delayed_announce)
         else:
-            _log.debug('Edit event properties cancelled')
-
-        # if prefix is empty, grab input focus
-        if not self.prefix_ent.get_text():
-            self.prefix_ent.grab_focus()
-        dlg.destroy()
+            _log.debug('Edit properties cancelled')
+        return False
 
     def show(self):
         """Show race window."""
@@ -790,12 +852,10 @@ class classification:
             self.riders[path][col] = new_text
             rNo = self.riders[path][COL_NO]
             dbr = self.meet.rdb.get_rider(rNo, self.series)
-            if dbr is None:
-                # Assume one is required
-                self.meet.rdb.add_empty(rNo, self.series)
-                dbr = self.meet.rdb.get_rider(rNo, self.series)
-            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
-            dbr.rename(new_text)
+            if dbr is not None:
+                dbr.rename(new_text)
+            else:
+                self.meet.rdb.match_add(rNo, self.series, new_text)
 
     def __init__(self, meet, event, ui=True):
         """Constructor."""
@@ -814,8 +874,13 @@ class classification:
             rstr = 'readonly '
         _log.debug('Init %sevent %s', rstr, self.evno)
         self.winopen = ui
+        self.override = ''
         self.placesrc = ''
         self.medals = ''
+        self.others = ''
+        self.othersrc = ''
+        self.showevents = ''
+
         self.decisions = []
         self.finished = False
         self._standingstat = ''

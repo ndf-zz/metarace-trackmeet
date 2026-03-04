@@ -424,9 +424,7 @@ class ps:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
                 if sid in self.sprintsource:
-                    splac = self.meet.autoplace_riders(self,
-                                                       self.sprintsource[sid],
-                                                       final=True)
+                    splac = self.meet.autoplace_riders(self.sprintsource[sid])
                     _log.debug('Loaded %r places from event %r: %r', sid,
                                self.sprintsource[sid], splac)
                     if splac:
@@ -652,9 +650,6 @@ class ps:
             sec.heading = 'Omnium Points'
         else:
             sec.heading = self.event.get_info(showevno=True)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
         if self.evtype != 'scratch':
             sec.units = 'Pts'
         self._reslines = []
@@ -698,30 +693,22 @@ class ps:
                     finplace = str(r[RES_COL_FINAL] + 1)
 
                 if self.scoring == 'laps':
-                    laps = -9999
                     if r[RES_COL_INRACE]:
                         laps = r[RES_COL_LAPS]
-                        if fl is None:
-                            fl = laps  # and determine laps down
-                        if ll is not None:
-                            down = fl - laps
-                            if self.evtype != 'scratch' and ll != laps:
-                                sec.lines.append([
-                                    None, None,
-                                    str(down) + ' Lap' + strops.plural(down) +
-                                    ' Behind', None, None, None
-                                ])
-                            if down > 0:
-                                lapstr = '%d Lap%s' % (
-                                    -down,
-                                    strops.plural(down),
-                                )
-                            if self.evtype == 'scratch':
-                                ptstr = lapstr
-                    else:
-                        if ll != laps:
-                            sec.lines.append([' ', ' ', ''])
-                    ll = laps
+                        if laps > 0:
+                            lapstr = '+%d Lap%s' % (
+                                laps,
+                                strops.plural(laps),
+                            )
+                        elif laps < 0:
+                            lapstr = '-%d Lap%s' % (
+                                -laps,
+                                strops.plural(-laps),
+                            )
+                        if self.evtype == 'scratch':
+                            ptstr = lapstr
+                            if not finplace:
+                                plstr = ''
                 if plstr or finplace or ptstr:  # only output those with points
                     # dnf  or
                     # placed in final sprint
@@ -766,12 +753,10 @@ class ps:
                     pcount += 1
                 fs = ''
 
-        subv = []
-        if substr:
-            subv.append(substr)
+        stand = None
         if self.onestart:
-            subv.append(self.standingstr())
-        sec.subheading = '\u3000'.join(subv)
+            stand = self.standingstr()
+        sec.subheading = self.event.subhead(extra=stand)
 
         ret.append(sec)
 
@@ -789,6 +774,9 @@ class ps:
                     # lookups usually have more points than places,
                     # and are only populated when the source is provisional
                     subreq = 1
+                if self.evtype == 'scratch' and sid == '0':
+                    # final sprint
+                    continue
                 if sid in self._inters and self._inters[sid]:
                     sublines = self._inters[sid]
                     substatus = ''
@@ -796,19 +784,27 @@ class ps:
                         substatus = ' (Virtual)'
                     sec = report.section('inter-' + sid)
                     sec.nobreak = True
-                    sec.units = 'pt'
+                    sec.units = ''
+                    onepts = False
                     sec.subheading = subtitle + substatus
                     for res in sublines:
-                        if res['result'] and res['result'] != '0':
+                        if res['result'] and (res['result'] != '0'
+                                              or res['class'] == '1.'):
+                            pts = res['result']
+                            if res['result'] == '0':
+                                pts = ''
+                            else:
+                                onepts = True
                             sec.lines.append([
                                 res['class'], res['competitor'], res['name'],
-                                res['info'], '', res['result']
+                                res['info'], '', pts
                             ])
                             if res['pilot']:
                                 sec.lines.append([
                                     ' ', '', res['pilot'], 'pilot', None, None
                                 ])
-
+                    if onepts:
+                        sec.units = 'pt'
                     if sec.lines:  # suppress tie-breaking/zero points entries
                         ret.append(sec)
 
@@ -1053,25 +1049,22 @@ class ps:
 
         ret = []
         sec = None
+        rankCol = None
         secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
         if not program and self.evtype == 'madison':
-            # use the team singlecol method
+            # single column
             sec = report.section(secid)
         else:
             sec = report.twocol_startlist(secid)
-        headvec = self.event.get_info(showevno=True).split()
-        rankCol = None
+
+        stat = None
         if not program:
-            headvec.append('Start List')
+            stat = 'Start List'
         else:
-            sec.nobreak = True
-            rankCol = ' '
-        sec.heading = ' '.join(headvec)
-        lapstring = strops.lapstring(self.event['laps'])
-        substr = '\u3000'.join(
-            (lapstring, self.event['distance'], self.event['rules'])).strip()
-        if substr:
-            sec.subheading = substr
+            rankcol = ' '
+        sec.heading = self.event.get_info(showevno=True, extra=stat)
+        sec.subheading = self.event.subhead()
+
         self.reorder_riderno()
         sec.lines = []
         self._startlines = []
@@ -2037,24 +2030,25 @@ class ps:
         ret = True
         placeset = set()
         for no in strops.reformat_biblist(places).split():
-            # repetition? - already in place set?
-            if no in placeset:
-                _log.error('Duplicate no in places: %r', no)
-                ret = False
-            placeset.add(no)
-            # rider in the model?
-            lr = self._getrider(no)
-            if lr is None:
-                if not self.meet.get_clubmode():
-                    _log.error('Non-starter in places: %r', no)
+            if no != 'X':
+                # repetition? - already in place set?
+                if no in placeset:
+                    _log.error('Duplicate no in places: %r', no)
                     ret = False
-                # otherwise club mode allows non-starter in places
-            else:
-                # rider in the race?
-                if not lr[RES_COL_INRACE]:
-                    _log.error('Out (%s) rider in places: %r',
-                               lr[RES_COL_DNFCODE], no)
-                    ret = False
+                placeset.add(no)
+                # rider in the model?
+                lr = self._getrider(no)
+                if lr is None:
+                    if not self.meet.get_clubmode():
+                        _log.error('Non-starter in places: %r', no)
+                        ret = False
+                    # otherwise club mode allows non-starter in places
+                else:
+                    # rider in the race?
+                    if not lr[RES_COL_INRACE]:
+                        _log.error('Out (%s) rider in places: %r',
+                                   lr[RES_COL_DNFCODE], no)
+                        ret = False
         return ret
 
     def lookup_team_member(self, rno):
@@ -2214,12 +2208,10 @@ class ps:
             self.riders[path][col] = new_text
             rNo = self.riders[path][RES_COL_NO]
             dbr = self.meet.rdb.get_rider(rNo, self.series)
-            if dbr is None:
-                # Assume one is required
-                self.meet.rdb.add_empty(rNo, self.series)
-                dbr = self.meet.rdb.get_rider(rNo, self.series)
-            _log.debug('Updating %s %s detail', dbr.get_label(), dbr.get_id())
-            dbr.rename(new_text)
+            if dbr is not None:
+                dbr.rename(new_text)
+            else:
+                self.meet.rdb.match_add(rNo, self.series, new_text)
 
     def ps_result_cr_inrace_toggled_cb(self, cr, path, data=None):
         self.riders[path][RES_COL_INRACE] = not (
@@ -2263,54 +2255,56 @@ class ps:
         name_w = self.meet.scb.linelen - 9
         for placegroup in placestr.split():
             for bib in placegroup.split('-'):
-                if bib not in placeset:
-                    placeset.add(bib)
-                    r = self._getrider(bib)
-                    if r is None:  # ensure rider exists at this point
-                        _log.info('Adding non-starter: %r', bib)
-                        self.addrider(bib)
+                if bib != 'X':
+                    if bib not in placeset:
+                        placeset.add(bib)
                         r = self._getrider(bib)
-                    name = ''
-                    club = ''
-                    cls = ''
-                    nat = ''
-                    rname = ''
-                    pilot = None
-                    dbr = self.meet.rdb.get_rider(bib, self.series)
-                    if dbr is not None:
-                        name = dbr.fitname(name_w)
-                        rname = dbr.resname()
-                        club = dbr['organisation']
-                        cls = dbr['class']
-                        nat = dbr['nation']
-                        ph = self.meet.rdb.get_pilot(dbr)
-                        if ph is not None:
-                            pilot = ph.resname()
-                    ptsstr = ''
-                    if place < len(points):
-                        ptsstr = str(points[place])
-                        r[RES_COL_POINTS] += points[place]
-                        if bib not in self.auxmap:
-                            self.auxmap[bib] = self.nopts[0:]
-                        self.auxmap[bib][index] = str(points[place])
-                    if final:
-                        r[RES_COL_FINAL] = place
-                    plstr = str(place + 1) + '.'
-                    self.sprintresults[index].append(
-                        (plstr, r[RES_COL_NO], name, ptsstr, r[RES_COL_NAME]))
-                    bridgeres.append({
-                        'rank': place + 1,
-                        'class': plstr,
-                        'competitor': r[RES_COL_NO],
-                        'name': rname,
-                        'pilot': pilot,
-                        'nation': nat,
-                        'info': cls,
-                        'result': ptsstr,
-                    })
-                    count += 1
-                else:
-                    _log.error('Ignoring duplicate no: %r', bib)
+                        if r is None:  # ensure rider exists at this point
+                            _log.info('Adding non-starter: %r', bib)
+                            self.addrider(bib)
+                            r = self._getrider(bib)
+                        name = ''
+                        club = ''
+                        cls = ''
+                        nat = ''
+                        rname = ''
+                        pilot = None
+                        dbr = self.meet.rdb.get_rider(bib, self.series)
+                        if dbr is not None:
+                            name = dbr.fitname(name_w)
+                            rname = dbr.resname()
+                            club = dbr['organisation']
+                            cls = dbr['class']
+                            nat = dbr['nation']
+                            ph = self.meet.rdb.get_pilot(dbr)
+                            if ph is not None:
+                                pilot = ph.resname()
+                        ptsstr = ''
+                        if place < len(points):
+                            ptsstr = str(points[place])
+                            r[RES_COL_POINTS] += points[place]
+                            if bib not in self.auxmap:
+                                self.auxmap[bib] = self.nopts[0:]
+                            self.auxmap[bib][index] = str(points[place])
+                        if final:
+                            r[RES_COL_FINAL] = place
+                        plstr = str(place + 1) + '.'
+                        self.sprintresults[index].append(
+                            (plstr, r[RES_COL_NO], name, ptsstr,
+                             r[RES_COL_NAME]))
+                        bridgeres.append({
+                            'rank': place + 1,
+                            'class': plstr,
+                            'competitor': r[RES_COL_NO],
+                            'name': rname,
+                            'pilot': pilot,
+                            'nation': nat,
+                            'info': cls,
+                            'result': ptsstr,
+                        })
+                    else:
+                        _log.error('Ignoring duplicate no: %r', bib)
+                count += 1
             place = count
         if count > 0:
             self.onestart = True
