@@ -115,9 +115,20 @@ class race:
         ret = False
         if self.event['topn']:  # integer
             if place and place.isdigit():
-                qrank = int(place)
-                if qrank <= self.event['topn']:
-                    ret = True
+                if self.event['topn'] > 0:
+                    # top n qualify
+                    qrank = int(place)
+                    if qrank <= self.event['topn']:
+                        ret = True
+                else:
+                    # n competitors excluded, once finished
+                    if self.finished and self._popcount:
+                        qrank = int(place)
+                        lastplace = self._popcount + self.event['topn']
+                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
+                                   qrank, self._popcount, self.event['topn'])
+                        if qrank <= lastplace:
+                            ret = True
         return ret
 
     def eventcb(self, event):
@@ -322,6 +333,7 @@ class race:
         # reset places and dnf codes, count riders
         cnt = 0
         incnt = 0
+        self._popcount = 0
         if len(self.riders) > 0:
             for r in self.riders:
                 if r[COL_INRACE]:
@@ -406,6 +418,9 @@ class race:
                 rank = 9998
                 if not r[COL_INRACE]:
                     if r[COL_DNFCODE]:
+                        # add all starters to topn population
+                        if r[COL_DNFCODE] != 'dns':
+                            self._popcount += 1
                         dnfcode = strops.dnfcode_key(r[COL_DNFCODE])
                     else:
                         dnfcode = strops.dnfcode_key('dnf')
@@ -413,6 +428,7 @@ class race:
                 else:
                     if r[COL_PLACE] and r[COL_PLACE].isdigit():
                         rank = int(r[COL_PLACE])
+                        self._popcount += 1
                 aux.append((rank, dnfcode, rno, cnt))
             aux.sort()
             self.riders.reorder([a[3] for a in aux])
@@ -1484,8 +1500,12 @@ class race:
                                  sections=sections)
         if res['times']['start'][0] or res['times']['finish'][0]:
             try:
-                self.set_finish(res['times']['finish'][2])
-                self.set_start(res['times']['start'][2])
+                stod = res['times']['start'][2]
+                ftod = res['times']['finish'][2]
+                if stod is None and ftod is not None:
+                    stod = tod.ZERO
+                self.set_finish(ftod)
+                self.set_start(stod)
                 self.set_elapsed()
                 if self.start is not None and self.finish is not None:
                     self.log_elapsed()
@@ -1713,6 +1733,7 @@ class race:
         self._remain = None
         self._eliminated = None
         self._prevlap = None
+        self._popcount = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib

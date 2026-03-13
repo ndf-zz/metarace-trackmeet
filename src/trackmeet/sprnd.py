@@ -76,14 +76,20 @@ _STD_CONTESTS = {
     10: ('bye', 'bye', 'bye', 'bye', 'bye', 'bye', '7v10', '8v9'),
     11: ('bye', 'bye', 'bye', 'bye', 'bye', '6v11', '7v10', '8v9'),
 
-    # AU special case
+    # [3.2.050] Olympic 1/8 Final
     12: ('1v12', '2v11', '3v10', '4v9', '5v8', '6v7'),
+
+    # AU special case
     13: ('bye', 'bye', 'bye', '4v13', '5v12', '6v11', '7v10', '8v9'),
     14: ('bye', 'bye', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     15: ('bye', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
     16: ('1v16', '2v15', '3v14', '4v13', '5v12', '6v11', '7v10', '8v9'),
 
     # [3.2.050] Olympic 1/32 Final
+    24: ('1v24', '2v23', '3v22', '4v21', '5v20', '6v19', '7v18', '8v17',
+         '9v16', '10v15', '11v14', '12v13'),
+
+    # [3.2.050] Worlds 1/16 Final
     28: ('bye', 'bye', 'bye', 'bye', '5v28', '6v27', '7v26', '8v25', '9v24',
          '10v23', '11v22', '12v21', '13v20', '14v19', '15v18', '16v17'),
 
@@ -1467,6 +1473,11 @@ class sprnd:
         elif col == 'info':
             self.event['info'] = entry.get_text()
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        ## TODO: It may be possible/desirable to qualify via round
+        return False
+
     def starttrig(self, e, wallstart=None):
         """React to start trigger."""
         if self.timerstat == 'armstart':
@@ -1640,39 +1651,69 @@ class sprnd:
 
     def race_info_time_edit_activate_cb(self, button):
         """Display contest timing edit dialog."""
-        ostx = ''
-        oftx = ''
-        if self.start is not None:
-            ostx = self.start.rawtime(4)
-        else:
-            ostx = '0.0'
-        if self.finish is not None:
-            oftx = self.finish.rawtime(4)
-        ret = uiutil.edit_times_dlg(self.meet.window, ostx, oftx)
-        if ret[0] == 1:
-            try:
-                stod = None
-                if ret[1]:
-                    stod = tod.tod(ret[1], 'MANU', 'C0i')
-                    self.meet.main_timer.printline(' ' + str(stod))
-                ftod = None
-                if ret[2]:
-                    ftod = tod.tod(ret[2], 'MANU', 'C1i')
-                    self.meet.main_timer.printline(' ' + str(ftod))
-                self.set_start(stod)
-                self.set_finish(ftod)
-                self.set_elapsed()
-                cid = ''
-                i = self.current_contest_combo.get_active_iter()
-                if i is not None:  # contest selected ok
-                    cid = self.contests.get_value(i, COL_CONTEST)
-                    self.contests.set_value(i, COL_200M, self.curelap)
-                if self.start is not None and self.finish is not None:
-                    self.log_elapsed(cid)
-                _log.info('Updated race times')
-            except Exception as v:
-                _log.error('%s updating times: %s', v.__class__.__name__, v)
-
+        res = uiutil.options_dlg(window=self.meet.window,
+                                 action=True,
+                                 title='Edit Last 200\u2006m Time',
+                                 sections={
+                                     'l200': {
+                                         'object': None,
+                                         'title': 'Edit Time',
+                                         'schema': {
+                                             'start': {
+                                                 'prompt':
+                                                 'Start:',
+                                                 'hint':
+                                                 'Recorded start time',
+                                                 'type':
+                                                 'tod',
+                                                 'places':
+                                                 4,
+                                                 'value':
+                                                 self.start,
+                                                 'nowbut':
+                                                 True,
+                                                 'control':
+                                                 'short',
+                                                 'subtext':
+                                                 'Set start time to now',
+                                             },
+                                             'finish': {
+                                                 'prompt':
+                                                 'Finish:',
+                                                 'hint':
+                                                 'Recorded finish time',
+                                                 'type':
+                                                 'tod',
+                                                 'places':
+                                                 4,
+                                                 'value':
+                                                 self.finish,
+                                                 'nowbut':
+                                                 True,
+                                                 'control':
+                                                 'short',
+                                                 'subtext':
+                                                 'Set finish time to now',
+                                             },
+                                         },
+                                     }
+                                 })
+        if res['action'] == 0:  # OK
+            st = res['l200']['start'][2]
+            ft = res['l200']['finish'][2]
+            if st is None and ft is not None:
+                st = tod.ZERO
+            self.set_start(st)
+            self.set_finish(ft)
+            self.set_elapsed()
+            cid = ''
+            i = self.current_contest_combo.get_active_iter()
+            if i is not None:  # contest selected ok
+                cid = self.contests.get_value(i, COL_CONTEST)
+                self.contests.set_value(i, COL_200M, self.curelap)
+            if self.start is not None and self.finish is not None:
+                self.log_elapsed(cid)
+            _log.info('Updated race times')
             GLib.idle_add(self.delayed_announce)
         else:
             _log.info('Edit race times cancelled')
@@ -1969,6 +2010,16 @@ class sprnd:
 
         return ret
 
+    def todedit(self, cell, path, new_text, col):
+        """Update the 200m time for the selected cell."""
+
+        oldval = self.contests[path][col]
+        newval = tod.mktod(new_text)
+        if newval is not None:
+            newval = newval.truncate(2)
+        if newval != oldval:
+            self.contests[path][col] = newval
+
     def todstr(self, col, cr, model, iter, data=None):
         """Format tod into text for listview."""
         ft = model.get_value(iter, COL_200M)
@@ -2104,7 +2155,11 @@ class sprnd:
             uiutil.mkviewcoltxt(t, 'A Rider', COL_A_STR, expand=True)
             uiutil.mkviewcoltxt(t, '', COL_B_NO, calign=1.0)
             uiutil.mkviewcoltxt(t, 'B Rider', COL_B_STR, expand=True)
-            uiutil.mkviewcoltod(t, '200m', cb=self.todstr)
+            uiutil.mkviewcoltod(t,
+                                '200m',
+                                cb=self.todstr,
+                                editcb=self.todedit,
+                                colno=COL_200M)
             uiutil.mkviewcoltxt(t, 'Win', COL_WINNER)
             t.show()
             b.get_object('race_result_win').add(t)

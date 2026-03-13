@@ -178,6 +178,29 @@ class ps:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        # qualification is based on place, not rank
+        ret = False
+        if self.event['topn']:  # integer
+            if place and place.isdigit():
+                if self.event['topn'] > 0:
+                    # top n to final
+                    qrank = int(place)
+                    if qrank <= self.event['topn']:
+                        ret = True
+                else:
+                    # n competitors excluded, once finished
+                    if self.finished and self._popcount:
+                        qrank = int(place)
+                        lastplace = self._popcount + self.event[
+                            'topn']  # check
+                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
+                                   qrank, self._popcount, self.event['topn'])
+                        if qrank <= lastplace:
+                            ret = True
+        return ret
+
     def loadconfig(self):
         """Load race config from disk."""
         self.riders.clear()
@@ -669,6 +692,7 @@ class ps:
             rcat = ''
             rnat = None
             pilot = None
+            qualified = False
             lapstr = None
             rh = self.meet.rdb.get_rider(r[RES_COL_NO], self.series)
             if rh is not None:
@@ -682,6 +706,7 @@ class ps:
             plstr = ''
             if self.onestart and r[RES_COL_PLACE] is not None:
                 plstr = r[RES_COL_PLACE]
+                qualified = self.qualified(plstr)
                 if r[RES_COL_INRACE]:
                     if r[RES_COL_PLACE].isdigit():
                         plstr += '.'
@@ -710,9 +735,15 @@ class ps:
                             if not finplace:
                                 plstr = ''
                 if plstr or finplace or ptstr:  # only output those with points
-                    # dnf  or
-                    # placed in final sprint
-                    sec.lines.append([plstr, rno, rname, rcat, fs, ptstr])
+                    badges = []
+                    rescls = rcat
+                    if qualified:
+                        badges.append('qualified')
+                        if rcat:
+                            rescls = 'Q ' + rcat
+                        else:
+                            rescls = 'Q'
+                    sec.lines.append([plstr, rno, rname, rescls, fs, ptstr])
                     pname = None
                     if pilot:
                         sec.lines.append(pilot)
@@ -749,6 +780,7 @@ class ps:
                         'info': rcat,
                         'result': ptstr,
                         'members': members,
+                        'badges': badges,
                     })
                     pcount += 1
                 fs = ''
@@ -1920,8 +1952,12 @@ class ps:
                                  sections=sections)
         if res['times']['start'][0] or res['times']['finish'][0]:
             try:
-                self.set_finish(res['times']['finish'][2])
-                self.set_start(res['times']['start'][2])
+                stod = res['times']['start'][2]
+                ftod = res['times']['finish'][2]
+                if stod is None and ftod is not None:
+                    stod = tod.ZERO
+                self.set_finish(ftod)
+                self.set_start(stod)
                 self.set_elapsed()
                 if self.start is not None and self.finish is not None:
                     self.log_elapsed()
@@ -2320,6 +2356,7 @@ class ps:
     # result recalculation
     def recalculate(self):
         _log.debug('recalculate')
+        self._popcount = 0
         self.zeropoints()
         self.finished = False
         self.auxmap = {}
@@ -2348,6 +2385,10 @@ class ps:
                 ptotal = -9999
                 laps = -9999
                 if r[RES_COL_DNFCODE]:
+                    # add all starters to topn population
+                    if r[RES_COL_DNFCODE] != 'dns':
+                        self._popcount += 1
+
                     if r[RES_COL_DNFCODE].isdigit():
                         dnfcode = strops.dnfcode_key('')
                         lastsprint = int(r[RES_COL_DNFCODE])
@@ -2357,6 +2398,8 @@ class ps:
                 else:
                     dnfcode = strops.dnfcode_key('dnf')
                     lastsprint = dnfcode
+            else:
+                self._popcount += 1
             if self.scoring == 'laps':
                 aux.append((
                     -laps,
@@ -2570,6 +2613,7 @@ class ps:
         self._inters = {}
         self._cursprint = None
         self._cursprintinfo = None
+        self._popcount = None
 
         # data models
         self.sprints = Gtk.ListStore(

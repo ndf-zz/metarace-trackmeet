@@ -239,6 +239,10 @@ class UCIHour:
         self.meet.set_event_start(self.event)
         self.resend_current()
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        return False
+
     def show_lapscore(self, laps, prev):
         """Respond to changes in facility lapscore, return True if accepted."""
         ret = False

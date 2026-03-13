@@ -342,6 +342,11 @@ class Classification:
             data = self.data_pack()
             self.meet.db.updateFragment(self.event, fragment, data)
 
+    def qualified(self, place):
+        """Indicate qualification if possible."""
+        ## TODO: It may be possible/desirable to qualify via classification
+        return False
+
     def result_report(self, recurse=True):  # by default include inners
         """Return a list of report sections containing the race result."""
         ret = []
@@ -517,6 +522,7 @@ class Classification:
 
         # places first: determine how many places are to be awarded directly
         maxcrank = 0
+        afters = False
         placemap = {}
         if self.override:
             # final ranking has been manually specificed
@@ -545,12 +551,20 @@ class Classification:
                         currank += 1
                     else:
                         specvec = placegroup.split(':')
+                        if len(specvec) == 1:
+                            # assume all places required
+                            specvec.append('1-')
                         if len(specvec) == 2:
                             evno = specvec[0].strip()
                             if evno not in lookup:
                                 lookup[evno] = {}
                             if evno != self.evno:
                                 placeset = strops.placeset(specvec[1])
+                                lastplace = placeset[-1]
+                                allafter = False
+                                if specvec[1].endswith('-'):
+                                    lookup[evno]['after'] = lastplace
+                                    afters = True
                                 for i in placeset:
                                     lookup[evno][i] = currank
                                     currank += 1
@@ -575,11 +589,26 @@ class Classification:
                                  lookup[evno])
                     return
                 r.loadconfig()  # now have queryable event handle
+                after = None
+                if 'after' in lookup[evno] and lookup[evno]:
+                    after = lookup[evno]['after']
+                lrank = 0
                 if r.finished:
                     for res in r.result_gen():
                         if isinstance(res[1], int):
-                            if res[1] in lookup[evno]:
+                            crank = None
+                            if after and res[1] > after:
+                                crank = after + res[1] - lrank
+                                maxcrank = max(maxcrank, crank)
+                                _log.debug(
+                                    'after=%r, rank=%r, lrank=%r, crank=%r',
+                                    after, res[1], lrank, crank)
+
+                            elif res[1] in lookup[evno]:
                                 crank = lookup[evno][res[1]] + 1
+                                lrank = res[1]
+
+                            if crank is not None:
                                 _log.debug(
                                     'Assigned place %r to rider %r at rank %r',
                                     crank, res[0], res[1])
@@ -589,6 +618,11 @@ class Classification:
                 else:
                     self.finished = False
                 r = None
+
+        # suppress others until finished if "afters" set
+        if afters and not self.finished:
+            _log.debug('Others suppressed due to unfinished sources')
+            maxcrank = 0
 
         # if required and maxcrank is set, group and place others
         if maxcrank > 0 and self.others:
@@ -631,7 +665,7 @@ class Classification:
 
         # Add riders to model in rank order
         _log.debug('Placemap: %r', placemap)
-        for place, group in placemap.items():
+        for place, group in sorted(placemap.items()):
             for r in group:
                 self.addrider(r, str(place))
 
