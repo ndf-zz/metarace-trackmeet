@@ -12,6 +12,75 @@
 
 ### Security
 
+## [1.13.8]
+
+### Added
+
+   - Add standards module for category info
+   - Include density estimate with weather readings
+   - Add penalty objects to data bridge
+   - Add session dialog
+   - Add break dialog
+   - Add competition builder scripts for standard meets
+   - Include report print options from roadmeet
+   - Dump per-rider detail reports on export from ittt and f200
+   - Restore walk over function to ittt for final orunds
+   - Others places for collecting and optionally ranking non-qualified
+     competitors in classification
+   - Add meet contact email for issues/feedback link on result pages
+   - Add config schema for classification handler
+   - Add manual override of final ranking in classification
+   - Add option to force single page meet index on result
+   - Transfer team members from qual to final on team sprint/team pursuit
+   - Autostart riders recognises special flag 'Q' to indicate all
+     qualified riders from nominated event
+   - Lookup weather adjustments for printed timing detail report
+   - Add Ctrl-A shortcut to add starters to current event
+
+### Changed
+
+   - Top-N can specify negative qualifiers for eliminating n competitors
+     that started from bunch events
+   - Reorder weather presentation to match AC weather site
+   - Simplify start and result line packing on bridge
+   - Automatically fill qualtime/rank from qualification objects
+   - When adding new event and if evid clashes, change only the edited event
+   - Meet date is specified by start and end date objects
+   - Automatically adjust session ids on events when reordered
+   - Discard precision on compute of net times, then report diffs from taken
+     net times.
+   - On event delete, move to config file to backup
+   - Append 'Heat 1' to sprint final listing on event index
+   - Autoplace lookup for ps and classification others allows n- notation
+   - Rename classification class Classification
+   - Generate section subheadings in event library, across all handler types
+   - Assume starttime = 0 when finish set but start time omitted
+   - Allow direct edit of elapsed time in flying 200
+
+### Deprecated
+
+### Removed
+
+   - Remove user-supplied free-form date string from meet properties
+
+### Fixed
+
+   - Use reference no of sprint handler when indexing sprint heat pseudo event
+   - Add category entry to riderdb when adding event
+   - Change event class name to Event to avoid namespace clash
+   - Improve competition and phase labels on bridge objects
+   - Correct others sorting in sprint round when using qualification time
+   - Truncate points race intermediate header on small scoreboard
+   - Don't add placeholder competitors to riderdb
+   - Apply qualified badge to A/B in current object at finish
+   - Repair handling of placeholders, missing places and tied rankings
+     in classification
+   - Correct placing of riders in flying 200 when no time recorded
+   - Allow manual ittt operation when distance not set
+   - Correct window title for del starters popup
+
+### Security
+
 ## [1.13.7] 2026-01-29
 
 ### Added
