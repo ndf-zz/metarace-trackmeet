@@ -142,7 +142,7 @@ _EVENT_COLUMN_CONVERTERS = {
     'dirt': strops.confopt_bool,
     'plac': strops.confopt_posint,
     'laps': strops.confopt_posint,
-    'topn': strops.confopt_posint,
+    'topn': strops.confopt_int,
     'auto': _clean_autofield,
     'star': _fromdts,
     'endt': _fromdts,
@@ -826,8 +826,14 @@ class EventDb:
         ret = None
         if ref is not None:
             path = self._index.index(ref['evid']) + 1
-            if path >= 0 and path < len(self._index):
-                ret = self[self._index[path]]  # check reference
+            indexlen = len(self._index)
+            while path >= 0 and path < indexlen:
+                chkev = self[self._index[path]]
+                if chkev['type'] not in ('break',
+                                         'session'):  # , 'sprint heat'):
+                    ret = chkev
+                    break
+                path += 1
         return ret
 
     def getprevrow(self, ref, scroll=True):
