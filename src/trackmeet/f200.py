@@ -231,6 +231,21 @@ class f200:
         self.meet.scbwin.reset()
         self.meet.db.setScoreboardHint('result')
 
+    def todedit(self, cell, path, new_text, col):
+        """Override time by manual input."""
+        if new_text and '/' not in new_text:
+            ft = tod.mktod(new_text)
+            if ft is not None:
+                st = tod.ZERO
+                rno = self.riders[path][COL_NO]
+                ri = self._getiter(rno)
+                if ri is not None:
+                    self.settimes(ri, st=st, ft=ft)
+                else:
+                    _log.debug('Rider %r not in model', rno)
+        else:
+            _log.debug('Ignore invalid entry')
+
     def todstr(self, col, cr, model, iter, data=None):
         """Format tod into text for listview."""
         ft = model.get_value(iter, COL_FINISH)
@@ -345,7 +360,12 @@ class f200:
                     self.traces[r] = cr.get('traces', r)
             if cr.has_option('weather', r):
                 self.compweather[r] = cr.get('weather', r)
-            self.settimes(nri, st, ft, sp, doplaces=False, comment=co)
+            self.settimes(nri,
+                          st=st,
+                          ft=ft,
+                          split=sp,
+                          doplaces=False,
+                          comment=co)
         self.placexfer()
 
         if not self.onestart and self.event['auto']:
@@ -979,11 +999,22 @@ class f200:
         """Indicate qualification if possible."""
         # qualification is based on place, not rank
         ret = False
-        if self.event['topn'] and self._remcount is not None:  # integer
+        if self.event['topn']:  # integer
             if place and place.isdigit():
-                qrank = int(place) + self._remcount
-                if qrank <= self.event['topn']:
-                    ret = True
+                if self.event['topn'] > 0 and self._remcount is not None:
+                    # top n qualify
+                    qrank = int(place) + self._remcount
+                    if qrank <= self.event['topn']:
+                        ret = True
+                else:
+                    # n competitors excluded, once finished
+                    if self.finished and self._popcount:
+                        qrank = int(place)
+                        lastplace = self._popcount + self.event['topn']
+                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
+                                   qrank, self._popcount, self.event['topn'])
+                        if qrank <= lastplace:
+                            ret = True
         return ret
 
     def fin_trig(self, sp, t):
@@ -1247,6 +1278,7 @@ class f200:
         self.clearplaces()
         self._detail = {}
         self._remcount = None
+        self._popcount = 0
         count = 0
         place = 1
         for t in self.results:
@@ -1308,10 +1340,15 @@ class f200:
                             'distance': self._findist,
                         }
 
+                # update population
+                if t[0] != tod.FAKETIMES['dns']:
+                    self._popcount += 1
+
                 # allocate places
                 if t[0] > tod.FAKETIMES['max']:
                     if t[0] == tod.FAKETIMES['rel']:
                         self.onestart = True
+                        place = self.results.rank(bib) + 1
                     elif t[0] == tod.FAKETIMES['abd']:
                         place = 'abd'
                     elif t[0] == tod.FAKETIMES['dsq']:
@@ -1324,9 +1361,9 @@ class f200:
                     self.onestart = True
                     if place == 'comment':  # superfluous but ok
                         place = self.riders.get_value(i, COL_COMMENT)
-                    self.riders.set_value(i, COL_PLACE, str(place))
-                    self.riders.swap(self.riders.get_iter(count), i)
-                    count += 1
+                self.riders.set_value(i, COL_PLACE, str(place))
+                self.riders.swap(self.riders.get_iter(count), i)
+                count += 1
             else:
                 _log.warning('Rider %r not found in model, check places', bib)
 
@@ -1665,7 +1702,8 @@ class f200:
         """DNF rider."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
-            self.settimes(sel[1], comment='dnf')
+            st = self.riders.get_value(sel[1], COL_START)
+            self.settimes(sel[1], st=st, comment='dnf')
             GLib.idle_add(self.delayed_announce)
 
     def tod_context_dsq_activate_cb(self, menuitem, data=None):
@@ -1682,7 +1720,7 @@ class f200:
             self.settimes(sel[1], comment='dns')
             GLib.idle_add(self.delayed_announce)
 
-    def detail_report(self, bib):
+    def detail_report(self, bib, adjust=False):
         """Return a timing detail report for the nominated rider."""
         ret = []
         secid = 'detail-%s-%s' % (str(self.evno).translate(
@@ -1766,8 +1804,14 @@ class f200:
                     detail = self._detail[bib]['splits']
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
-                    sec = report.lapsplits(secid)
+                    sec = report.detailsplits(secid)
                     sec.colheader = ['Split', '', 'Elapsed']
+                    if adjust:
+                        sec.footer = adjust
+                        sec.adjust = True
+                        sec.colheader = [
+                            'Split', '', 'Elapsed', '', 'Adjusted'
+                        ]
                     ret.append(sec)
                     sec.places = self.precision
                     sec.weather = env
@@ -1778,15 +1822,33 @@ class f200:
 
         return ret
 
+    def _detail_print_completion(self, reqid, bib):
+        """Wait for weather adjustments, then display report."""
+        rstat = self.meet.weather.check_adjust(reqid)
+        if rstat in ('requested', 'busy'):
+            _log.debug('Waiting for weather adjusted values...')
+            return True
+        adjinfo = self.meet.weather.adjust_info(reqid)
+        _log.debug('%s: %r', adjinfo, rstat)
+        secs = self.detail_report(bib, adjust=adjinfo)
+        self.meet.print_report(secs,
+                               docstr='Timing Detail',
+                               exportfile='timing_detail')
+        self.meet.weather.del_adjust(reqid)
+        return False
+
     def tod_context_print_activate_cb(self, menuitem, data=None):
         """Print standalone timing detail report."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
             bib = self.riders.get_value(sel[1], COL_NO)
-            secs = self.detail_report(bib)
-            self.meet.print_report(secs,
-                                   docstr='Timing Detail',
-                                   exportfile='timing_detail')
+            self.placexfer()
+            if bib in self._detail:
+                request = {bib: self._detail[bib]}
+                _log.info('Requesting weather adjusted splits, flying start')
+                reqid = self.meet.weather.req_adjust(request, lap1id=None)
+                GLib.timeout_add_seconds(1, self._detail_print_completion,
+                                         reqid, bib)
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
         """Print chronometer trace."""
@@ -1905,6 +1967,10 @@ class f200:
             bib = lr[COL_NO]
             stod = lr[COL_START]
             ftod = lr[COL_FINISH]
+            if ftod is not None and stod is None:
+                # assume elapsed entered
+                lr[COL_START] = tod.ZERO
+                stod = tod.ZERO
             if stod is not None and ftod is not None:
                 self.settimes(i, stod, ftod)
                 self.log_elapsed(bib, stod, ftod, manual=True)
@@ -2020,6 +2086,7 @@ class f200:
         self._lenlabel = None
         self._weather = None
         self._remcount = None
+        self._popcount = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
@@ -2090,7 +2157,7 @@ class f200:
                                 self._editname_cb,
                                 expand=True)
             uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self._editseed_cb)
-            uiutil.mkviewcoltod(t, tmlbl, cb=self.todstr)
+            uiutil.mkviewcoltod(t, tmlbl, cb=self.todstr, editcb=self.todedit)
             uiutil.mkviewcoltxt(t, 'Rank', COL_PLACE, halign=0.5, calign=0.5)
             t.show()
             b.get_object('race_result_win').add(t)

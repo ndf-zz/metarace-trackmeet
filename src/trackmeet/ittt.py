@@ -305,6 +305,21 @@ class ittt:
         self.meet.db.setScoreboardHint('result')
         self.resend_current()
 
+    def todedit(self, cell, path, new_text, col):
+        """Override time by manual input."""
+        if new_text and '/' not in new_text:
+            ft = tod.mktod(new_text)
+            if ft is not None:
+                st = tod.ZERO
+                rno = self.riders[path][COL_NO]
+                ri = self._getiter(rno)
+                if ri is not None:
+                    self.settimes(ri, st=st, ft=ft)
+                else:
+                    _log.debug('Rider %r not in model', rno)
+        else:
+            _log.debug('Ignore invalid entry')
+
     def todstr(self, col, cr, model, iter, data=None):
         """Format tod into text for listview."""
         ft = model.get_value(iter, COL_FINISH)
@@ -340,6 +355,7 @@ class ittt:
                 event_d = track_n * float(self.distance) / track_d
         except Exception as e:
             _log.warning('Unable to setup splits: %s', e)
+            self.autotime = False
         if event_d is not None and track_l is not None:
             _log.debug('Track lap=%0.1f, Event dist=%0.1f', track_l, event_d)
             # record the inverse half lap distance for later use (float)
@@ -497,8 +513,6 @@ class ittt:
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
                 if not nr[COL_MEMBERS]:
-                    # pull in members from riderdb if not yet defined
-                    _log.debug('Replace members on %s from rdb', r)
                     nr[COL_MEMBERS] = dbr['members']
             nri = self.riders.append(nr)
             if not self.readonly:
@@ -1282,15 +1296,17 @@ class ittt:
             splitind = int(round(splitoft))
             _log.debug('stride=%r, spltlent=%r, splitlist: %r', stride,
                        splitlen, self.splitlist)
-            while splitind < (len(self.splitlist) - 1):
-                sid = self.splitlist[splitind]
-                if sid in self.splitmap:
-                    hdr = '%0.0f\u2006m' % (self.splitmap[sid]['dist'], )
-                    sec.colheader.append(hdr)
-                    showsplits.append(sid)
-                splitoft += stride
-                splitind = int(round(splitoft))
-            lastsplit = self.splitlist[-1]
+            lastsplit = None
+            if self.splitlist:
+                while splitind < (len(self.splitlist) - 1):
+                    sid = self.splitlist[splitind]
+                    if sid in self.splitmap:
+                        hdr = '%0.0f\u2006m' % (self.splitmap[sid]['dist'], )
+                        sec.colheader.append(hdr)
+                        showsplits.append(sid)
+                    splitoft += stride
+                    splitind = int(round(splitoft))
+                lastsplit = self.splitlist[-1]
             # Don't include final distance on split summary
             #showsplits.append(lastsplit)
             #sec.colheader.append(lastsplit)
@@ -1510,10 +1526,12 @@ class ittt:
 
         if lane == 'A':
             self._timeA = elap
-            self._rankA = rank + 1
+            if rank:
+                self._rankA = rank + 1
         else:
             self._timeB = elap
-            self._rankB = rank + 1
+            if rank:
+                self._rankB = rank + 1
 
         if self.difftime:
             # downtime is to other lane
@@ -1578,11 +1596,22 @@ class ittt:
         """Indicate qualification if possible."""
         # qualification is based on place, not rank
         ret = False
-        if self.event['topn'] and self._remcount is not None:  # integer
+        if self.event['topn']:  # integer
             if place and place.isdigit():
-                qrank = int(place) + self._remcount
-                if qrank <= self.event['topn']:
-                    ret = True
+                if self.event['topn'] > 0 and self._remcount is not None:
+                    # top n qualify
+                    qrank = int(place) + self._remcount
+                    if qrank <= self.event['topn']:
+                        ret = True
+                else:
+                    # n competitors excluded, once finished
+                    if self.finished and self._popcount:
+                        qrank = int(place)
+                        lastplace = self._popcount + self.event['topn']
+                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
+                                   qrank, self._popcount, self.event['topn'])
+                        if qrank <= lastplace:
+                            ret = True
         return ret
 
     def fin_trig(self, sp, t):
@@ -2143,11 +2172,16 @@ class ittt:
         self.clearplaces()
         self._detail = {}
         self._remcount = None
+        self._popcount = 0
         count = 0
         place = 1
         for t in self.results:
             finrank = None
             bib = t[0].refid
+
+            # update population
+            if t[0] != tod.FAKETIMES['dns']:
+                self._popcount += 1
 
             if t[0] > tod.FAKETIMES['max']:
                 if t[0] in (tod.FAKETIMES['caught'], tod.FAKETIMES['lose'],
@@ -2341,12 +2375,16 @@ class ittt:
             if sp.getstatus() in ('caught', 'running'):
                 if sp.on_halflap():
                     sp.lap_up()
-                if sp.split < len(self.splitlist) - 1:
-                    sp.toarmint()
+                if self.splitlist:
+                    if sp.split < len(self.splitlist) - 1:
+                        sp.toarmint()
+                    else:
+                        _log.info('Rider %r approaching last lap, armfinish',
+                                  sp.getrider())
+                        sp.toarmfin()
                 else:
-                    _log.info('Rider %r approaching last lap, armfinish',
-                              sp.getrider())
-                    sp.toarmfin()
+                    sp.toarmint()
+
                 self.meet.main_timer.arm(cid)
             elif sp.getstatus() == 'armint':
                 sp.torunning()
@@ -2821,8 +2859,11 @@ class ittt:
             self.settimes(sel[1], comment='dns')
             GLib.idle_add(self.delayed_announce)
 
-    def detail_report(self, bib):
-        """Return a timing detail report for the nominated rider."""
+    def detail_report(self, bib, adjust=False):
+        """Return a timing detail report for the nominated rider.
+
+        If adjust is True, fetch weather adjusted times from AC API
+        """
         ret = []
         secid = 'detail-%s-%s' % (str(self.evno).translate(
             strops.WEBFILE_UTRANS), bib)
@@ -2915,8 +2956,14 @@ class ittt:
                     detail = self._detail[bib]['splits']
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
-                    sec = report.lapsplits(secid)
+                    sec = report.detailsplits(secid)
                     sec.colheader = ['Split', 'Lap', 'Elapsed']
+                    if adjust:
+                        sec.footer = adjust
+                        sec.adjust = True
+                        sec.colheader = [
+                            'Split', 'Lap', 'Elapsed', '', 'Adjusted'
+                        ]
                     ret.append(sec)
                     sec.places = self.precision
                     sec.weather = env
@@ -2927,15 +2974,40 @@ class ittt:
 
         return ret
 
+    def _detail_print_completion(self, reqid, bib):
+        """Wait for weather adjustments, then display report."""
+        rstat = self.meet.weather.check_adjust(reqid)
+        if rstat in ('requested', 'busy'):
+            _log.debug('Waiting for weather adjusted values...')
+            return True
+        adjinfo = self.meet.weather.adjust_info(reqid)
+        _log.debug('%s: %r', adjinfo, rstat)
+        secs = self.detail_report(bib, adjust=adjinfo)
+        self.meet.print_report(secs,
+                               docstr='Timing Detail',
+                               exportfile='timing_detail')
+        self.meet.weather.del_adjust(reqid)
+        return False
+
     def tod_context_print_activate_cb(self, menuitem, data=None):
         """Print standalone timing detail report."""
         sel = self.view.get_selection().get_selected()
         if sel is not None:
             bib = self.riders.get_value(sel[1], COL_NO)
-            secs = self.detail_report(bib)
-            self.meet.print_report(secs,
-                                   docstr='Timing Detail',
-                                   exportfile='timing_detail')
+            self.placexfer()
+            if bib in self._detail:
+                request = {bib: self._detail[bib]}
+                _log.info('Requesting weather adjusted splits')
+                lap1id = None
+                for sid in self.splitlist[0:-1]:
+                    if self.splitmap[sid]['lap']:
+                        sdist = self.splitmap[sid]['dist']
+                        lap1id = '%0.0f' % (sdist, )
+                        break
+                _log.debug('Using %r for lap1 id', lap1id)
+                reqid = self.meet.weather.req_adjust(request, lap1id=lap1id)
+                GLib.timeout_add_seconds(1, self._detail_print_completion,
+                                         reqid, bib)
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
         """Print chronometer trace in 3 columns."""
@@ -3054,6 +3126,9 @@ class ittt:
             bib = lr[COL_NO]
             stod = lr[COL_START]
             ftod = lr[COL_FINISH]
+            if stod is None and ftod is not None:
+                lr[COL_START] = tod.ZERO
+                stod = tod.ZERO
             if stod is not None and ftod is not None:
                 self.settimes(i, stod, ftod)
                 self.log_elapsed(bib, stod, ftod, manual=True)
@@ -3202,6 +3277,7 @@ class ittt:
         self._eventdist = None
         self._weather = None
         self._remcount = None
+        self._popcount = None
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
@@ -3259,7 +3335,10 @@ class ittt:
             uiutil.mkviewcoltxt(t, 'Members', COL_MEMBERS,
                                 self._editmembers_cb)
             uiutil.mkviewcoltxt(t, 'Seed', COL_SEED, self._editseed_cb)
-            uiutil.mkviewcoltod(t, 'Time/Last Lap', cb=self.todstr)
+            uiutil.mkviewcoltod(t,
+                                'Time/Last Lap',
+                                cb=self.todstr,
+                                editcb=self.todedit)
             uiutil.mkviewcoltxt(t, 'Rank', COL_PLACE, halign=0.5, calign=0.5)
             self.view.get_column(_VIEWCOL_MEMBERS).set_visible(False)
 
