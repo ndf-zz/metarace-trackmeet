@@ -114,9 +114,23 @@
                               <object class="GtkMenu" id="menu_race_new_types">
                                 <property name="visible">True</property>
                                 <child>
+                                  <object class="GtkMenuItem" id="addcomp_sprint">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Sprint</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_olysprint">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Olympic Sprint</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuItem" id="addcomp_pursuit">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">Pursuit</property>
+                                    <property name="label" translatable="yes">Individual Pursuit</property>
                                     <signal name="activate" handler="menu_add_comp"/>
                                   </object>
                                 </child>
@@ -128,6 +142,27 @@
                                   </object>
                                 </child>
                                 <child>
+                                  <object class="GtkMenuItem" id="addcomp_tt">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Time Trial</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_points">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Points Race</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_keirin">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Keirin</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
                                   <object class="GtkMenuItem" id="addcomp_ts">
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">Team Sprint</property>
@@ -135,9 +170,30 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="addcomp_tt">
+                                  <object class="GtkMenuItem" id="addcomp_madison">
                                     <property name="visible">True</property>
-                                    <property name="label" translatable="yes">Time Trial</property>
+                                    <property name="label" translatable="yes">Madison</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_scratch">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Scratch Race</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_elimination">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Elimination Race</property>
+                                    <signal name="activate" handler="menu_add_comp"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuItem" id="addcomp_omnium">
+                                    <property name="visible">True</property>
+                                    <property name="label" translatable="yes">Omnium</property>
                                     <signal name="activate" handler="menu_add_comp"/>
                                   </object>
                                 </child>
@@ -168,6 +224,15 @@
                             <property name="use_underline">True</property>
                             <accelerator key="F2" signal="activate"/>
                             <signal name="activate" handler="menu_race_info_activate_cb"/>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkMenuItem" id="menu_race_addstarters">
+                            <property name="label">Add Starters...</property>
+                            <property name="visible">True</property>
+                            <property name="sensitive">False</property>
+                            <signal name="activate" handler="menu_race_addstarters_cb"/>
+                            <accelerator key="a" signal="activate" modifiers="GDK_CONTROL_MASK"/>
                           </object>
                         </child>
                         <child>

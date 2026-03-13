@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.8a'
+__version__ = '1.13.8a2'
 
 import sys
 import gi
@@ -1090,6 +1090,14 @@ class trackmeet:
         return ret
 
     ## Race menu callbacks.
+    def menu_race_addstarters_cb(self, menuitem, data=None):
+        """Pop up add starters entry for current event."""
+        if self.curevent is not None:
+            self._add_starters_popup(elist=(self.curevent.evno, ),
+                                     action='add',
+                                     title='Add Starters',
+                                     msg='Add starters to current event')
+
     def menu_race_startlist_activate_cb(self, menuitem, data=None):
         """Generate a startlist."""
         sections = []
@@ -1305,6 +1313,7 @@ class trackmeet:
             self.menu_race_close.set_sensitive(True)
             self.menu_race_abort.set_sensitive(True)
             self.menu_race_startlist.set_sensitive(True)
+            self.menu_race_addstarters.set_sensitive(True)
             self.menu_race_result.set_sensitive(True)
             self.menu_race_ucistartlist.set_sensitive(True)
             self.menu_race_uciresult.set_sensitive(True)
@@ -1418,7 +1427,13 @@ class trackmeet:
                 if evno in self.edb:
                     if evno not in self.autorecurse:
                         self.autorecurse.add(evno)
-                        placeset = strops.placeset(specvec[1])
+                        # special case: q [add all qualified competitors]
+                        qualifiers = False
+                        if specvec[1].upper() == 'Q':
+                            qualifiers = True
+                            placeset = []
+                        else:
+                            placeset = strops.placeset(specvec[1])
                         e = self.edb[evno]
                         evplacemap = {}
                         _log.debug('Loading places from event %r', evno)
@@ -1436,19 +1451,30 @@ class trackmeet:
                                           ('classification', 'team aggregate',
                                            'indiv aggregate')):
                             for ri in h.result_gen():
-                                if isinstance(ri[1],
-                                              int) and ri[1] in placeset:
+                                if isinstance(ri[1], int):
                                     rank = ri[1]
-                                    if rank not in evplacemap:
-                                        evplacemap[rank] = []
-                                    seed = None
-                                    if infocol is not None and infocol < len(
-                                            ri):
-                                        seed = ri[infocol]
-                                    evplacemap[rank].append((ri[0], seed))
+                                    riderno = None
+                                    if qualifiers:
+                                        if h.qualified(str(rank)):
+                                            riderno = ri[0]
+                                            if rank not in placeset:
+                                                placeset.append(rank)
+                                    else:
+                                        if rank in placeset:
+                                            riderno = ri[0]
+
+                                    if riderno:
+                                        if rank not in evplacemap:
+                                            evplacemap[rank] = []
+                                        seed = None
+                                        if infocol is not None and infocol < len(
+                                                ri):
+                                            seed = ri[infocol]
+                                        evplacemap[rank].append((ri[0], seed))
                         else:
                             _log.debug('Event %r not final', evno)
                         # maintain ordering of autospec
+
                         for p in placeset:
                             if p in evplacemap:
                                 for ri in evplacemap[p]:
@@ -1478,6 +1504,7 @@ class trackmeet:
             self.menu_race_close.set_sensitive(False)
             self.menu_race_abort.set_sensitive(False)
             self.menu_race_startlist.set_sensitive(False)
+            self.menu_race_addstarters.set_sensitive(False)
             self.menu_race_result.set_sensitive(False)
             self.menu_race_ucistartlist.set_sensitive(False)
             self.menu_race_uciresult.set_sensitive(False)
@@ -2130,7 +2157,8 @@ class trackmeet:
                 if eh['type'] == 'sprint heat' and eh['refe']:
                     # use the sprint handler event for links when heat 2/3
                     if eh['refe'] in self.edb:
-                        evno = referid
+                        referno = eh['refe']
+                        evno = referno
                 elif eh['type'] == 'sprint final':
                     # add heat 1 if not already part of info
                     if 'heat' not in descr.lower():
@@ -2601,6 +2629,9 @@ class trackmeet:
 
     def timer_log_straight(self, bib, msg, tod, prec=4):
         """Print a tod log entry on the Timy receipt."""
+        if msg is None:
+            msg = ''
+
         lstr = '{0:3} {1: >5}:{2}'.format(bib[0:3], msg[0:5],
                                           tod.timestr(prec))
         self.main_timer.printline(lstr)
@@ -3418,6 +3449,33 @@ class trackmeet:
     def get_clubmode(self):
         return self.clubmode
 
+    def get_laplen(self):
+        """Return track lap length in metres."""
+        ret = None
+        if self.tracklen_n and self.tracklen_d > 0:
+            ret = self.tracklen_n / self.tracklen_d
+        return ret
+
+    def get_competitor_limit(self, madison=False):
+        """Return maximum number of competitors."""
+        ret = None
+        laplen = self.get_laplen()
+        if laplen is not None:
+            # [3.1.009]
+            if laplen > 320:
+                # 333.33+m (and 321.9)
+                ret = 20 if madison else 36
+            elif laplen > 200:
+                # 250m (and 285.7)
+                ret = 18 if madison else 24
+            elif laplen > 170:
+                # 200m
+                ret = 15 if madison else 20
+            else:
+                # 166m
+                ret = 12 if madison else 16
+        return ret
+
     def get_distance(self, count=None, units='metres'):
         """Convert race distance units to metres."""
         ret = None
@@ -3426,9 +3484,7 @@ class trackmeet:
                 if units in ['metres', 'meters']:
                     ret = int(count)
                 elif units == 'laps':
-                    ret = self.tracklen_n * int(count)
-                    if self.tracklen_d != 1 and self.tracklen_d > 0:
-                        ret //= self.tracklen_d
+                    ret = round(self.get_laplen() * int(count))
                 _log.debug('get_distance: %r %r -> %dm', count, units, ret)
             except (ValueError, TypeError, ArithmeticError) as v:
                 _log.warning('Error computing race distance: %s', v)
@@ -3888,9 +3944,11 @@ class trackmeet:
         elist = [model[i][3] for i in iters]
         cnt = len(elist)
         msgv = []
+        title = 'Add Starters'
         if action == 'add':
             msgv.append('Add to')
         else:
+            title = 'Del Starters'
             msgv.append('Remove from')
         if cnt == 1:
             if elist[0] in self.edb:
@@ -3908,7 +3966,10 @@ class trackmeet:
         else:
             msgv.append('%d selected events' % (cnt, ))
         msg = ' '.join(msgv)
+        self._add_starters_popup(elist, action, title, msg)
 
+    def _add_starters_popup(self, elist, action, title, msg):
+        """Display an add starters dialog."""
         sections = {
             'starters': {
                 'object': None,
@@ -3927,7 +3988,7 @@ class trackmeet:
         }
         res = uiutil.options_dlg(window=self.window,
                                  action=True,
-                                 title='Add Starters',
+                                 title=title,
                                  sections=sections)
         if res['action'] == 0:  # OK
             adds = res['starters']['adds'][2]
@@ -4247,6 +4308,7 @@ class trackmeet:
         self.lapscore = None
         self._prevlap = None
         self._indexsec = None
+        self._adjust = None
 
         # printer preferences
         paper = Gtk.PaperSize.new_custom('metarace-full', 'A4 for reports',
@@ -4304,6 +4366,7 @@ class trackmeet:
         self.menu_race_close = b.get_object('menu_race_close')
         self.menu_race_abort = b.get_object('menu_race_abort')
         self.menu_race_startlist = b.get_object('menu_race_startlist')
+        self.menu_race_addstarters = b.get_object('menu_race_addstarters')
         self.menu_race_result = b.get_object('menu_race_result')
         self.menu_race_ucistartlist = b.get_object('menu_race_ucistartlist')
         self.menu_race_uciresult = b.get_object('menu_race_uciresult')
