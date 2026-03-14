@@ -1999,7 +1999,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             'phase': 'final',
         })
         if comptype in ('madison', 'points'):
-            c = meet.get_event(catcomp)
+            c = meet.get_event(fid)
             c.readonly = False
             c.loadconfig()
             if tenpoints:

@@ -59,7 +59,7 @@
 
 ### Deprecated
 
-   - Text-only announcer output deprected, to be replaced with data bridge
+   - Text-only announcer output deprecated, to be replaced with data bridge
      and web console
 
 ### Removed
