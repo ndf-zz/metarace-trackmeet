@@ -24,7 +24,7 @@
    - Add competition builder scripts for standard meets
    - Include report print options from roadmeet
    - Dump per-rider detail reports on export from ittt and f200
-   - Restore walk over function to ittt for final orunds
+   - Restore walk over function to ittt for final rounds
    - Others places for collecting and optionally ranking non-qualified
      competitors in classification
    - Add meet contact email for issues/feedback link on result pages
@@ -59,6 +59,9 @@
 
 ### Deprecated
 
+   - Text-only announcer output deprected, to be replaced with data bridge
+     and web console
+
 ### Removed
 
    - Remove user-supplied free-form date string from meet properties
@@ -78,6 +81,7 @@
    - Correct placing of riders in flying 200 when no time recorded
    - Allow manual ittt operation when distance not set
    - Correct window title for del starters popup
+   - Retain start time for manually adjusted flying 200 and ittt
 
 ### Security
 

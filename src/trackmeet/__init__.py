@@ -178,7 +178,7 @@ _CONFIG_SCHEMA = {
         'subtext': 'Single?',
         'hint': 'Use single-page index of events',
         'attr': 'flatindex',
-        'default': False,
+        'default': True,
     },
     'riderlist': {
         'prompt': 'Rider List:',
