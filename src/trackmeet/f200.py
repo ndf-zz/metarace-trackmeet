@@ -236,8 +236,14 @@ class f200:
         if new_text and '/' not in new_text:
             ft = tod.mktod(new_text)
             if ft is not None:
-                st = tod.ZERO
                 rno = self.riders[path][COL_NO]
+                st = self.riders[path][COL_START]
+                if st is None:
+                    st = tod.ZERO
+                else:
+                    _log.debug('Preserve start time for %s: %s', rno,
+                               st.rawtime())
+                    ft = ft + st
                 ri = self._getiter(rno)
                 if ri is not None:
                     self.settimes(ri, st=st, ft=ft)
@@ -831,8 +837,8 @@ class f200:
             rno = r[COL_NO]
             rh = self.meet.rdb.get_rider(rno, self.series)
             if rh is None:
-                self.meet.rdb.add_empty(bib, self.series)
-                rh = self.meet.rdb.get_rider(bib, self.series)
+                self.meet.rdb.add_empty(rno, self.series)
+                rh = self.meet.rdb.get_rider(rno, self.series)
             rank = None
             rname = rh.resname()
             rcls = rh['class']
@@ -1829,7 +1835,6 @@ class f200:
             _log.debug('Waiting for weather adjusted values...')
             return True
         adjinfo = self.meet.weather.adjust_info(reqid)
-        _log.debug('%s: %r', adjinfo, rstat)
         secs = self.detail_report(bib, adjust=adjinfo)
         self.meet.print_report(secs,
                                docstr='Timing Detail',
@@ -1846,9 +1851,9 @@ class f200:
             if bib in self._detail:
                 request = {bib: self._detail[bib]}
                 _log.info('Requesting weather adjusted splits, flying start')
+                _log.debug('Detail: %r', request)
                 reqid = self.meet.weather.req_adjust(request, lap1id=None)
-                GLib.timeout_add_seconds(1, self._detail_print_completion,
-                                         reqid, bib)
+                GLib.timeout_add(50, self._detail_print_completion, reqid, bib)
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
         """Print chronometer trace."""
@@ -1948,37 +1953,35 @@ class f200:
         }
         res = uiutil.options_dlg(window=self.meet.window,
                                  title='Edit times',
+                                 action=True,
                                  sections=sections)
-        changed = False
-        dotimes = False
-        for option in res['result']:
-            if res['result'][option][0]:
-                changed = True
-                if 'index' in sections['result']['schema'][option]:
-                    index = sections['result']['schema'][option]['index']
-                    lr[index] = res['result'][option][2]
-                    _log.debug('Updated %s to: %r', option,
-                               res['result'][option][2])
-                    if option in ('start', 'finish'):
-                        dotimes = True
+        if res['action'] == 0:  # OK
+            dotimes = False
+            nft = None
+            nst = None
+            if res['result']['start'][0]:
+                nst = res['result']['start'][2]
+            if res['result']['finish'][0]:
+                nft = res['result']['finish'][2]
+                dotimes = True
+            if dotimes:
+                bib = lr[COL_NO]
+                if nst is None or nst == tod.ZERO:
+                    if lr[COL_START] is not None:
+                        _log.debug('Preserve start time for %s: %s', bib,
+                                   lr[COL_START].rawtime())
+                        nst = lr[COL_START]
+                        nft = nft + nst
+                lr[COL_START] = nst
+                lr[COL_FINISH] = nft
+                if nst is not None and nft is not None:
+                    self.settimes(i, nst, nft)
+                    self.log_elapsed(bib, nst, nft, manual=True)
                 else:
-                    _log.debug('Unknown option %r changed', option)
-        if dotimes:
-            bib = lr[COL_NO]
-            stod = lr[COL_START]
-            ftod = lr[COL_FINISH]
-            if ftod is not None and stod is None:
-                # assume elapsed entered
-                lr[COL_START] = tod.ZERO
-                stod = tod.ZERO
-            if stod is not None and ftod is not None:
-                self.settimes(i, stod, ftod)
-                self.log_elapsed(bib, stod, ftod, manual=True)
-            else:
-                self.settimes(i)
-                self.log_clear(bib)
-            _log.info('Race times manually adjusted for rider %r', bib)
-            GLib.idle_add(self.delayed_announce)
+                    self.settimes(i)
+                    self.log_clear(bib)
+                _log.info('Race times manually adjusted for rider %r', bib)
+                GLib.idle_add(self.delayed_announce)
 
     def tod_context_del_activate_cb(self, menuitem, data=None):
         """Delete selected row from race model."""

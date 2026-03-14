@@ -1914,6 +1914,9 @@ class trackmeet:
         # dump data bridge root elements if meetcode set
         if self.eventcode:
             self.db.updateMeet()
+        else:
+            _log.info('Meet code not set, flat index forced')
+            self.flatindex = True
 
         # check for existing export path
         self.check_export_path()
@@ -2422,6 +2425,7 @@ class trackmeet:
                 self.delayed_export()
         except Exception as e:
             _log.error('%s data export: %s', e.__class__.__name__, e)
+            raise
 
     ## SCB menu callbacks
     def menu_scb_enable_toggled_cb(self, button, data=None):

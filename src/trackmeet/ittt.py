@@ -310,8 +310,14 @@ class ittt:
         if new_text and '/' not in new_text:
             ft = tod.mktod(new_text)
             if ft is not None:
-                st = tod.ZERO
                 rno = self.riders[path][COL_NO]
+                st = self.riders[path][COL_START]
+                if st is None:
+                    st = tod.ZERO
+                else:
+                    _log.debug('Preserve start time for %s: %s', rno,
+                               st.rawtime())
+                    ft = ft + st
                 ri = self._getiter(rno)
                 if ri is not None:
                     self.settimes(ri, st=st, ft=ft)
@@ -2238,6 +2244,8 @@ class ittt:
                             if fullap:
                                 if lelap is not None:
                                     interval = elap - lelap
+                                    if interval > tod.MAXELAP:
+                                        interval = None
                                 lelap = elap
                             dsplits[splitidx] = {
                                 'label': splitlbl,
@@ -2254,7 +2262,8 @@ class ittt:
                     if ftod is not None:
                         detail['endTime'] = tod.mergedate(
                             ltime=ftod, date=self.event['start'], micros=True)
-                        if lelap != tod.ZERO and lsplit is not None:
+                        if lsplit is not None:
+                            #if lelap != tod.ZERO and lsplit is not None:
                             # at least one split entry
                             splitlbl = self._eventlen
                             splitidx = '%0.0f' % (self._eventdist, )
@@ -2262,6 +2271,8 @@ class ittt:
                             interval = None
                             if lelap is not None:
                                 interval = elap - lelap
+                                if interval > tod.MAXELAP:
+                                    interval = None
                             dsplits[splitidx] = {
                                 'label': splitlbl,
                                 'rank': finrank,
@@ -2954,6 +2965,7 @@ class ittt:
                 if 'splits' in self._detail[bib] and self._detail[bib][
                         'splits']:
                     detail = self._detail[bib]['splits']
+                    _log.debug('detail: %r', detail)
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
                     sec = report.detailsplits(secid)
@@ -2981,7 +2993,6 @@ class ittt:
             _log.debug('Waiting for weather adjusted values...')
             return True
         adjinfo = self.meet.weather.adjust_info(reqid)
-        _log.debug('%s: %r', adjinfo, rstat)
         secs = self.detail_report(bib, adjust=adjinfo)
         self.meet.print_report(secs,
                                docstr='Timing Detail',
@@ -2999,15 +3010,19 @@ class ittt:
                 request = {bib: self._detail[bib]}
                 _log.info('Requesting weather adjusted splits')
                 lap1id = None
-                for sid in self.splitlist[0:-1]:
-                    if self.splitmap[sid]['lap']:
+                for sid in self.splitlist:
+                    if sid in self.splitmap and self.splitmap[sid]['lap']:
                         sdist = self.splitmap[sid]['dist']
                         lap1id = '%0.0f' % (sdist, )
                         break
+                else:
+                    # FIX
+                    lap1id = '250'
                 _log.debug('Using %r for lap1 id', lap1id)
                 reqid = self.meet.weather.req_adjust(request, lap1id=lap1id)
-                GLib.timeout_add_seconds(1, self._detail_print_completion,
-                                         reqid, bib)
+                #GLib.timeout_add_seconds(1, self._detail_print_completion,
+                #reqid, bib)
+                GLib.timeout_add(50, self._detail_print_completion, reqid, bib)
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
         """Print chronometer trace in 3 columns."""
@@ -3107,36 +3122,36 @@ class ittt:
         }
         res = uiutil.options_dlg(window=self.meet.window,
                                  title='Edit times',
+                                 action=True,
                                  sections=sections)
-        changed = False
-        dotimes = False
-        for option in res['result']:
-            if res['result'][option][0]:
-                changed = True
-                if 'index' in sections['result']['schema'][option]:
-                    index = sections['result']['schema'][option]['index']
-                    lr[index] = res['result'][option][2]
-                    _log.debug('Updated %s to: %r', option,
-                               res['result'][option][2])
-                    if option in ('start', 'finish'):
-                        dotimes = True
+        if res['action'] == 0:  # OK
+            dotimes = False
+            nft = None
+            nst = None
+            if res['result']['start'][0]:
+                nst = res['result']['start'][2]
+            if res['result']['finish'][0]:
+                nft = res['result']['finish'][2]
+                dotimes = True
+
+            if dotimes:
+                bib = lr[COL_NO]
+                if nst is None or nst == tod.ZERO:
+                    if lr[COL_START] is not None:
+                        _log.debug('Preserve start time for %s: %s', bib,
+                                   lr[COL_START].rawtime())
+                        nst = lr[COL_START]
+                        nft = nft + nst
+                lr[COL_START] = nst
+                lr[COL_FINISH] = nft
+                if nst is not None and nft is not None:
+                    self.settimes(i, nst, nft)
+                    self.log_elapsed(bib, nst, nft, manual=True)
                 else:
-                    _log.debug('Unknown option %r changed', option)
-        if dotimes:
-            bib = lr[COL_NO]
-            stod = lr[COL_START]
-            ftod = lr[COL_FINISH]
-            if stod is None and ftod is not None:
-                lr[COL_START] = tod.ZERO
-                stod = tod.ZERO
-            if stod is not None and ftod is not None:
-                self.settimes(i, stod, ftod)
-                self.log_elapsed(bib, stod, ftod, manual=True)
-            else:
-                self.settimes(i)
-                self.log_clear(bib)
-            _log.info('Race times manually adjusted for rider %r', bib)
-            GLib.idle_add(self.delayed_announce)
+                    self.settimes(i)
+                    self.log_clear(bib)
+                _log.info('Race times manually adjusted for rider %r', bib)
+                GLib.idle_add(self.delayed_announce)
 
     def tod_context_del_activate_cb(self, menuitem, data=None):
         """Delete selected row from race model."""
