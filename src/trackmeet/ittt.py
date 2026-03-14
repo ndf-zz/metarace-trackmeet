@@ -3016,8 +3016,9 @@ class ittt:
                         lap1id = '%0.0f' % (sdist, )
                         break
                 else:
-                    # FIX
-                    lap1id = '250'
+                    # assume first lap is full distamce
+                    if self._eventdist:
+                        lap1id = '%0.0f' % (self._eventdist, )
                 _log.debug('Using %r for lap1 id', lap1id)
                 reqid = self.meet.weather.req_adjust(request, lap1id=lap1id)
                 #GLib.timeout_add_seconds(1, self._detail_print_completion,
