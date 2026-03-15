@@ -109,6 +109,22 @@ def _fromdts(isostr):
     return ret
 
 
+def _toupper(text):
+    """Return text uppercased."""
+    ret = ''
+    if text:
+        ret = text.upper()
+    return ret
+
+
+def _tolower(text):
+    """Return text lowercased."""
+    ret = ''
+    if text:
+        ret = text.lower()
+    return ret
+
+
 def _todts(dt):
     """Return date time as string."""
     ret = ''
@@ -146,6 +162,11 @@ _EVENT_COLUMN_CONVERTERS = {
     'auto': _clean_autofield,
     'star': _fromdts,
     'endt': _fromdts,
+    'cate': _toupper,
+    'comp': _tolower,
+    'phas': _tolower,
+    'cont': _tolower,
+    'heat': _tolower,
 }
 _EVENT_COLUMN_EXPORTERS = {
     'resu': _toboolstr,
