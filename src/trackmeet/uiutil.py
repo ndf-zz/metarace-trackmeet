@@ -90,6 +90,35 @@ _COMPABBREVS = {
 
 # standard sprint competition phases
 
+# Team Sprint Round One [3.2.145]
+# entrants->heat->(placespec, placeholders, label)
+_TEAM_SPRINT_ROUND1 = {
+    5: {
+        1: ('4,5', 2, '4v5'),
+        2: ('3', 1, '3rd'),
+        3: ('2', 1, '2nd'),
+        4: ('1', 1, '1st'),
+    },
+    6: {
+        1: ('4,6', 2, '4v6'),
+        2: ('3,5', 2, '3v5'),
+        3: ('2', 1, '2nd'),
+        4: ('1', 1, '1st'),
+    },
+    7: {
+        1: ('4,5', 2, '4v5'),
+        2: ('3,6', 2, '3v6'),
+        3: ('2,7', 2, '2v7'),
+        4: ('1', 1, '1st'),
+    },
+    8: {
+        1: ('4,5', 2, '4v5'),
+        2: ('3,6', 2, '3v6'),
+        3: ('2,7', 2, '2v7'),
+        4: ('1,8', 2, '1v8'),
+    },
+}
+
 # Olympic Sprint - Repechages and grouped others placed by 200 TT
 _OLY_SPRINT_COMPETITION = {
     '1.32a': {  # AU specific - skip 1st repechage
@@ -633,7 +662,7 @@ _POINTS_RACES_T2 = {
 }
 
 # Generic Competition Builder Qual/Finals, Medals, Series, Entrants
-_PURSUIT_BUILDER = {
+_COMPETITION_BUILDER = {
     'ctype': {
         'prompt': 'Pursuit',
         'control': 'section',
@@ -671,6 +700,15 @@ _PURSUIT_BUILDER = {
         'subtext': 'Yes?',
         'hint': 'Include Gold Silver Bronze medals in classification',
         'value': False,
+        'defer': True,
+    },
+    'replace': {
+        'prompt': 'Replace:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Reset and overwrite an existing competition',
+        'value': True,
         'defer': True,
     },
 }
@@ -1337,7 +1375,7 @@ def comp_builder(window, meet, comptype):
     if comptype in ('pursuit', 'individual pursuit'):
         comptype = 'individual pursuit'
         label = 'Individual Pursuit'
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
@@ -1345,7 +1383,7 @@ def comp_builder(window, meet, comptype):
         options_schema['code']['value'] = 'ip'
     elif comptype == 'team pursuit':
         label = 'Team Pursuit'
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
@@ -1353,7 +1391,7 @@ def comp_builder(window, meet, comptype):
         options_schema['code']['value'] = 'tp'
     elif comptype == 'team sprint':
         label = 'Team Sprint'
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
@@ -1362,7 +1400,7 @@ def comp_builder(window, meet, comptype):
     elif comptype == 'time trial':
         label = 'Time Trial'
 
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
@@ -1374,7 +1412,7 @@ def comp_builder(window, meet, comptype):
         else:
             comptable = _SPRINT_COMPETITION
         label = 'Sprint'
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
@@ -1385,7 +1423,7 @@ def comp_builder(window, meet, comptype):
         label = comptype.title()
         if comptype in _COMPIDS:
             comptype = _COMPIDS[comptype]  # scratch race => scratch
-        options_schema = _PURSUIT_BUILDER
+        options_schema = _COMPETITION_BUILDER
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
         if comptype == 'madison':
@@ -1419,21 +1457,33 @@ def comp_builder(window, meet, comptype):
             series = res['comp']['series'][2]
             code = res['comp']['code'][2]
             entrants = res['comp']['entrants'][2]
+            overwrite = res['comp']['replace'][2]
             dofinals = True
             if u13:
                 _log.info('Qualifying phase skipped for Under 13 category')
                 dofinals = False
             domedals = res['comp']['domedals'][2]
             _log.debug('Building competition for cat=%s code=%s', cat, code)
-            if comptype in ('individual pursuit', 'team pursuit',
-                            'team sprint'):
+            if comptype in ('individual pursuit', 'team pursuit'):
                 if entrants is None:
                     entrants = 5  # assume full competition
                 elif entrants < 2:
                     dofinals = False
                 build_pursuit_comp(meet, label, cat, category, series, code,
-                                   dofinals, domedals, entrants)
-            elif comptype in ('time trial'):
+                                   dofinals, domedals, entrants, overwrite)
+            elif comptype == 'team sprint':
+                doround1 = False
+                if entrants is None:
+                    entrants = 9  # assume full competition
+                if entrants > 4 and not (masters or u17 or u13):
+                    _log.debug('TS: Round 1 enabled for cat %r', cat)
+                    doround1 = True
+                elif entrants < 2:
+                    dofinals = False
+                build_ts_comp(meet, label, cat, category, series, code,
+                              dofinals, domedals, entrants, doround1,
+                              overwrite)
+            elif comptype == 'time trial':
                 if masters:
                     if dofinals:
                         _log.info(
@@ -1444,7 +1494,7 @@ def comp_builder(window, meet, comptype):
                 elif entrants < 9:
                     dofinals = False
                 build_itt_comp(meet, label, cat, category, series, code,
-                               dofinals, domedals, entrants)
+                               dofinals, domedals, entrants, overwrite)
             elif comptype in ('sprint', 'olympic sprint'):
                 # adjust 1/4 final heats for youth and masters (applies to both tables)
                 if (meet.domestic and masters) or u13 or u17:
@@ -1458,7 +1508,8 @@ def comp_builder(window, meet, comptype):
                               cat)
                     dofinals = False
                 build_sprint_comp(meet, label, cat, category, series, code,
-                                  dofinals, domedals, entrants, comptable)
+                                  dofinals, domedals, entrants, comptable,
+                                  overwrite)
             elif comptype in ('scratch', 'points', 'elimination', 'madison'):
                 trackmax = meet.get_competitor_limit(
                     madison=comptype == 'madison')
@@ -1476,7 +1527,7 @@ def comp_builder(window, meet, comptype):
                     dofinals = False
                 build_bunch_comp(meet, label, cat, category, series, code,
                                  dofinals, domedals, entrants, trackmax,
-                                 comptype, masters)
+                                 comptype, masters, overwrite)
         else:
             _log.info('No cat selected for new competion')
     return False
@@ -1517,7 +1568,7 @@ def _normauto(srcmap, idmap={}):
 
 
 def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
-                      domedals, entrants, comptable):
+                      domedals, entrants, comptable, overwrite):
     """Create sprint events, add to meet."""
     laps = 3  # applies to sprint rounds only
     laplen = meet.get_laplen()
@@ -1549,10 +1600,11 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
     # find an unused event id for the catcomp
     compid = comp_label_short(label)
     catcomp = cat.lower() + compid
-    count = 1
-    while catcomp in meet.edb:
-        count += 1
-        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
 
     prefix = '%s %s' % (
         category['Title'],
@@ -1597,7 +1649,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
         pqid = '%sq' % (catcomp, )
         idmap['qualifying'] = pqid
         othersrc = pqid
-        pqev = meet.edb.add_empty(evno=pqid, notify=False)
+        pqev = meet.edb.add_or_replace(evno=pqid, notify=False)
         pqev.set_values({
             'series': series,
             'reference': catcomp,
@@ -1659,7 +1711,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
             # phase head
             phid = '%s%s' % (catcomp, detail['evid'])
             idmap[phase] = phid
-            phev = meet.edb.add_empty(evno=phid, notify=False)
+            phev = meet.edb.add_or_replace(evno=phid, notify=False)
             phev.set_values({
                 'series': series,
                 'reference': catcomp,
@@ -1681,7 +1733,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
             # heat 2/3 dummy events
             if detail['heats'] > 1:
                 h2id = '%s%s%s' % (catcomp, detail['evid'], 'h2')
-                h2ev = meet.edb.add_empty(evno=h2id, notify=False)
+                h2ev = meet.edb.add_or_replace(evno=h2id, notify=False)
                 h2label = einfo + ' Heat 2'
                 h2ev.set_values({
                     'series': series,
@@ -1696,7 +1748,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
                     'program': True,
                 })
                 h3id = '%s%s%s' % (catcomp, detail['evid'], 'h3')
-                h3ev = meet.edb.add_empty(evno=h3id, notify=False)
+                h3ev = meet.edb.add_or_replace(evno=h3id, notify=False)
                 h3label = einfo + ' Heat 3'
                 h3ev.set_values({
                     'series': series,
@@ -1718,6 +1770,9 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
                 if detail['heats'] > 1:
                     c.heat2evno = h2id
                     c.heat3evno = h3id
+                else:
+                    c.heat2evno = None
+                    c.heat3evno = None
                 c.otherstime = detail['otherstime']
                 c.saveconfig()
                 c = None
@@ -1745,7 +1800,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
         # classification
         showevs = ' '.join(eventlist)
         places = '; '.join(placeslist)
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
         pev.set_values({
             'series': series,
             'type handler': 'classification',
@@ -1763,17 +1818,20 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
         c.loadconfig()
         if domedals:
             c.medals = 'Gold Silver Bronze'
+        else:
+            c.medals = ''
         if othersrc:
             c.othersrc = othersrc
-        if otherslist:
-            c.others = '; '.join(otherslist)
-        c.showevents = showevs
+        else:
+            c.othersrc = ''
+        c.others = '; '.join(otherslist)
         c.saveconfig()
         c = None
 
     else:
         # flying 200m only
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pid = '%sf' % (catcomp, )
+        pev = meet.edb.add_or_replace(evno=pid, notify=True)
         pev.set_values({
             'series': series,
             'type handler': qualtype,
@@ -1820,7 +1878,8 @@ def sprint_laps(laps, meet):
 
 
 def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
-                     domedals, entrants, trackmax, comptype, masters):
+                     domedals, entrants, trackmax, comptype, masters,
+                     overwrite):
     """Create bunch events, add to meet."""
 
     # is a qualifying round required
@@ -1862,10 +1921,11 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
     # find an unused event id for the catcomp
     compid = comp_label_short(label)
     catcomp = cat.lower() + compid
-    count = 1
-    while catcomp in meet.edb:
-        count += 1
-        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
 
     prefix = '%s %s' % (
         category['Title'],
@@ -1950,7 +2010,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 rline = '%d %s eliminated' % (rejected, riders)
             qhid = '%sq%d' % (catcomp, heat)
             eventlist.append(qhid)
-            qhev = meet.edb.add_empty(evno=qhid, notify=False)
+            qhev = meet.edb.add_or_replace(evno=qhid, notify=False)
             qhev.set_values({
                 'series': series,
                 'type handler': qualtype,
@@ -1972,10 +2032,11 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 c = meet.get_event(qhid)
                 c.readonly = False
                 c.loadconfig()
-                if tenpoints:
-                    c.tenptlaps = True
+                c.tenptlaps = tenpoints
                 if lastdouble:
                     c.sprintpoints['0'] = '10 6 4 2'
+                else:
+                    c.sprintpoints['0'] = '5 3 2 1'
                 c.sprintlaps = ' '.join(heatsprints)
                 c.sprint_model_init()
                 c.saveconfig()
@@ -1986,7 +2047,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
         # then add final
         fid = '%sf' % (catcomp, )
         eventlist.insert(0, fid)
-        fev = meet.edb.add_empty(evno=fid, notify=False)
+        fev = meet.edb.add_or_replace(evno=fid, notify=False)
         fev.set_values({
             'series': series,
             'type handler': finaltype,
@@ -2005,10 +2066,11 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             c = meet.get_event(fid)
             c.readonly = False
             c.loadconfig()
-            if tenpoints:
-                c.tenptlaps = True
+            c.tenptlaps = tenpoints
             if lastdouble:
                 c.sprintpoints['0'] = '10 6 4 2'
+            else:
+                c.sprintpoints['0'] = '5 3 2 1'
             c.sprintlaps = ' '.join(finalsprints)
             c.sprint_model_init()
             c.saveconfig()
@@ -2016,7 +2078,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
         # classification
         showevs = ' '.join(eventlist)
         places = fid
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
         pev.set_values({
             'series': series,
             'type handler': 'classification',
@@ -2032,16 +2094,17 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
         c = meet.get_event(catcomp)
         c.readonly = False
         c.loadconfig()
-        if otherslist:
-            c.others = '; '.join(otherslist)
+        c.others = '; '.join(otherslist)
         if domedals:
             c.medals = 'Gold Silver Bronze'
-        c.showevents = showevs
+        else:
+            c.medals = ''
         c.saveconfig()
         c = None
     else:
         # straight final
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pid = '%sf' % (catcomp, )
+        pev = meet.edb.add_or_replace(evno=pid, notify=True)
         pev.set_values({
             'series': series,
             'type handler': finaltype,
@@ -2060,18 +2123,251 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             c = meet.get_event(catcomp)
             c.readonly = False
             c.loadconfig()
-            if tenpoints:
-                c.tenptlaps = True
+            c.tenptlaps = tenpoints
             if lastdouble:
                 c.sprintpoints['0'] = '10 6 4 2'
+            else:
+                c.sprintpoints['0'] = '5 3 2 1'
             c.sprintlaps = ' '.join(finalsprints)
             c.sprint_model_init()
             c.saveconfig()
             c = None
 
 
+def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
+                  entrants, doround1, overwrite):
+    """Create team sprint events, add to meet."""
+
+    # assume three riders unless overridden
+    laps = 3
+    if category[label]:
+        laps = category[label]
+    dm = laps * meet.tracklen_n / meet.tracklen_d
+    distance = '%0.0f\u2006m' % (dm, )
+
+    # check and clean competition code
+    if code is not None:
+        code = code.translate(strops.PRINT_UTRANS).strip()
+    else:
+        code = ''
+    if not code:
+        code = label.lower().translate(strops.WEBFILE_UTRANS)
+
+    # ensure series is set
+    if series is None:
+        series = ''
+
+    qualtype = 'team sprint'
+    roundtype = 'team sprint race'
+    finaltype = 'team sprint race'
+
+    # find an unused event id for the catcomp
+    compid = comp_label_short(label)
+    catcomp = cat.lower() + compid
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
+
+    prefix = '%s %s' % (
+        category['Title'],
+        label,
+    )
+
+    if dofinals:
+        # Build qualifying, round1 and final phases as per 3.2.145
+        eventlist = []  # event ids to be reported with result
+        placeslist = []  # places in the final classification
+        otherslist = []  # unqualified competitors
+        othersrc = None  # ranking basis for others
+
+        # qualifying
+        pqid = '%sq' % (catcomp, )
+        pqev = meet.edb.add_or_replace(evno=pqid, notify=False)
+
+        # default to no round 1
+        qrule = 'Top 8 to round 1'
+        pqual = min(8, entrants)
+        if not doround1:
+            qrule = '1st&2nd to gold final; 3rd&4th to bronze'
+            pqual = 4
+            if entrants == 3:
+                qrule = '1st & 2nd to gold final'
+                pqual = 2
+
+        pqev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': qualtype,
+            'prefix': prefix,
+            'info': 'Qualifying',
+            'result': False,
+            'index': True,
+            'program': True,
+            'qualifiers': pqual,
+            'laps': laps,
+            'distance': distance,
+            'rules': qrule,
+            'category': cat,
+            'competion': code,
+            'phase': 'qualifying',
+        })
+        eventlist.insert(0, pqid)
+        minplace = pqual + 1
+        if minplace <= entrants:
+            # at least one other
+            otherslist.append('%s:%d-' % (pqid, minplace))
+            othersrc = pqid  # rank others by qual place
+
+        bspec = '%s: 3,4' % (pqid, )
+        gspec = '%s: 1,2' % (pqid, )
+        mdep = pqid
+
+        # Round 1
+        if doround1:
+            gspec = ''  # TBC
+            bspec = ''  # TBC
+            mdep = ''  # TBC
+            phase = 'r1'
+            eid = entrants
+            if eid not in _TEAM_SPRINT_ROUND1:
+                # assume full pack
+                eid = 8
+            # always 4 "heats"
+            for h in range(4):
+                heat = h + 1
+                contest = str(heat)
+                r1hid = '%sr%d' % (catcomp, heat)
+                rspec, rph, rlabel = _TEAM_SPRINT_ROUND1[eid][heat]
+                r1hev = meet.edb.add_or_replace(evno=r1hid, notify=False)
+                r1hev.set_values({
+                    'series': series,
+                    'reference': catcomp,
+                    'type handler': roundtype,
+                    'prefix': prefix,
+                    'info': 'Round 1 %s' % (rlabel, ),
+                    'result': False,
+                    'index': True,
+                    'program': True,
+                    'depends': pqid,
+                    'auto': '%s: %s' % (pqid, rspec),
+                    'placeholders': rph,
+                    'laps': laps,
+                    'distance': distance,
+                    'rules':
+                    'Fastest 2 winners to gold final; other winners to bronze',
+                    'category': cat,
+                    'competion': code,
+                    'phase': 'r1',
+                    'contest': contest,
+                })
+                eventlist.insert(0, r1hid)
+                # TBC placelist insert losers ranked by this time :/
+
+        # bronze final: 4 or more entrants (masters AU:3.02.02)
+        if entrants > 3:
+            pfbid = '%sfb' % (catcomp, )
+            pfbev = meet.edb.add_or_replace(evno=pfbid, notify=False)
+            pfbev.set_values({
+                'series': series,
+                'reference': catcomp,
+                'type handler': finaltype,
+                'prefix': prefix,
+                'info': 'Bronze Final',
+                'result': False,
+                'index': True,
+                'program': True,
+                'depends': mdep,
+                'auto': bspec,
+                'placeholders': 2,
+                'laps': laps,
+                'distance': distance,
+                'category': cat,
+                'competion': code,
+                'phase': 'final',
+                'contest': 'bronze',
+            })
+            eventlist.insert(0, pfbid)
+            placeslist.insert(0, '%s: 1,2' % (pfbid, ))
+
+        # gold final
+        pfgid = '%sfg' % (catcomp, )
+        pfgev = meet.edb.add_or_replace(evno=pfgid, notify=False)
+        pfgev.set_values({
+            'series': series,
+            'reference': catcomp,
+            'type handler': finaltype,
+            'prefix': prefix,
+            'info': 'Gold Final',
+            'result': False,
+            'index': True,
+            'program': True,
+            'depends': mdep,
+            'auto': gspec,
+            'placeholders': 2,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+            'contest': 'gold',
+        })
+        eventlist.insert(0, pfgid)
+        placeslist.insert(0, '%s: 1,2' % (pfgid, ))
+
+        # classification
+        showevs = ' '.join(eventlist)
+        places = '; '.join(placeslist)
+        pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
+        pev.set_values({
+            'series': series,
+            'type handler': 'classification',
+            'prefix': prefix,
+            'result': True,
+            'index': False,
+            'program': False,
+            'depends': showevs,
+            'auto': places,
+            'category': cat,
+            'competion': code,
+        })
+        c = meet.get_event(catcomp)
+        c.readonly = False
+        c.loadconfig()
+        c.others = '; '.join(otherslist)
+        if othersrc:
+            c.othersrc = othersrc
+        else:
+            c.othersrc = ''
+        if domedals:
+            c.medals = 'Gold Silver Bronze'
+        else:
+            c.medals = ''
+        c.saveconfig()
+        c = None
+    else:
+        # straight final
+        pid = '%sfg' % (catcomp, )
+        pev = meet.edb.add_or_replace(evno=pid, notify=True)
+        pev.set_values({
+            'series': series,
+            'type handler': finaltype,
+            'prefix': prefix,
+            'info': 'Final',
+            'result': True,
+            'index': True,
+            'program': True,
+            'laps': laps,
+            'distance': distance,
+            'category': cat,
+            'competion': code,
+            'phase': 'final',
+        })
+
+
 def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
-                       domedals, entrants):
+                       domedals, entrants, overwrite):
     """Create pursuit-like events, add to meet."""
     laps = None
     distance = ''
@@ -2113,10 +2409,11 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
     # find an unused event id for the catcomp
     compid = comp_label_short(label)
     catcomp = cat.lower() + compid
-    count = 1
-    while catcomp in meet.edb:
-        count += 1
-        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
 
     prefix = '%s %s' % (
         category['Title'],
@@ -2131,7 +2428,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
         othersrc = None  # ranking basis for others
 
         pqid = '%sq' % (catcomp, )
-        pqev = meet.edb.add_empty(evno=pqid, notify=False)
+        pqev = meet.edb.add_or_replace(evno=pqid, notify=False)
         qrule = '1st&2nd to gold final; 3rd&4th to bronze'
         pqual = 4
         if entrants == 3:
@@ -2164,7 +2461,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
         # bronze final: 4 or more entrants (masters AU:3.02.02)
         if entrants > 3:
             pfbid = '%sfb' % (catcomp, )
-            pfbev = meet.edb.add_empty(evno=pfbid, notify=False)
+            pfbev = meet.edb.add_or_replace(evno=pfbid, notify=False)
             pfbev.set_values({
                 'series': series,
                 'reference': catcomp,
@@ -2189,7 +2486,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
 
         # gold final
         pfgid = '%sfg' % (catcomp, )
-        pfgev = meet.edb.add_empty(evno=pfgid, notify=False)
+        pfgev = meet.edb.add_or_replace(evno=pfgid, notify=False)
         pfgev.set_values({
             'series': series,
             'reference': catcomp,
@@ -2215,7 +2512,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
         # classification
         showevs = ' '.join(eventlist)
         places = '; '.join(placeslist)
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
         pev.set_values({
             'series': series,
             'type handler': 'classification',
@@ -2231,18 +2528,21 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
         c = meet.get_event(catcomp)
         c.readonly = False
         c.loadconfig()
-        if otherslist:
-            c.others = '; '.join(otherslist)
+        c.others = '; '.join(otherslist)
         if othersrc:
             c.othersrc = othersrc
+        else:
+            c.othersrc = ''
         if domedals:
             c.medals = 'Gold Silver Bronze'
-        c.showevents = showevs
+        else:
+            c.medals = ''
         c.saveconfig()
         c = None
     else:
         # straight final
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pid = '%sfg' % (catcomp, )
+        pev = meet.edb.add_or_replace(evno=pid, notify=True)
         pev.set_values({
             'series': series,
             'type handler': finaltype,
@@ -2260,7 +2560,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
 
 
 def build_itt_comp(meet, label, cat, category, series, code, dofinals,
-                   domedals, entrants):
+                   domedals, entrants, overwrite):
     """Create time trial events, add to meet."""
     laps = None
     distance = ''
@@ -2286,10 +2586,11 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
     # find an unused event id for the catcomp
     compid = comp_label_short(label)
     catcomp = cat.lower() + compid
-    count = 1
-    while catcomp in meet.edb:
-        count += 1
-        catcomp = '%s%s%d' % (cat.lower(), compid, count)
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
 
     prefix = '%s %s' % (
         category['Title'],
@@ -2304,7 +2605,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
         othersrc = None  # ranking basis for others
 
         pqid = '%sq' % (catcomp, )
-        pqev = meet.edb.add_empty(evno=pqid, notify=False)
+        pqev = meet.edb.add_or_replace(evno=pqid, notify=False)
         pqev.set_values({
             'series': series,
             'reference': catcomp,
@@ -2336,7 +2637,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
 
         # final - 1 up, top 8
         pfid = '%sf' % (catcomp, )
-        pfev = meet.edb.add_empty(evno=pfid, notify=False)
+        pfev = meet.edb.add_or_replace(evno=pfid, notify=False)
         pfev.set_values({
             'series': series,
             'reference': catcomp,
@@ -2367,7 +2668,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
         # classification
         showevs = ' '.join(eventlist)
         places = '; '.join(placeslist)
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
         pev.set_values({
             'series': series,
             'type handler': 'classification',
@@ -2383,18 +2684,21 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
         c = meet.get_event(catcomp)
         c.readonly = False
         c.loadconfig()
-        if otherslist:
-            c.others = '; '.join(otherslist)
+        c.others = '; '.join(otherslist)
         if othersrc:
             c.othersrc = othersrc
+        else:
+            c.othersrc = ''
         if domedals:
             c.medals = 'Gold Silver Bronze'
-        c.showevents = showevs
+        else:
+            c.medals = ''
         c.saveconfig()
         c = None
     else:
         # straight final, 1-up
-        pev = meet.edb.add_empty(evno=catcomp, notify=True)
+        pid = '%sf' % (catcomp, )
+        pev = meet.edb.add_or_replace(evno=pid, notify=True)
         pev.set_values({
             'series': series,
             'type handler': 'indiv tt',

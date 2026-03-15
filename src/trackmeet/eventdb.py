@@ -694,6 +694,13 @@ class Event:
 class EventDb:
     """Event database."""
 
+    def add_or_replace(self, evno=None, notify=True):
+        """Add a new empty row or return an existing one."""
+        if evno in self._store:
+            return self._store[evno]
+        else:
+            return self.add_empty(evno, notify)
+
     def add_empty(self, evno=None, notify=True):
         """Add a new empty row to the event model."""
         if evno is None:

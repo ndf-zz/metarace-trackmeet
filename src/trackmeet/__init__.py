@@ -433,7 +433,7 @@ _ADD_BREAK_SCHEMA = {
     'info': {
         'prompt': 'Info:',
         'hint': 'Break subtitle',
-        'attr': 'subtitle',
+        'attr': 'info',
         'defer': True,
     },
     'rule': {
@@ -4108,24 +4108,31 @@ class trackmeet:
                               question=msg):
             wasOpen = None
             for evt in elist:
-                if evt in self.edb:
-                    if self.curevent is not None and self.curevent.evno == evt:
-                        wasOpen = self.curevent.evno
-                        self.close_event()
-                    # Backup config
-                    conf = self.event_configfile(evt)
-                    if os.path.isfile(conf):
-                        bakfile = conf + '.old'
-                        os.rename(conf, bakfile)
-                    _log.debug('Reset event %r', evt)
-                    evh = self.edb[evt]
-                    evh['start time'] = None
+                if self.reset_event(evt):
+                    wasOpen = evt
 
             # Re-open curevent if closed
             if wasOpen is not None:
                 GLib.idle_add(self.open_evno, wasOpen),
 
             _log.info('Reset %d event%s', cnt, strops.plural(cnt))
+
+    def reset_event(self, evid):
+        """Reset event to idle, return True if open."""
+        ret = False
+        if evid in self.edb:
+            if self.curevent is not None and self.curevent.evno == evid:
+                ret = True
+                self.close_event()
+            # Backup config
+            conf = self.event_configfile(evid)
+            if os.path.isfile(conf):
+                bakfile = conf + '.old'
+                os.rename(conf, bakfile)
+            _log.debug('Reset event %r', evid)
+            evh = self.edb[evid]
+            evh['start time'] = None
+        return ret
 
     def event_popup_delete_cb(self, menuitem, data=None):
         """Delete selected events"""
