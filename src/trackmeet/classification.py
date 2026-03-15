@@ -114,6 +114,8 @@ class Classification:
                 if self.info_ent.get_text() != self.event['info']:
                     self.info_ent.set_text(self.event['info'])
                 self.update_expander_lbl_cb()
+                self.showevents = self.event['depend']
+                self.placesrc = self.event['auto']
 
     def standingstr(self, width=None):
         """Return an event status string for reports and scb."""
@@ -208,11 +210,9 @@ class Classification:
         else:
             # import showevents and places from event
             if self.event['depends']:
-                if not cr.get_value('event', 'showevents'):
-                    cr.set('event', 'showevents', self.event['depends'])
+                cr.set('event', 'showevents', self.event['depends'])
             if self.event['auto']:
-                if not cr.get_value('event', 'placesrc'):
-                    cr.set('event', 'placesrc', self.event['auto'])
+                cr.set('event', 'placesrc', self.event['auto'])
 
         cr.export_section('event', self)  # pull in config from schema
 
@@ -861,6 +861,8 @@ class Classification:
             },
         )
         if res['action'] == 0:  # OK
+            self.event['depends'] = res['hour']['showevents'][2]
+            self.event['auto'] = res['hour']['placesrc'][2]
             self.recalculate()
             GLib.idle_add(self.delayed_announce)
         else:
