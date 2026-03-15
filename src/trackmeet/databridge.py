@@ -671,16 +671,16 @@ class DataBridge():
                 blackRid = None
                 redRid = None
                 for m in c['members'].split():
-                    lr = self._m.rdb.fetch_bibstr(
-                        m)  # creates new if not found
-                    if blackRid is None:
-                        blackRid = lr['no']
-                    elif redRid is None:
-                        redRid = lr['no']
-                    else:
-                        _log.debug('Extra madison members ignored for %s',
-                                   c.resname_bib())
-                        break
+                    lr = self._m.rdb.fetch_bibstr(m, create=False)
+                    if lr is not None:
+                        if blackRid is None:
+                            blackRid = lr['no']
+                        elif redRid is None:
+                            redRid = lr['no']
+                        else:
+                            _log.debug('Extra madison members ignored for %s',
+                                       c.resname_bib())
+                            break
                 compObj['pairs'][cno] = {
                     'number': cno,
                     'name': _ornull(c['first'].strip()),
@@ -695,9 +695,9 @@ class DataBridge():
             elif ser.startswith('t'):  # Team Entry
                 members = []
                 for m in c['members'].split():
-                    lr = self._m.rdb.fetch_bibstr(
-                        m)  # creates new if not found
-                    members.append(lr['no'])
+                    lr = self._m.rdb.fetch_bibstr(m, create=False)
+                    if lr is not None:
+                        members.append(lr['no'])
                 compObj['teams'][cno] = {
                     'code': cno,
                     'name': _ornull(c['first'].strip()),
