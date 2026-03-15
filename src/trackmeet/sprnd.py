@@ -692,7 +692,17 @@ class sprnd:
         """Add specified rider to race model."""
         bib = bib.upper()
         qual = tod.mktod(info)
-        rname = self._listname(bib)
+        rname = ''
+        dbr = self._get_rider(bib)
+        if dbr is not None:
+            rname = dbr.fitname(32)
+            # is rider a member of the event category?
+            if self.event.get_catcomp():
+                ecat = self.event['category']
+                if not dbr.in_cat(ecat):
+                    _log.info('%s added to category %s', dbr.resname_bib(),
+                              ecat)
+                    dbr.add_cat(ecat)
         if self.event['type'] == 'sprint final':
             slot = None
             afound = False

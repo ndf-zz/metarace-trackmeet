@@ -1255,6 +1255,14 @@ class f200:
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
+
             self.riders.append(nr)
         else:
             # rider exists in model, update the seed value
@@ -1277,6 +1285,15 @@ class f200:
                 dbr.rename(new_text)
             else:
                 self.meet.rdb.match_add(rNo, self.series, new_text)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is not None:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
 
     def placexfer(self):
         """Transfer places into model."""

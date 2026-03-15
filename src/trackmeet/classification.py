@@ -479,6 +479,13 @@ class Classification:
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
                 nr[COL_CAT] = dbr['cat']
             nr[COL_PLACE] = place
             return self.riders.append(nr)
@@ -890,6 +897,15 @@ class Classification:
                 dbr.rename(new_text)
             else:
                 self.meet.rdb.match_add(rNo, self.series, new_text)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is not None:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
 
     def __init__(self, meet, event, ui=True):
         """Constructor."""

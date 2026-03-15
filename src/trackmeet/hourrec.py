@@ -307,6 +307,14 @@ class UCIHour:
             self._rider = self.meet.rdb.get_rider(bib, self.series)
             if self._rider is None:
                 _log.debug('Rider (%s,%s) not found, not added', bib, series)
+            else:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not self._rider.in_cat(ecat):
+                        _log.info('%s added to category %s',
+                                  self._rider.resname(), ecat)
+                        self._rider.add_cat(ecat)
             self._updateRider()
         else:
             _log.warning(

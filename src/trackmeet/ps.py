@@ -47,6 +47,8 @@ RES_COL_FINAL = 9
 RES_COL_INFO = 10
 RES_COL_STPTS = 11
 RES_COL_DNFCODE = 12
+RES_COL_MEMBERS = 13
+_VIEWCOL_MEMBERS = 2  # Team member list col
 
 # common sprint lap setups (TBC)
 COMMON_SPRINTS = {
@@ -164,6 +166,7 @@ class ps:
                     if rh is not None:
                         _log.debug('Rider change notify: %r', rider)
                         rh[RES_COL_NAME] = dbr.listname()
+                        rh[RES_COL_MEMBERS] = dbr['members']
             else:
                 # riders db changed, handled by meet object
                 pass
@@ -279,7 +282,7 @@ class ps:
 
         _log.debug('load config')
         for r in cr.get('event', 'startlist').upper().split():
-            nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0, '']
+            nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0, '', '']
             if cr.has_option('points', r):
                 ril = cr.get('points', r)
                 if len(ril) >= 1:
@@ -301,6 +304,8 @@ class ps:
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
                 nr[RES_COL_NAME] = dbr.listname()
+                # unlike ittt, madison members stick to competitor record
+                nr[RES_COL_MEMBERS] = dbr['members']
             self.riders.append(nr)
         _log.debug('added riders')
         if cr.get('event', 'scoring').lower() in ('madison', 'laps'):
@@ -466,6 +471,8 @@ class ps:
             self.update_expander_lbl_cb()
             self.info_expand.set_expanded(cr.get_bool('event', 'showinfo'))
             self.type_lbl.set_text(self.scoring.capitalize())
+            if self.series.startswith('t'):
+                self.view.get_column(_VIEWCOL_MEMBERS).set_visible(True)
         else:
             self._winState['showinfo'] = cr.get('event', 'showinfo')
 
@@ -874,10 +881,17 @@ class ps:
         bib = bib.upper()
         er = self._getrider(bib)
         if bib == '' or er is None:
-            nr = [bib, '', '', '', True, 0, 0, 0, '', -1, '', 0, '']
+            nr = [bib, '', '', '', True, 0, 0, 0, '', -1, '', 0, '', '']
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[RES_COL_NAME] = dbr.listname()
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
                 if self.inomnium:
                     if info:
                         nr[RES_COL_INFO] = str(info)
@@ -2248,6 +2262,51 @@ class ps:
                 dbr.rename(new_text)
             else:
                 self.meet.rdb.match_add(rNo, self.series, new_text)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is not None:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
+
+    def _editmembers_cb(self, cell, path, new_text, col):
+        """Edit the team members list."""
+        old_text = self.riders[path][col]
+        if old_text != new_text:
+            nr = []
+            for rno in new_text.split():
+                nno = strops.bibstr(rno)
+                if nno not in nr:
+                    nr.append(nno)
+            self.riders[path][col] = ' '.join(nr)
+            if nr:
+                # write changes to riderdb
+                dbr = self.meet.rdb.get_rider(self.riders[path][RES_COL_NO],
+                                              self.series)
+                if dbr is not None:
+                    newmbrs = []
+                    oldmbrs = dbr['members'].split()
+                    for rno in oldmbrs:
+                        nno = strops.bibstr(rno)
+                        newmbrs.append(nno)
+
+                    for rno in nr:
+                        if rno not in newmbrs:
+                            newmbrs.append(rno)
+                    dbr['members'] = ' '.join(newmbrs)
+            # check each member is also in the event category
+            if self.event.get_catcomp():
+                ecat = self.event['category']
+                for member in nr:
+                    dbr = self.meet.rdb.fetch_bibstr(member)
+                    if dbr is not None:
+                        if not dbr.in_cat(ecat):
+                            _log.info('%s added to category %s',
+                                      dbr.resname_bib(), ecat)
+                            dbr.add_cat(ecat)
 
     def ps_result_cr_inrace_toggled_cb(self, cr, path, data=None):
         self.riders[path][RES_COL_INRACE] = not (
@@ -2574,6 +2633,7 @@ class ps:
         self.winopen = ui
 
         # race property attributes
+        self.view = None
         self.decisions = []
         self.showinters = True
         self.tenptlaps = False
@@ -2637,7 +2697,8 @@ class ps:
             int,  # FINAL = 9
             str,  # INFO = 10
             int,  # STPTS = 11
-            str)  # DNFCODE = 12
+            str,  # DNFCODE = 12
+            str)  # MEMBERS = 13
 
         if ui:
             b = uiutil.builder('ps.ui')
@@ -2705,6 +2766,8 @@ class ps:
                                 RES_COL_NAME,
                                 self._editname_cb,
                                 expand=True)
+            uiutil.mkviewcoltxt(t, 'Members', RES_COL_MEMBERS,
+                                self._editmembers_cb)
             uiutil.mkviewcoltxt(t, 'Info', RES_COL_INFO, self.editinfo_cb)
             uiutil.mkviewcolbool(t,
                                  'In',
@@ -2725,6 +2788,9 @@ class ps:
                                 width=50)
             uiutil.mkviewcoltxt(t, 'L/S', RES_COL_FINAL, calign=0.5, width=50)
             uiutil.mkviewcoltxt(t, 'Rank', RES_COL_PLACE, calign=0.5, width=50)
+            self.view = t
+            self.view.get_column(_VIEWCOL_MEMBERS).set_visible(False)
+
             b.get_object('ps_result_win').add(t)
 
             # connect signal handlers

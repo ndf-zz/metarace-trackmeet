@@ -229,6 +229,13 @@ class race:
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
             if self.evtype == 'handicap':
                 if info:
                     nr[COL_INFO] = strops.mark2mark(info)
@@ -1370,6 +1377,15 @@ class race:
                 dbr.rename(new_text)
             else:
                 self.meet.rdb.match_add(rNo, self.series, new_text)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is not None:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
 
     def gotorow(self, i=None):
         """Select row for specified iterator."""

@@ -643,8 +643,9 @@ class DataBridge():
                     sportClass = ecat
                     break
             else:
-                _log.info('Para competitor without sport class: %s',
-                          c.resname_bib())
+                if not c['series'].startswith('t'):
+                    _log.info('Para competitor without sport class: %s',
+                              c.resname_bib())
         for cat in cats:
             if cat not in self._categories:
                 #_log.debug('Adding cat = %r for competitor %s', cat, c.resname())

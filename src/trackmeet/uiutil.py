@@ -1388,7 +1388,10 @@ def comp_builder(window, meet, comptype):
         options_schema = _PURSUIT_BUILDER
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
-        options_schema['series']['value'] = ''
+        if comptype == 'madison':
+            options_schema['series']['value'] = 'tm'
+        else:
+            options_schema['series']['value'] = ''
         options_schema['code']['value'] = comptype
 
     if options_schema is None:

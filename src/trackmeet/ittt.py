@@ -2092,6 +2092,7 @@ class ittt:
         if self.inevent(oldNo):
             if oldNo != newNo and not self.inevent(newNo):
                 name = ''
+                members = ''
                 dbr = self.meet.rdb.get_rider(newNo, self.series)
                 if dbr is not None:
                     name = dbr.listname()
@@ -2123,6 +2124,13 @@ class ittt:
             dbr = self.meet.rdb.get_rider(bib, self.series)
             if dbr is not None:
                 nr[COL_NAME] = dbr.listname()
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
             self.riders.append(nr)
         else:
             # rider exists in model, just update the seed value
@@ -2159,6 +2167,16 @@ class ittt:
                         if rno not in newmbrs:
                             newmbrs.append(rno)
                     dbr['members'] = ' '.join(newmbrs)
+            # check each member is also in the event category
+            if self.event.get_catcomp():
+                ecat = self.event['category']
+                for member in nr:
+                    dbr = self.meet.rdb.fetch_bibstr(member)
+                    if dbr is not None:
+                        if not dbr.in_cat(ecat):
+                            _log.info('%s added to category %s',
+                                      dbr.resname_bib(), ecat)
+                            dbr.add_cat(ecat)
 
     def _editname_cb(self, cell, path, new_text, col):
         """Edit the rider name if possible."""
@@ -2171,6 +2189,15 @@ class ittt:
                 dbr.rename(new_text)
             else:
                 self.meet.rdb.match_add(rNo, self.series, new_text)
+                dbr = self.meet.rdb.get_rider(rNo, self.series)
+            if dbr is not None:
+                # is rider a member of the event category?
+                if self.event.get_catcomp():
+                    ecat = self.event['category']
+                    if not dbr.in_cat(ecat):
+                        _log.info('%s added to category %s', dbr.resname_bib(),
+                                  ecat)
+                        dbr.add_cat(ecat)
 
     def placexfer(self):
         """Transfer places into model."""
