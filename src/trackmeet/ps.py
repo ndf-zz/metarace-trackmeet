@@ -674,7 +674,8 @@ class ps:
         """Return a list of report sections containing the race result."""
         self.recalculate()
         ret = []
-        sec = report.section('result')
+        secid = 'ev-' + str(self.evno).translate(strops.WEBFILE_UTRANS)
+        sec = report.section(secid)
         if standing:
             # omnium standing within event
             sec.heading = 'Omnium Points'
