@@ -121,13 +121,6 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkMenuItem" id="addcomp_olysprint">
-                                    <property name="visible">True</property>
-                                    <property name="label" translatable="yes">Olympic Sprint</property>
-                                    <signal name="activate" handler="menu_add_comp"/>
-                                  </object>
-                                </child>
-                                <child>
                                   <object class="GtkMenuItem" id="addcomp_pursuit">
                                     <property name="visible">True</property>
                                     <property name="label" translatable="yes">Individual Pursuit</property>

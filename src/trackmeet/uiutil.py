@@ -119,24 +119,228 @@ _TEAM_SPRINT_ROUND1 = {
     },
 }
 
-# Olympic Sprint - Repechages and grouped others placed by 200 TT
-_OLY_SPRINT_COMPETITION = {
-    '1.32a': {  # AU specific - skip 1st repechage
+# AU National Sprint - Like OLY with shortcuts
+_AU_SPRINT_COMPETITION = {
+    '1.16a': {  # AU specific - skip 1st repechage
         'evid': 'r32',
         'source': {
             'qualifying': '1-32',
         },
         'entrants': 32,
-        'label': '1/32 Final',
+        'label': '1/16 Final',
         'qualifiers': 16,
         'heats': 1,
-        'next': '1.16',
-        'rule': 'Winners to 1/16 final',
+        'next': '1.8',
+        'rule': 'Winners to 1/8 final',
         'places': None,
         'others': '17-32',
         'otherstime': False,
         'firstround': True,
     },
+    '1.16': {
+        'evid': 'r24',
+        'source': {
+            'qualifying': '1-24',
+        },
+        'entrants': 24,
+        'label': '1/16 Final',
+        'qualifiers': 12,
+        'heats': 1,
+        'next': 'rep189',
+        'rule': 'Winners to 1/8 final; Others to repechage',
+        'places': None,
+        'others': None,
+        'otherstime': False,
+        'firstround': True,
+    },
+    'rep189': {
+        'evid': 'rep189',
+        'source': {
+            '1.16': '24,17,16',
+        },
+        'entrants': 3,
+        'label': 'Repechage 16v17v24',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': 'rep2710',
+        'rule': 'Winner to 1/8 final R1',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    'rep2710': {
+        'evid': 'rep2710',
+        'source': {
+            '1.16': '23,18,15',
+        },
+        'entrants': 3,
+        'label': 'Repechage 15v18v23',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': 'rep3611',
+        'rule': 'Winner to 1/8 final R2',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    'rep3611': {
+        'evid': 'rep3611',
+        'source': {
+            '1.16': '22,19,14',
+        },
+        'entrants': 3,
+        'label': 'Repechage 14v19v22',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': 'rep4512',
+        'rule': 'Winner to 1/8 final R3',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    'rep4512': {
+        'evid': 'rep4512',
+        'source': {
+            '1.16': '21,20,13',
+        },
+        'entrants': 3,
+        'label': 'Repechage 13v20v21',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': '1.8',
+        'rule': 'Winner to 1/8 final R4',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    '1.8': {
+        'evid': 'r16',
+        'source': {
+            '1.16a': '1-16',
+            '1.16': '1-12',
+            'rep189': '1',
+            'rep2710': '1',
+            'rep3611': '1',
+            'rep4512': '1',
+        },
+        'entrants': 16,
+        'label': '1/8 Final',
+        'qualifiers': 8,
+        'heats': 1,
+        'next': '1.4',
+        'rule': 'Winners to 1/4 final',
+        'places': None,
+        'others': '9-16',
+        'otherstime': False,
+        'firstround': True,
+        'contests': ('1vR4', '2vR3', '3vR2', '4vR1', '5v12', '6v11', '7v10', '8v9'),
+    },
+    '1.8a': {
+        'evid': 'r12',
+        'source': {},  # only first round
+        'entrants': 12,
+        'label': '1/8 Final',
+        'qualifiers': 6,
+        'heats': 1,
+        'next': 'rep145',
+        'rule': 'Winners to 1/4 final; Others to repechage',
+        'places': None,
+        'others': None,
+        'otherstime': False,
+        'firstround': True,
+    },
+    'rep145': {
+        'evid': 'rep145',
+        'source': {
+            '1.8a': '12,9,8',
+        },
+        'entrants': 3,
+        'label': 'Repechage 8v9v12',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': 'rep236',
+        'rule': 'Winner to 1/4 final R1',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    'rep236': {
+        'evid': 'rep236',
+        'source': {
+            '1.8a': '11,10,7',
+        },
+        'entrants': 3,
+        'label': 'Repechage 7v10v11',
+        'qualifiers': 1,
+        'heats': 0,
+        'next': '1.4',
+        'rule': 'Winner to 1/4 final R2',
+        'places': None,
+        'others': '2,3',
+        'otherstime': False,
+        'firstround': False,
+    },
+    '1.4': {
+        'evid': 'r8',
+        'source': {
+            '1.8': '1-8',
+            '1.8a': '1-6',
+            'rep145': '1',
+            'rep236': '1',
+        },
+        'entrants': 8,
+        'label': '1/4 Final',
+        'qualifiers': 4,
+        'heats': 3,
+        'next': '1.2',
+        'rule': 'Winners to 1/2 final',
+        'places': None,
+        'others': '5-8',
+        'otherstime': False,
+        'firstround': True,
+        'contests': ('1vR2', '2vR1', '3v6', '4v5'),
+    },
+    '1.2': {
+        'evid': 'r4',
+        'source': {
+            '1.4': '1-4',
+        },
+        'entrants': 4,
+        'label': '1/2 Final',
+        'qualifiers': 4,
+        'heats': 3,
+        'next': 'final',
+        'rule': 'Winners to gold final; Others to bronze',
+        'places': None,
+        'others': None,
+        'otherstime': False,
+        'firstround': True,
+    },
+    'final': {
+        'evid': 'f',
+        'source': {
+            '1.2': '3,1,2,4',
+        },
+        'entrants': 4,
+        'label': 'Final',
+        'qualifiers': None,
+        'heats': 3,
+        'next': None,
+        'rule': '',
+        'places': '2,3,1,4',
+        'others': None,
+        'otherstime': False,
+        'firstround': True,
+    },
+}
+
+# Olympic Sprint - Repechages and grouped others placed by 200 TT
+_OLY_SPRINT_COMPETITION = {
     '1.32': {
         'evid': 'r24',
         'source': {
@@ -163,7 +367,7 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': 'rep2710',
-        'rule': 'Winner to 1/16 final',
+        'rule': 'Winner to 1/16 final R1',
         'places': None,
         'others': '2,3',
         'otherstime': False,
@@ -179,7 +383,7 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': 'rep3611',
-        'rule': 'Winner to 1/16 final',
+        'rule': 'Winner to 1/16 final R2',
         'places': None,
         'others': '2,3',
         'otherstime': False,
@@ -195,7 +399,7 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': 'rep4512',
-        'rule': 'Winner to 1/16 final',
+        'rule': 'Winner to 1/16 final R3',
         'places': None,
         'others': '2,3',
         'otherstime': False,
@@ -211,44 +415,56 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': '1.16',
-        'rule': 'Winner to 1/16 final',
+        'rule': 'Winner to 1/16 final R4',
         'places': None,
         'others': '2,3',
         'otherstime': False,
         'firstround': False,
     },
     '1.16': {
-        'evid': 'r16',
+        'evid':
+        'r16',
         'source': {
-            '1.32a': '1-16',
             '1.32': '1-12',
             'rep189': '1',
             'rep2710': '1',
             'rep3611': '1',
             'rep4512': '1',
         },
-        'entrants': 16,
-        'label': '1/16 Final',
-        'qualifiers': 8,
-        'heats': 1,
-        'next': 'rep8',
-        'rule': 'Winners to 1/8 final; Others to repechage',
-        'places': None,
-        'others': None,
-        'otherstime': False,
-        'firstround': True,
+        'entrants':
+        16,
+        'label':
+        '1/16 Final',
+        'qualifiers':
+        8,
+        'heats':
+        1,
+        'next':
+        'rep8',
+        'rule':
+        'Winners to 1/8 final; Others to repechage',
+        'places':
+        None,
+        'others':
+        None,
+        'otherstime':
+        False,
+        'firstround':
+        True,
+        'contests':
+        ('1vR4', '2vR3', '3vR2', '4vR1', '5v12', '6v11', '7v10', '8v9'),
     },
     'rep8': {
         'evid': 'rep8',
         'source': {
-          '1.16': '16,15,14,13,12,11,10,9',
+            '1.16': '16,15,14,13,12,11,10,9',
         },
         'entrants': 8,
         'label': 'Repechage',
         'qualifiers': 4,
         'heats': 1,
         'next': '1.8',
-        'rule': 'Winners to 1/8 final',
+        'rule': 'Winners to 1/8 final R1-R4',
         'places': None,
         'others': '5-8',
         'otherstime': False,
@@ -270,6 +486,7 @@ _OLY_SPRINT_COMPETITION = {
         'others': None,
         'otherstime': False,
         'firstround': True,
+        'contests': ('1vR4', '2vR3', '3vR2', '4vR1', '5v8', '6v7'),
     },
     'rep145': {
         'evid': 'rep145',
@@ -281,7 +498,7 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': 'rep236',
-        'rule': 'Winner to 1/4 final',
+        'rule': 'Winner to 1/4 final R1',
         'places': None,
         'others': '2,3',
         'otherstime': False,
@@ -297,7 +514,7 @@ _OLY_SPRINT_COMPETITION = {
         'qualifiers': 1,
         'heats': 0,
         'next': '1.4',
-        'rule': 'Winner to 1/4 final',
+        'rule': 'Winner to 1/4 final R2',
         'places': None,
         'others': '2,3',
         'otherstime': False,
@@ -320,6 +537,7 @@ _OLY_SPRINT_COMPETITION = {
         'others': None,
         'otherstime': False,
         'firstround': True,
+        'contests': ('1vR2', '2vR1', '3v6', '4v5'),
     },
     '5-8': {
         'evid': '5-8',
@@ -661,6 +879,65 @@ _POINTS_RACES_T2 = {
     },
 }
 
+# Sprint Competition Builder
+_SPRINT_TABLES = {
+    'wc': _SPRINT_COMPETITION,
+    'oc': _OLY_SPRINT_COMPETITION,
+    'au': _AU_SPRINT_COMPETITION,
+}
+_SPRINT_COMPETITION_BUILDER = {
+    'ctype': {
+        'prompt': 'Sprint',
+        'control': 'section',
+    },
+    'table': {
+        'prompt': 'Table:',
+        'control': 'choice',
+        'options': {
+            'wc': 'World Cup/World Champs',
+            'oc': 'Olympics',
+            'au': 'Australian Track Champs',
+        },
+        'value': 'wc',
+        'defer': True,
+        'hint': 'Sprint organisation table',
+    },
+    'cat': {
+        'prompt': 'Category:',
+        'control': 'choice',
+        'defer': True,
+        'hint': 'Competitor category',
+    },
+    'series': {
+        'prompt': 'Number Series:',
+        'control': 'short',
+        'hint': 'Competitor number series',
+        'defer': True,
+    },
+    'code': {
+        'prompt': 'Competition ID:',
+        'control': 'short',
+        'hint': 'Competition identifier',
+        'value': 'pursuit',
+        'defer': True,
+    },
+    'entrants': {
+        'prompt': 'Entrants:',
+        'control': 'short',
+        'type': 'int',
+        'hint': 'Optional number of competitors',
+        'defer': True,
+    },
+    'replace': {
+        'prompt': 'Replace:',
+        'control': 'check',
+        'type': 'bool',
+        'subtext': 'Yes?',
+        'hint': 'Reset and overwrite an existing competition',
+        'value': True,
+        'defer': True,
+    },
+}
 # Generic Competition Builder Qual/Finals, Medals, Series, Entrants
 _COMPETITION_BUILDER = {
     'ctype': {
@@ -691,15 +968,6 @@ _COMPETITION_BUILDER = {
         'control': 'short',
         'type': 'int',
         'hint': 'Optional number of competitors',
-        'defer': True,
-    },
-    'domedals': {
-        'prompt': 'Medals:',
-        'control': 'check',
-        'type': 'bool',
-        'subtext': 'Yes?',
-        'hint': 'Include Gold Silver Bronze medals in classification',
-        'value': False,
         'defer': True,
     },
     'replace': {
@@ -1399,24 +1667,20 @@ def comp_builder(window, meet, comptype):
         options_schema['code']['value'] = 'ts'
     elif comptype == 'time trial':
         label = 'Time Trial'
-
         options_schema = _COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
         options_schema['series']['value'] = ''
         options_schema['code']['value'] = 'tt'
-    elif comptype in ('sprint', 'olympic sprint'):
-        if comptype == 'olympic sprint':
-            comptable = _OLY_SPRINT_COMPETITION
-        else:
-            comptable = _SPRINT_COMPETITION
+    elif comptype == 'sprint':
         label = 'Sprint'
-        options_schema = _COMPETITION_BUILDER
+        options_schema = _SPRINT_COMPETITION_BUILDER
         # Overwrite schema values as required
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
         options_schema['series']['value'] = ''
+        options_schema['table']['value'] = 'wc'
         options_schema['code']['value'] = 'sprint'
     elif comptype in ('scratch race', 'points race', 'elimination race',
                       'madison'):
@@ -1462,7 +1726,6 @@ def comp_builder(window, meet, comptype):
             if u13:
                 _log.info('Qualifying phase skipped for Under 13 category')
                 dofinals = False
-            domedals = res['comp']['domedals'][2]
             _log.debug('Building competition for cat=%s code=%s', cat, code)
             if comptype in ('individual pursuit', 'team pursuit'):
                 if entrants is None:
@@ -1470,7 +1733,7 @@ def comp_builder(window, meet, comptype):
                 elif entrants < 2:
                     dofinals = False
                 build_pursuit_comp(meet, label, cat, category, series, code,
-                                   dofinals, domedals, entrants, overwrite)
+                                   dofinals, entrants, overwrite)
             elif comptype == 'team sprint':
                 doround1 = False
                 if entrants is None:
@@ -1481,8 +1744,7 @@ def comp_builder(window, meet, comptype):
                 elif entrants < 2:
                     dofinals = False
                 build_ts_comp(meet, label, cat, category, series, code,
-                              dofinals, domedals, entrants, doround1,
-                              overwrite)
+                              dofinals, entrants, doround1, overwrite)
             elif comptype == 'time trial':
                 if masters:
                     if dofinals:
@@ -1494,9 +1756,14 @@ def comp_builder(window, meet, comptype):
                 elif entrants < 9:
                     dofinals = False
                 build_itt_comp(meet, label, cat, category, series, code,
-                               dofinals, domedals, entrants, overwrite)
-            elif comptype in ('sprint', 'olympic sprint'):
-                # adjust 1/4 final heats for youth and masters (applies to both tables)
+                               dofinals, entrants, overwrite)
+            elif comptype == 'sprint':
+                tc = res['comp']['table'][2]
+                comptable = _SPRINT_TABLES['wc']
+                if tc in _SPRINT_TABLES:
+                    comptable = _SPRINT_TABLES[tc]
+
+                # adjust 1/4 final heats for youth and masters (applies to all tables)
                 if (meet.domestic and masters) or u13 or u17:
                     comptable['1.4']['heats'] = 1
                 else:
@@ -1508,8 +1775,7 @@ def comp_builder(window, meet, comptype):
                               cat)
                     dofinals = False
                 build_sprint_comp(meet, label, cat, category, series, code,
-                                  dofinals, domedals, entrants, comptable,
-                                  overwrite)
+                                  dofinals, entrants, comptable, overwrite)
             elif comptype in ('scratch', 'points', 'elimination', 'madison'):
                 trackmax = meet.get_competitor_limit(
                     madison=comptype == 'madison')
@@ -1526,8 +1792,8 @@ def comp_builder(window, meet, comptype):
                               trackmax, label)
                     dofinals = False
                 build_bunch_comp(meet, label, cat, category, series, code,
-                                 dofinals, domedals, entrants, trackmax,
-                                 comptype, masters, overwrite)
+                                 dofinals, entrants, trackmax, comptype,
+                                 masters, overwrite)
         else:
             _log.info('No cat selected for new competion')
     return False
@@ -1568,7 +1834,7 @@ def _normauto(srcmap, idmap={}):
 
 
 def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
-                      domedals, entrants, comptable, overwrite):
+                      entrants, comptable, overwrite):
     """Create sprint events, add to meet."""
     laps = 3  # applies to sprint rounds only
     laplen = meet.get_laplen()
@@ -1678,17 +1944,34 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
 
         # other phases
         while phase is not None:
-            detail = comptable[phase]
+            detail = comptable[phase].copy()
 
             if nrdep is None:
                 srcobj = detail['source'].copy()
-                if phase == '1.16' and '1.32a' in srcobj:
-                    # Oly sprint special case, choose 1/32 or 1/32 based on entrants
+                if phase == '1.8' and '1.16a' in srcobj:
+                    # handle alternative round of 32
                     if entrants < 32:
-                        del (srcobj['1.32a'])
+                        # assume round of 24+rep to start
+                        del (srcobj['1.16a'])
                     else:
-                        # assume 'AU' override, single heat 1/32 to 16 competitors
-                        del (srcobj['1.32'])
+                        # assume round of 32 straight to round of 16
+                        del (srcobj['1.16'])
+                        del (srcobj['rep189'])
+                        del (srcobj['rep2710'])
+                        del (srcobj['rep3611'])
+                        del (srcobj['rep4512'])
+                        del (detail['contests'])
+                elif phase == '1.4' and '1.8a' in srcobj:
+                    # handle alternative round of 16
+                    if '1.8a' in idmap:
+                        # assume round of 16 straight to round of 8
+                        del (srcobj['1.8'])
+                    else:
+                        # assume r12+rep alternate start
+                        del (srcobj['1.8a'])
+                        del (srcobj['rep145'])
+                        del (srcobj['rep236'])
+                        del (detail['contests'])
                 nrdep = _normdep(srcobj, idmap)
                 nrstart = _normauto(srcobj, idmap)
 
@@ -1774,6 +2057,8 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
                     c.heat2evno = None
                     c.heat3evno = None
                 c.otherstime = detail['otherstime']
+                if 'contests' in detail and detail['contests']:
+                    c.contestlist = detail['contests']
                 c.saveconfig()
                 c = None
 
@@ -1817,10 +2102,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
         c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
-        if domedals:
-            c.medals = 'Gold Silver Bronze'
-        else:
-            c.medals = ''
+        c.medals = ''
         if othersrc:
             c.othersrc = othersrc
         else:
@@ -1879,8 +2161,7 @@ def sprint_laps(laps, meet):
 
 
 def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
-                     domedals, entrants, trackmax, comptype, masters,
-                     overwrite):
+                     entrants, trackmax, comptype, masters, overwrite):
     """Create bunch events, add to meet."""
 
     # is a qualifying round required
@@ -2107,10 +2388,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
         c.loadconfig()
         c.others = ''
         c.othersrc = ''
-        if domedals:
-            c.medals = 'Gold Silver Bronze'
-        else:
-            c.medals = ''
+        c.medals = ''
         c.saveconfig()
         c = None
     else:
@@ -2146,8 +2424,8 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             c = None
 
 
-def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
-                  entrants, doround1, overwrite):
+def build_ts_comp(meet, label, cat, category, series, code, dofinals, entrants,
+                  doround1, overwrite):
     """Create team sprint events, add to meet."""
 
     # assume three riders unless overridden
@@ -2353,10 +2631,7 @@ def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
             c.othersrc = othersrc
         else:
             c.othersrc = ''
-        if domedals:
-            c.medals = 'Gold Silver Bronze'
-        else:
-            c.medals = ''
+        c.medals = ''
         c.saveconfig()
         c = None
     else:
@@ -2380,7 +2655,7 @@ def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
 
 
 def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
-                       domedals, entrants, overwrite):
+                       entrants, overwrite):
     """Create pursuit-like events, add to meet."""
     laps = None
     distance = ''
@@ -2547,10 +2822,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
             c.othersrc = othersrc
         else:
             c.othersrc = ''
-        if domedals:
-            c.medals = 'Gold Silver Bronze'
-        else:
-            c.medals = ''
+        c.medals = ''
         c.saveconfig()
         c = None
     else:
@@ -2574,7 +2846,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
 
 
 def build_itt_comp(meet, label, cat, category, series, code, dofinals,
-                   domedals, entrants, overwrite):
+                   entrants, overwrite):
     """Create time trial events, add to meet."""
     laps = None
     distance = ''
@@ -2704,10 +2976,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             c.othersrc = othersrc
         else:
             c.othersrc = ''
-        if domedals:
-            c.medals = 'Gold Silver Bronze'
-        else:
-            c.medals = ''
+        c.medals = ''
         c.saveconfig()
         c = None
     else:
