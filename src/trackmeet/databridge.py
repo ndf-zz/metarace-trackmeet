@@ -21,7 +21,8 @@ _log.setLevel(logging.DEBUG)
 # TODO: type enums and badges
 
 # Internal Constants
-_CACHEPATH = '.db.cache'  # object hash cache
+_HASHCACHE = '.db.cache'  # object hash cache
+_QUALCACHE = '.q.cache'  # qualifying info
 
 # "Special" categories for non-championship meets
 _NONCHAMPCATS = {
@@ -181,6 +182,14 @@ class DataBridge():
         self._categories.clear()
         self.updateCompetitors()
 
+    def getQualifying(self, catComp, competitor):
+        """Return a qualifying object for the provided competitor."""
+        ret = None
+        if catComp in self._qualifying:
+            if competitor in self._qualifying[catComp]:
+                ret = self._qualifying[catComp][competitor]
+        return ret
+
     def updateHeatHead(self, event, fragment, data):
         """Update and publish a heat head"""
 
@@ -297,8 +306,12 @@ class DataBridge():
         meetPath = self.getPath(fragment)
         self._pathSave(meetPath, compObj)
 
-    def _updateResultLine(self, line):
-        """Return a patched result line object"""
+    def _updateResultLine(self, line, qualComp=None):
+        """Return a patched result line object.
+
+        Optionally save qualifying info for cat/competition
+        in qualComp
+        """
         if line is None:
             return None
         obj = {
@@ -330,6 +343,22 @@ class DataBridge():
                         obj[k] = sorted(line[k])
                 else:
                     obj[k] = line[k]
+        # save qualifying information
+        if qualComp is not None and line['competitor']:
+            cno = line['competitor']
+            if qualComp not in self._qualifying:
+                self._qualifying[qualComp] = {}
+            if cno not in self._qualifying[qualComp]:
+                self._qualifying[qualComp][cno] = {
+                    'qualRank': None,
+                    'qualPlace': None,
+                    'qualTime': None,
+                }
+            qrec = self._qualifying[qualComp][cno]
+            qrec['qualRank'] = line['rank']
+            qrec['qualPlace'] = line['class']
+            if 'resultTod' in line:
+                qrec['qualTime'] = line['resultTod']
         return obj
 
     def _lookupCompetitor(self, cid, event):
@@ -383,6 +412,9 @@ class DataBridge():
     def updateResultLines(self, event, fragment, lines):
         """Scan result lines and patch values"""
         catComp = event.get_catcomp()
+        qualComp = None
+        if event['phase'] == 'qualifying':
+            qualComp = catComp
 
         # scan lines and transfer to result
         ret = []
@@ -397,7 +429,7 @@ class DataBridge():
                 #_log.debug('Missing competitor no %r for result %s', c,
                 #fragment)
                 continue
-            ret.append(self._updateResultLine(c))
+            ret.append(self._updateResultLine(c, qualComp))
         return ret
 
     def updateStartLines(self, event, fragment, competitors):
@@ -1205,19 +1237,34 @@ class DataBridge():
         # reload cache
         self._cache.clear()
         with suppress(Exception):
-            with open(_CACHEPATH) as f:
+            with open(_HASHCACHE) as f:
                 cache = json.load(f)
                 if isinstance(cache, dict):
                     for k, v in cache.items():
                         if isinstance(v, str):
                             self._cache[k] = v
 
+        # reload qualifying cache
+        self._qualifying.clear()
+        #with suppress(Exception):
+        if True:  # TEMP
+            with open(_QUALCACHE) as f:
+                cache = json.load(f, object_hook=jsonconfig._config_object)
+                if isinstance(cache, dict):
+                    for k, v in cache.items():
+                        if isinstance(v, dict):
+                            self._qualifying[k] = v
+            _log.debug('Loaded qualifying: %r', self._qualifying)
+
     def save(self):
         """Save cache and context to disk"""
         _log.debug('Save')
         with suppress(Exception):
-            with metarace.savefile(_CACHEPATH) as f:
+            with metarace.savefile(_HASHCACHE) as f:
                 json.dump(self._cache, f)
+        if True:  # TEMP
+            with metarace.savefile(_QUALCACHE) as f:
+                json.dump(self._qualifying, f, cls=jsonconfig._configEncoder)
 
     def __init__(self, meet):
         self._m = meet  # meet handle
