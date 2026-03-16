@@ -1764,7 +1764,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
                 })
             # save heat references to phase head
             if etype != derbytype:
-                c = meet.get_event(phid)
+                c = meet.get_event(phid, closecurrent=True)
                 c.readonly = False
                 c.loadconfig()
                 if detail['heats'] > 1:
@@ -1805,6 +1805,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
             'series': series,
             'type handler': 'classification',
             'prefix': prefix,
+            'info': '',
             'result': True,
             'index': False,
             'program': False,
@@ -1813,7 +1814,7 @@ def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
             'category': cat,
             'competion': code,
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         if domedals:
@@ -2001,6 +2002,8 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
         riders = 'riders'
         if comptype == 'madison' or series.startswith('t'):
             riders = 'teams'
+        quallist = []
+        finalists = []
         for h in range(heats):
             heat = h + 1
             iline = 'Qualifying Heat %d' % (heat, )
@@ -2010,9 +2013,12 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 rline = '%d %s eliminated' % (rejected, riders)
             qhid = '%sq%d' % (catcomp, heat)
             eventlist.append(qhid)
+            quallist.append(qhid)
+            finalists.append('%s:Q' % (qhid, ))
             qhev = meet.edb.add_or_replace(evno=qhid, notify=False)
             qhev.set_values({
                 'series': series,
+                'reference': catcomp,
                 'type handler': qualtype,
                 'prefix': prefix,
                 'info': iline,
@@ -2029,11 +2035,12 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 'contest': str(heat),
             })
             if qualtype in ('madison', 'points'):
-                c = meet.get_event(qhid)
+                c = meet.get_event(qhid, closecurrent=True)
                 c.readonly = False
                 c.loadconfig()
-                c.tenptlaps = tenpoints
-                if lastdouble:
+                c.tenptlaps = heattenpoints
+                c.reset_lappoints()
+                if heatlastdouble:
                     c.sprintpoints['0'] = '10 6 4 2'
                 else:
                     c.sprintpoints['0'] = '5 3 2 1'
@@ -2043,18 +2050,21 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 c = None
             # qualified riders handled by topn
             # unqualified riders grouped as others
-            otherslist.append('%s:-Q' % (qhid, ))
+            # otherslist.append('%s:-Q' % (qhid, ))
         # then add final
         fid = '%sf' % (catcomp, )
         eventlist.insert(0, fid)
         fev = meet.edb.add_or_replace(evno=fid, notify=False)
         fev.set_values({
             'series': series,
+            'reference': catcomp,
             'type handler': finaltype,
             'prefix': prefix,
             'info': 'Final',
             'result': True,
             'index': True,
+            'depend': ' '.join(quallist),
+            'auto': '; '.join(finalists),
             'program': True,
             'laps': laps,
             'distance': distance,
@@ -2063,7 +2073,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             'phase': 'final',
         })
         if comptype in ('madison', 'points'):
-            c = meet.get_event(fid)
+            c = meet.get_event(fid, closecurrent=True)
             c.readonly = False
             c.loadconfig()
             c.tenptlaps = tenpoints
@@ -2075,7 +2085,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             c.sprint_model_init()
             c.saveconfig()
             c = None
-        # classification
+        # classification - only used to aggregate events
         showevs = ' '.join(eventlist)
         places = fid
         pev = meet.edb.add_or_replace(evno=catcomp, notify=True)
@@ -2083,18 +2093,20 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             'series': series,
             'type handler': 'classification',
             'prefix': prefix,
+            'info': '',
             'result': True,
             'index': False,
             'program': False,
             'depends': showevs,
-            'auto': places,
+            'auto': '',
             'category': cat,
             'competion': code,
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
-        c.others = '; '.join(otherslist)
+        c.others = ''
+        c.othersrc = ''
         if domedals:
             c.medals = 'Gold Silver Bronze'
         else:
@@ -2120,7 +2132,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             'phase': 'final',
         })
         if comptype in ('madison', 'points'):
-            c = meet.get_event(catcomp)
+            c = meet.get_event(catcomp, closecurrent=True)
             c.readonly = False
             c.loadconfig()
             c.tenptlaps = tenpoints
@@ -2324,6 +2336,7 @@ def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
             'series': series,
             'type handler': 'classification',
             'prefix': prefix,
+            'info': '',
             'result': True,
             'index': False,
             'program': False,
@@ -2332,7 +2345,7 @@ def build_ts_comp(meet, label, cat, category, series, code, dofinals, domedals,
             'category': cat,
             'competion': code,
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.others = '; '.join(otherslist)
@@ -2517,6 +2530,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
             'series': series,
             'type handler': 'classification',
             'prefix': prefix,
+            'info': '',
             'result': True,
             'index': False,
             'program': False,
@@ -2525,7 +2539,7 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
             'category': cat,
             'competion': code,
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.others = '; '.join(otherslist)
@@ -2623,7 +2637,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'competion': code,
             'phase': 'qualifying',
         })
-        c = meet.get_event(pqid)
+        c = meet.get_event(pqid, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.timetype = 'dual'
@@ -2656,7 +2670,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'competion': code,
             'phase': 'final',
         })
-        c = meet.get_event(pfid)
+        c = meet.get_event(pfid, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.timetype = 'single'
@@ -2673,6 +2687,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'series': series,
             'type handler': 'classification',
             'prefix': prefix,
+            'info': '',
             'result': True,
             'index': False,
             'program': False,
@@ -2681,7 +2696,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'category': cat,
             'competion': code,
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.others = '; '.join(otherslist)
@@ -2713,7 +2728,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'competion': code,
             'phase': 'final',
         })
-        c = meet.get_event(catcomp)
+        c = meet.get_event(catcomp, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.timetype = 'single'

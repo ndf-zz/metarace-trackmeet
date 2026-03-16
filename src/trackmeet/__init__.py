@@ -1357,11 +1357,11 @@ class trackmeet:
         places = {}
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
+            specvec = egroup.split(':')
             if len(specvec) == 1:
                 # assume all places required
                 specvec.append('1-')
             if len(specvec) == 2:
-                _log.debug('specvec = %r', specvec)
                 evno = specvec[0].strip()
                 if evno not in self.autorecurse:
                     self.autorecurse.add(evno)
