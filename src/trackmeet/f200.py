@@ -900,6 +900,7 @@ class f200:
                     'pilot': pname,
                     'info': rcls,
                     'result': rtime,
+                    'resultTod': rtod,
                     'extra': dtime,
                     'badges': badges,
                 })

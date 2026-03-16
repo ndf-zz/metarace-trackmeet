@@ -433,10 +433,6 @@ class sprnd:
                         for k in subres['bcompetitor']:
                             subres['bresult'][k] = subres['bcompetitor'][k]
                         subres['bresult']['badges'] = []
-                    if cr[COL_A_QUAL] is not None:
-                        subres['acompetitor']['qualTime'] = cr[COL_A_QUAL]
-                    if cr[COL_B_QUAL] is not None:
-                        subres['bcompetitor']['qualTime'] = cr[COL_B_QUAL]
                 subres = self._sprintres[cid]
                 heat = self.contestheat(cr[COL_CONTEST])
                 subres['heats'][heat] = {
@@ -629,10 +625,6 @@ class sprnd:
                     subres['competitors'].append(bcompetitor)
                     for k in bcompetitor:
                         bresult[k] = bcompetitor[k]
-                if c[COL_A_QUAL] is not None:
-                    acompetitor['qualTime'] = c[COL_A_QUAL]
-                if c[COL_B_QUAL] is not None:
-                    bcompetitor['qualTime'] = c[COL_B_QUAL]
 
                 if c[COL_BYE]:
                     ccount -= 1  # one less contest result required
@@ -691,13 +683,19 @@ class sprnd:
     def addrider(self, bib='', info=None):
         """Add specified rider to race model."""
         bib = bib.upper()
-        qual = tod.mktod(info)
+        qual = None
+        catComp = self.event.get_catcomp()
+        if catComp is not None:
+            qrec = self.meet.db.getQualifying(catComp, bib)
+            if qrec is not None:
+                qual = qrec['qualTime']
+                # TODO: replace with rank here for sorting
         rname = ''
         dbr = self._get_rider(bib)
         if dbr is not None:
             rname = dbr.fitname(32)
             # is rider a member of the event category?
-            if self.event.get_catcomp():
+            if catComp:
                 ecat = self.event['category']
                 if not dbr.in_cat(ecat):
                     _log.info('%s added to category %s', dbr.resname_bib(),
@@ -1071,7 +1069,6 @@ class sprnd:
                     'name': aname,
                     'pilot': apilot,
                     'info': acls,
-                    'qualTime': raqual,
                 }
                 self._startlines.append(arobj)
                 self._conteststarts[cid].append(arobj)
@@ -1089,7 +1086,6 @@ class sprnd:
                         'name': bname,
                         'pilot': bpilot,
                         'info': bcls,
-                        'qualTime': rbqual,
                     }
                     self._startlines.append(brobj)
                     self._conteststarts[cid].append(brobj)

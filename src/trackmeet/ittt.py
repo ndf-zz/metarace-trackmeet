@@ -1245,6 +1245,7 @@ class ittt:
                     'members': members,
                     'info': rcls,
                     'result': rtime,
+                    'resultTod': rtod,
                     'extra': dtime,
                     'badges': badges,
                 })
