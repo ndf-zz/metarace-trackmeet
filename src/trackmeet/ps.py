@@ -198,8 +198,6 @@ class ps:
                         qrank = int(place)
                         lastplace = self._popcount + self.event[
                             'topn']  # check
-                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
-                                   qrank, self._popcount, self.event['topn'])
                         if qrank <= lastplace:
                             ret = True
         return ret
@@ -280,7 +278,7 @@ class ps:
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
 
-        _log.debug('load config')
+        rdetail = False
         for r in cr.get('event', 'startlist').upper().split():
             nr = [r, '', '', '', True, 0, 0, 0, '', -1, '', 0, '', '']
             if cr.has_option('points', r):
@@ -294,6 +292,8 @@ class ps:
                         pass
                 if len(ril) >= 4:
                     nr[RES_COL_INFO] = ril[3]
+                    if nr[RES_COL_INFO]:
+                        rdetail = True
                 if len(ril) >= 5:
                     spts = ril[4]
                     if spts.isdigit():
@@ -307,7 +307,6 @@ class ps:
                 # unlike ittt, madison members stick to competitor record
                 nr[RES_COL_MEMBERS] = dbr['members']
             self.riders.append(nr)
-        _log.debug('added riders')
         if cr.get('event', 'scoring').lower() in ('madison', 'laps'):
             self.scoring = 'laps'
         else:
@@ -328,7 +327,6 @@ class ps:
             # only make changes if sprint points not yet defined
             sp0 = cr.get_value('sprintpoints', '0')
             if sp0 is None:
-                _log.debug('sp0 is none')
                 # Domestic rule: Adjust points when distance < 15km
                 racelen = self.meet.get_distance(self.distance, 'laps')
                 if racelen is not None and not self.event['dist']:
@@ -392,7 +390,6 @@ class ps:
                         _log.debug('Sprint points defined, tempo skipped')
 
         if findsource:
-            _log.debug('findsource')
             # search event db for source events unless already config'd
             mycat = self.event['category']
             mycomp = self.event['competition']
@@ -430,24 +427,20 @@ class ps:
         for sid in cr.options('sprintsource'):
             self.sprintsource[sid] = cr.get('sprintsource', sid)
 
-        _log.debug('init sprint model')
         self.sprint_model_init()
 
-        _log.debug('load points')
         oft = 0
         for s in self.sprints:
             places = ''
             sid = s[SPRINT_COL_ID]
             if cr.has_option('sprintplaces', sid):
                 sp = cr.get('sprintplaces', sid)
-                #_log.debug(u'sprintplaces = %r', sp)
                 places = strops.reformat_placelist(sp)
                 if len(places) > 0:
                     oft += 1
             s[SPRINT_COL_PLACES] = places
 
         # look up places from event links if present
-        _log.debug('load places')
         if self.sprintsource:
             for s in self.sprints:
                 sid = s[SPRINT_COL_ID]
@@ -480,7 +473,6 @@ class ps:
         self.noteamno = (self.series.startswith('t')
                          and not self.series.startswith('tm'))
 
-        _log.debug('recalc')
         self.recalculate()
 
         st = tod.mktod(cr.get('event', 'start'))
@@ -490,7 +482,7 @@ class ps:
         self.set_elapsed()
 
         # after load, add auto if required
-        if not self.onestart and self.event['auto']:
+        if not rdetail and not self.onestart and self.event['auto']:
             self.riders.clear()
             self.meet.autostart_riders(self, self.event['auto'], self.seedsrc)
 
@@ -899,7 +891,6 @@ class ps:
             self.riders.append(nr)
         else:
             if er is not None:
-                #_log.debug('onestart is: %r', self.onestart)
                 if self.inomnium and not self.onestart:
                     er[RES_COL_INFO] = str(info)
 
@@ -2415,7 +2406,6 @@ class ps:
 
     # result recalculation
     def recalculate(self):
-        _log.debug('recalculate')
         self._popcount = 0
         self.zeropoints()
         self.finished = False
@@ -2481,7 +2471,6 @@ class ps:
             idx += 1
 
         aux.sort()
-        _log.debug('reorder model')
         self.riders.reorder([a[5] for a in aux])
         place = 1
         idx = 0

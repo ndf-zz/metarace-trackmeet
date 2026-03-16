@@ -337,6 +337,7 @@ class f200:
         # re-load starters/results and traces
         self.onestart = False
         rlist = cr.get('event', 'startlist').upper().split()
+        rdetail = False
         for r in rlist:
             nr = [r, '', '', '', '', '', '', None, None, None]
             co = ''
@@ -349,6 +350,8 @@ class f200:
                     co = ril[0]
                 if len(ril) >= 2:  # write heat into rec
                     nr[COL_SEED] = ril[1]
+                    if nr[COL_SEED]:
+                        rdetail = True
                 if len(ril) >= 4:  # Start ToD and others
                     st = tod.mktod(ril[3])
                     if st is not None:  # assigned in settimes
@@ -374,7 +377,7 @@ class f200:
                           comment=co)
         self.placexfer()
 
-        if not self.onestart and self.event['auto']:
+        if not rdetail and not self.onestart and self.event['auto']:
             self.riders.clear()
             self.meet.autostart_riders(self,
                                        self.event['auto'],
@@ -1018,8 +1021,6 @@ class f200:
                     if self.finished and self._popcount:
                         qrank = int(place)
                         lastplace = self._popcount + self.event['topn']
-                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
-                                   qrank, self._popcount, self.event['topn'])
                         if qrank <= lastplace:
                             ret = True
         return ret

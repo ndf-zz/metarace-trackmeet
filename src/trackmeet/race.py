@@ -125,8 +125,6 @@ class race:
                     if self.finished and self._popcount:
                         qrank = int(place)
                         lastplace = self._popcount + self.event['topn']
-                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
-                                   qrank, self._popcount, self.event['topn'])
                         if qrank <= lastplace:
                             ret = True
         return ret
@@ -507,6 +505,7 @@ class race:
         self.inomnium = strops.confopt_bool(cr.get('event', 'inomnium'))
         if self.inomnium:
             self.seedsrc = 1  # fetch start list seeding from omnium
+        rdetail = False
         rlist = cr.get('event', 'startlist').upper().split()
         for r in rlist:
             ## TODO: replace rider lines
@@ -516,6 +515,8 @@ class race:
                 for i in range(4):
                     if len(ril) > i:
                         nr[i + 4] = ril[i]
+                if nr[COL_INFO]:
+                    rdetail = True
             # Re-patch name
             dbr = self.meet.rdb.get_rider(r, self.series)
             if dbr is not None:
@@ -557,7 +558,7 @@ class race:
             self.doscbplaces = False  # only show places on board if not set
             self.setfinished()
         else:
-            if not self.onestart and self.event['auto']:
+            if not rdetail and not self.onestart and self.event['auto']:
                 self.riders.clear()
                 self.meet.autostart_riders(self,
                                            self.event['auto'],

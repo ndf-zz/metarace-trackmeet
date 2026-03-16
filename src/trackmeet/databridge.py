@@ -439,7 +439,8 @@ class DataBridge():
         # fetch qualifying entry if it exists
         qual = None
         if catComp in self._qualifying:
-            qual = self._qualifying[catComp]
+            if event['phase'] != 'qualifying':
+                qual = self._qualifying[catComp]
 
         # scan competitors and transfer to start list
         ret = []
@@ -1246,15 +1247,13 @@ class DataBridge():
 
         # reload qualifying cache
         self._qualifying.clear()
-        #with suppress(Exception):
-        if True:  # TEMP
+        with suppress(Exception):
             with open(_QUALCACHE) as f:
                 cache = json.load(f, object_hook=jsonconfig._config_object)
                 if isinstance(cache, dict):
                     for k, v in cache.items():
                         if isinstance(v, dict):
                             self._qualifying[k] = v
-            _log.debug('Loaded qualifying: %r', self._qualifying)
 
     def save(self):
         """Save cache and context to disk"""

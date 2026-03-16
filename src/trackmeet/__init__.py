@@ -429,18 +429,21 @@ _ADD_BREAK_SCHEMA = {
         'hint': 'Break title',
         'attr': 'prefix',
         'defer': True,
+        'default': '',
     },
     'info': {
         'prompt': 'Info:',
         'hint': 'Break subtitle',
         'attr': 'info',
         'defer': True,
+        'default': '',
     },
     'rule': {
         'prompt': 'Extra:',
         'hint': 'Extra information to appear under title',
         'attr': 'rule',
         'defer': True,
+        'default': '',
     },
     'inde': {
         'prompt': 'Include in:',
@@ -2298,7 +2301,7 @@ class trackmeet:
             for evno, e in dmap.items():
                 etype = e['type']
                 series = e['series']
-                evstr = (e['prefix'] + ' ' + e['info']).strip()
+                evstr = e.get_info()
                 doexport = e['result']
                 e.set_value('dirty', False)
                 _log.debug('Data export event %r', evno)

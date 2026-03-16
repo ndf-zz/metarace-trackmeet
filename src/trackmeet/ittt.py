@@ -363,7 +363,6 @@ class ittt:
             _log.warning('Unable to setup splits: %s', e)
             self.autotime = False
         if event_d is not None and track_l is not None:
-            _log.debug('Track lap=%0.1f, Event dist=%0.1f', track_l, event_d)
             # record the inverse half lap distance for later use (float)
             self._inv_half = 2.0 / track_l
             # add a dummy entry for the finish passing
@@ -1301,8 +1300,6 @@ class ittt:
             showsplits = []
             splitoft = stride - 1  # zero is omitted from splitlist
             splitind = int(round(splitoft))
-            _log.debug('stride=%r, spltlent=%r, splitlist: %r', stride,
-                       splitlen, self.splitlist)
             lastsplit = None
             if self.splitlist:
                 while splitind < (len(self.splitlist) - 1):
@@ -1348,7 +1345,6 @@ class ittt:
                 if stime is not None:
                     rsplits = r[COL_SPLITS]
                     for sid in showsplits:
-                        _log.debug('show split sid=%r', sid)
                         if sid == lastsplit:
                             pass
                             # Don't include final distance on split summary
@@ -1615,8 +1611,6 @@ class ittt:
                     if self.finished and self._popcount:
                         qrank = int(place)
                         lastplace = self._popcount + self.event['topn']
-                        _log.debug('qualfied? qrank=%r, pop=%r, topn=%r',
-                                   qrank, self._popcount, self.event['topn'])
                         if qrank <= lastplace:
                             ret = True
         return ret
@@ -1908,7 +1902,6 @@ class ittt:
                 bsplit = None
 
         if asplit is None and bsplit is None:
-            #_log.debug('No match')
             pass
         else:
             # take the easy way out if possible
@@ -1941,7 +1934,6 @@ class ittt:
                     bsplit = self.bs.split
 
         if asplit is None and bsplit is None:
-            #_log.debug('Spurious %s trigger ignored', lane)
             return
 
         self.autotime_arrival(asplit, bsplit, e)
@@ -2993,7 +2985,6 @@ class ittt:
                 if 'splits' in self._detail[bib] and self._detail[bib][
                         'splits']:
                     detail = self._detail[bib]['splits']
-                    _log.debug('detail: %r', detail)
                     secid = 'splits-%s-%s' % (str(self.evno).translate(
                         strops.WEBFILE_UTRANS), bib)
                     sec = report.detailsplits(secid)
