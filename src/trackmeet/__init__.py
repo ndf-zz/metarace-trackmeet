@@ -513,10 +513,14 @@ class trackmeet:
     """Track meet application class."""
 
     ## Meet Menu Callbacks
-    def get_event(self, evno, ui=False):
+    def get_event(self, evno, ui=False, closecurrent=False):
         """Return an event object for the given event number."""
         ret = None
         if evno in self.edb:
+            if closecurrent:
+                if self.curevent is not None:
+                    if self.curevent.evno == evno:
+                        self.close_event()
             eh = self.edb[evno]
             ret = mkrace(meet=self, ev=eh, ui=ui)
         return ret
@@ -1353,11 +1357,11 @@ class trackmeet:
         places = {}
         for egroup in autospec.split(';'):
             _log.debug('Autospec group: %r', egroup)
-            specvec = egroup.split(':')
             if len(specvec) == 1:
                 # assume all places required
                 specvec.append('1-')
             if len(specvec) == 2:
+                _log.debug('specvec = %r', specvec)
                 evno = specvec[0].strip()
                 if evno not in self.autorecurse:
                     self.autorecurse.add(evno)
@@ -2303,9 +2307,7 @@ class trackmeet:
                 # load event and populate all data bridge elements
                 r.loadconfig()
                 startrep = r.startlist_report()
-                startsec = None
                 resrep = r.result_report()
-                ressec = None
 
                 # if required, save result report
                 if doexport:
@@ -2330,13 +2332,6 @@ class trackmeet:
                     # enable browser back button
                     orep.prevlink = True
 
-                    # build combined html style report
-                    for sec in resrep:
-                        if sec.sectionid == 'result':
-                            ressec = sec
-                    for sec in startrep:
-                        if sec.sectionid == 'startlist':
-                            startsec = sec
                     if r.onestart:  # output result
                         outsec = resrep
                     else:
