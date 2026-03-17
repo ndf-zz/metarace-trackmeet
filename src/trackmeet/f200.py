@@ -232,7 +232,7 @@ class f200:
         self.meet.db.setScoreboardHint('result')
 
     def todedit(self, cell, path, new_text, col):
-        """Override time by manual input."""
+        """Override net time by manual input."""
         if new_text and '/' not in new_text:
             ft = tod.mktod(new_text)
             if ft is not None:
@@ -1954,7 +1954,7 @@ class f200:
                         'nowbut': True,
                         'control': 'short',
                         'subtext': 'Set start time to now',
-                        'index': COL_START,
+                        'defer': True,
                     },
                     'finish': {
                         'prompt': 'Finish:',
@@ -1965,7 +1965,7 @@ class f200:
                         'nowbut': True,
                         'control': 'short',
                         'subtext': 'Set finish time to now',
-                        'index': COL_FINISH,
+                        'defer': True,
                     },
                 },
             },
@@ -1976,17 +1976,19 @@ class f200:
                                  sections=sections)
         if res['action'] == 0:  # OK
             dotimes = False
-            nft = None
-            nst = None
-            if res['result']['start'][0]:
-                nst = res['result']['start'][2]
-            if res['result']['finish'][0]:
-                nft = res['result']['finish'][2]
+            nst = res['result']['start'][2]
+            nft = res['result']['finish'][2]
+            if res['result']['start'][0] or res['result']['finish'][0]:
+                # one or both were changed
                 dotimes = True
             if dotimes:
                 bib = lr[COL_NO]
-                if nst is None or nst == tod.ZERO:
-                    if lr[COL_START] is not None:
+                if nst is None:
+                    # net time requested
+                    nst = tod.ZERO
+                if nst == tod.ZERO:
+                    if lr[COL_START] is not None and nft is not None:
+                        # net time - preserve start and splits
                         _log.debug('Preserve start time for %s: %s', bib,
                                    lr[COL_START].rawtime())
                         nst = lr[COL_START]
