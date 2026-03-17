@@ -1851,8 +1851,12 @@ class f200:
         """Wait for weather adjustments, then display report."""
         rstat = self.meet.weather.check_adjust(reqid)
         if rstat in ('requested', 'busy'):
-            _log.debug('Waiting for weather adjusted values...')
-            return True
+            self._waitcount += 1
+            if self._waitcount < 40:  # ~5sec
+                _log.debug('Waiting for weather adjustments...')
+                return True
+            else:
+                _log.info('Timeout waiting for weather adjustments')
         adjinfo = self.meet.weather.adjust_info(reqid)
         secs = self.detail_report(bib, adjust=adjinfo)
         self.meet.print_report(secs,
@@ -1870,9 +1874,10 @@ class f200:
             if bib in self._detail:
                 request = {bib: self._detail[bib]}
                 _log.info('Requesting weather adjusted splits, flying start')
-                _log.debug('Detail: %r', request)
                 reqid = self.meet.weather.req_adjust(request, lap1id=None)
-                GLib.timeout_add(50, self._detail_print_completion, reqid, bib)
+                self._waitcount = 0
+                GLib.timeout_add(150, self._detail_print_completion, reqid,
+                                 bib)
 
     def tod_context_trace_activate_cb(self, menuitem, data=None):
         """Print chronometer trace."""
@@ -2111,6 +2116,7 @@ class f200:
         self._weather = None
         self._remcount = None
         self._popcount = None
+        self._waitcount = 0
 
         self.riders = Gtk.ListStore(
             str,  # 0 bib
