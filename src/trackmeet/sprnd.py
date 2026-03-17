@@ -288,7 +288,7 @@ class sprnd:
     def data_pack(self):
         """Pack standard values for a current object"""
         ret = {}
-        ret['competitionType'] = 'bunch'  # for all sprints
+        ret['competitionType'] = 'sprint'  # for all sprints
         ret['status'] = self._status
         ret['weather'] = self._weather
         if self._startlines is not None:
@@ -328,7 +328,7 @@ class sprnd:
                 # add the label entry
                 data[subtype][cid] = contest['subtitle']
                 subdata = {
-                    'competitionType': 'bunch',
+                    'competitionType': 'sprint',
                     'subtitle': contest['subtitle'],
                     'status': contest['status'],
                 }
@@ -337,7 +337,7 @@ class sprnd:
                     for hid, heat in contest['heats'].items():
                         subdata[heattype][hid] = heat['subtitle']
                         heatdata = {
-                            'competitionType': 'bunch',
+                            'competitionType': 'sprint',
                             'subtitle': heat['subtitle'],
                             'status': heat['status'],
                         }

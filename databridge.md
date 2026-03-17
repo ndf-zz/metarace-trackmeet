@@ -972,10 +972,11 @@ members | array | Ordered set of team members if competitor was team
        - "WC4"
        - "MC5"
        - "WC5"
-   - Startlist/result competition type labels:
-       - "single": Single competitor in each heat (tt, 200)
-       - "dual": A/B competitors (tt, pursuit, team sprint, team pursuit)
-       - "bunch": Mass start (scratch, points etc)
+   - Startlist/result competitionType labels:
+       - "single": Single timed competitor (tt, 200, team sprint, team pursuit)
+       - "dual": A/B timed competitors (tt, pursuit, team sprint, team pursuit)
+       - "bunch": Mass start (scratch, points, elimination)
+       - "sprint": Sprint finish, last 200m timed (sprint, derby, keirin)
        - "hour": UCI Hour Record
        - "classification": Final classification for a competition - may
          include medals and champion badges when relevant. May include lower

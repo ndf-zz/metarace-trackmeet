@@ -1135,7 +1135,12 @@ class race:
     def data_pack(self):
         """Pack standard values for a current object"""
         ret = {}
-        ret['competitionType'] = 'bunch'  # for all generic races
+        if self.timetype == '200m':
+            ret['competitionType'] = 'sprint'
+        else:
+            # assume mass-start
+            ret['competitionType'] = 'bunch'
+
         ret['status'] = self._status
         ret['remain'] = self._remain
         ret['eliminated'] = self._eliminated
