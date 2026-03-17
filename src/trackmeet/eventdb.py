@@ -228,7 +228,7 @@ _EVENT_TYPES = {
 _CONFIG_SCHEMA = {
     'sess': {
         'prompt': 'Session ID:',
-        'control': 'short',
+        'control': 'none',
         'attr': 'sess',
         'defer': True,
         'default': '',
@@ -240,7 +240,7 @@ _CONFIG_SCHEMA = {
         'attr': 'evid',
         'defer': True,
         'default': '',
-        'hint': 'Unique event ID on program of events',
+        'hint': 'Unique event ID',
     },
     'refe': {
         'prompt': 'Reference No:',
@@ -248,15 +248,15 @@ _CONFIG_SCHEMA = {
         'attr': 'refe',
         'defer': True,
         'default': '',
-        'hint': 'Competition/classification this event belongs to',
+        'hint': 'Competition id this event belongs to',
     },
     'evov': {
-        'prompt': 'Override No:',
+        'prompt': 'Event No:',
         'control': 'short',
         'attr': 'evov',
         'defer': True,
         'default': '',
-        'hint': 'Override displayed event number on reports',
+        'hint': 'Event number on schedule of events',
     },
     'seri': {
         'prompt': 'Series:',

@@ -36,6 +36,7 @@
      qualified riders from nominated event
    - Lookup weather adjustments for printed timing detail report
    - Add Ctrl-A shortcut to add starters to current event
+   - Show/edit madison team members in race handler
 
 ### Changed
 
@@ -56,11 +57,16 @@
    - Generate section subheadings in event library, across all handler types
    - Assume starttime = 0 when finish set but start time omitted
    - Allow direct edit of elapsed time in flying 200
+   - Enforce competitor membership in event category if data bridge set
+   - Close current event if add competition would modify content
+   - Override event number becomes event number for standard meets
 
 ### Deprecated
 
    - Text-only announcer output deprecated, to be replaced with data bridge
      and web console
+   - Manual edit of session ID ignored, session updated on export of index
+   - Event "reference" ID deprecated, to be replaced with data bridge cat/comp
 
 ### Removed
 
@@ -82,6 +88,10 @@
    - Allow manual ittt operation when distance not set
    - Correct window title for del starters popup
    - Retain start time for manually adjusted flying 200 and ittt
+   - Don't add missing team/pair members to riderdb while traversing
+     the store in data bridge update
+   - Skip clear & autostart when info or members set on model (keirin, handicap,
+     ittt, teams etc)
 
 ### Security
 
@@ -121,7 +131,7 @@
    - add dnf, abd, dns, dsq handling on points and race handler
    - add pursuit dual lane autotime
    - number collection report
-   - pull handicap mark from seeding if set (pre 1.12 behavour)
+   - pull handicap mark from seeding if set (pre 1.12 behaviour)
    - fetch normalised event number from eventdb
    - provide '-' shortcut in points places to place all in riders 1st
    - allow configuration of aggregate type labels, and current meet label
@@ -176,7 +186,7 @@
    - detail report section on time trial/pursuit events
    - autotime functionality for ittt handler
    - add databridge schema reference document
-   - add databridge feilds to event listing
+   - add databridge fields to event listing
    - select scoreboard image overlay from SCB menu/hotkey
    - add dependency 'all' to always recompute on export
    - add key 'eventStart' to current to mark rough start of event,
@@ -279,7 +289,7 @@
    - Standardise event and rider labels and prompts
    - Name presentation and editing standardised across all handlers
    - Use 5 chars for width of all info/nation columns on text scb
-   - Allow withdrawl/return of riders in non-elimination race handler
+   - Allow withdrawal/return of riders in non-elimination race handler
    - Add property dialog for sprint round/final
    - Track timer teams flag get by series or evtype
 
