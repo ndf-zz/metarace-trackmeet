@@ -884,6 +884,7 @@ _SPRINT_TABLES = {
     'wc': _SPRINT_COMPETITION,
     'oc': _OLY_SPRINT_COMPETITION,
     'au': _AU_SPRINT_COMPETITION,
+    'current': 'wc',
 }
 _SPRINT_COMPETITION_BUILDER = {
     'ctype': {
@@ -1673,6 +1674,18 @@ def comp_builder(window, meet, comptype):
         options_schema['cat']['options'] = catlist
         options_schema['series']['value'] = ''
         options_schema['code']['value'] = 'tt'
+    elif comptype == 'keirin':
+        label = 'Keirin'
+        options_schema = _COMPETITION_BUILDER
+        # Overwrite schema values as required
+        options_schema['ctype']['prompt'] = label
+        for cat in ('U9', 'M9', 'W9', 'U11', 'M11', 'W11', 'U13', 'M13',
+                    'W13'):
+            if cat in catlist:
+                del (catlist[cat])
+        options_schema['cat']['options'] = catlist
+        options_schema['series']['value'] = ''
+        options_schema['code']['value'] = 'keirin'
     elif comptype == 'sprint':
         label = 'Sprint'
         options_schema = _SPRINT_COMPETITION_BUILDER
@@ -1680,7 +1693,7 @@ def comp_builder(window, meet, comptype):
         options_schema['ctype']['prompt'] = label
         options_schema['cat']['options'] = catlist
         options_schema['series']['value'] = ''
-        options_schema['table']['value'] = 'wc'
+        options_schema['table']['value'] = _SPRINT_TABLES['current']
         options_schema['code']['value'] = 'sprint'
     elif comptype in ('scratch race', 'points race', 'elimination race',
                       'madison'):
@@ -1757,11 +1770,26 @@ def comp_builder(window, meet, comptype):
                     dofinals = False
                 build_itt_comp(meet, label, cat, category, series, code,
                                dofinals, entrants, overwrite)
+            elif comptype == 'keirin':
+                if u13:
+                    _log.info(
+                        'Keirin competition not defined for under 13 categories'
+                    )
+                    return
+                if entrants is None:
+                    entrants = 10  # 3.2.135
+                elif entrants < 10:
+                    _log.info(
+                        'Not enough starters for standard Keirin competition')
+                    return
+                build_keirin_comp(meet, label, cat, category, series, code,
+                                  entrants, overwrite)
             elif comptype == 'sprint':
                 tc = res['comp']['table'][2]
                 comptable = _SPRINT_TABLES['wc']
                 if tc in _SPRINT_TABLES:
                     comptable = _SPRINT_TABLES[tc]
+                    _SPRINT_TABLES['current'] = tc
 
                 # adjust 1/4 final heats for youth and masters (applies to all tables)
                 if (meet.domestic and masters) or u13 or u17:
@@ -1831,6 +1859,24 @@ def _normauto(srcmap, idmap={}):
             evid = idmap[src]
         rv.append('%s: %s' % (evid, places))
     return '; '.join(rv)
+
+
+def _preauto(autospec, comp):
+    """Prefix ids in srcmap with comp, return depends and auto strings."""
+    dep = []
+    auto = []
+    for spec in autospec.split(';'):
+        if spec:
+            if ':' in spec:
+                evid, places = spec.split(':', 1)
+                nevid = '%s%s' % (comp, evid.strip())
+                dep.append(nevid)
+                auto.append('%s:%s' % (nevid, places.strip()))
+            else:
+                nevid = '%s%s' % (comp, spec.strip())
+                dep.append(nevid)
+                auto.append(nevid)
+    return ' '.join(dep), '; '.join(auto)
 
 
 def build_sprint_comp(meet, label, cat, category, series, code, dofinals,
@@ -2843,6 +2889,454 @@ def build_pursuit_comp(meet, label, cat, category, series, code, dofinals,
             'competion': code,
             'phase': 'final',
         })
+
+
+# Keirin competition table [3.2.135]
+# entrants -> phases -> contest
+_KEIRIN_TABLE = {
+    10: {
+        'r1': {
+            'h1': {
+                'code': 'r1h1',
+                'info': '1st Round Heat 1',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+                'others': '7-',
+            },
+            'h2': {
+                'code': 'r1h2',
+                'info': '1st Round Heat 2',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+                'others': '7-',
+            },
+        },
+        'final': {
+            '7-12': {
+                'code': 'f1',
+                'auto': 'r1h1:4-6; r1h2:4-6',
+                'info': '7-12 Final',
+                'places': '1-',
+            },
+            '1-6': {
+                'code': 'f2',
+                'auto': 'r1h1:1-3; r1h2:1-3',
+                'info': '1-6 Final',
+                'places': '1-6',
+            },
+        },
+    },
+    # R1 -> Rep -> 1/2 -> Final
+    15: {
+        'r1': {
+            'h1': {
+                'code': 'r1h1',
+                'info': '1st Round Heat 1',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h2': {
+                'code': 'r1h2',
+                'info': '1st Round Heat 2',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h3': {
+                'code': 'r1h3',
+                'info': '1st Round Heat 3',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+        },
+        'rep1': {
+            'h1': {
+                'code': 'rp1h1',
+                'info': 'Repechage Heat 1',
+                'rule': 'Top 3 to 1/2 final',
+            },
+            'h2': {
+                'code': 'rp1h2',
+                'info': 'Repechage Heat 2',
+                'rule': 'Top 3 to 1/2 final',
+            },
+        },
+        '1.2': {
+            'h1': {
+                'code': 'sh1',
+                'info': '1/2 Final Heat 1',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+            'h2': {
+                'code': 'sh2',
+                'info': '1/2 Final Heat 2',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+        },
+        'final': {
+            '7-12': {
+                'code': 'f1',
+                'auto': 'sh1:4-6; sh2:4-6',
+                'info': '7-12 Final',
+                'places': '1-6',
+            },
+            '1-6': {
+                'code': 'f2',
+                'auto': 'sh1:1-3; sh2:1-3',
+                'info': '1-6 Final',
+                'places': '1-6',
+            },
+        },
+    },
+    # 21 is special case of 15, with three repechage heats
+    21: {
+        'r1': {
+            'h1': {
+                'code': 'r1h1',
+                'info': '1st Round Heat 1',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h2': {
+                'code': 'r1h2',
+                'info': '1st Round Heat 2',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h3': {
+                'code': 'r1h3',
+                'info': '1st Round Heat 3',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+        },
+        'rep1': {
+            'h1': {
+                'code': 'rp1h1',
+                'info': 'Repechage Heat 1',
+                'rule': 'Top 2 to 1/2 final',
+            },
+            'h2': {
+                'code': 'rp1h2',
+                'info': 'Repechage Heat 2',
+                'rule': 'Top 2 to 1/2 final',
+            },
+            'h3': {
+                'code': 'rp1h3',
+                'info': 'Repechage Heat 3',
+                'rule': 'Top 2 to 1/2 final',
+            },
+        },
+        '1.2': {
+            'h1': {
+                'code': 'sh1',
+                'info': '1/2 Final Heat 1',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+            'h2': {
+                'code': 'sh2',
+                'info': '1/2 Final Heat 2',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+        },
+        'final': {
+            '7-12': {
+                'code': 'f1',
+                'auto': 'sh1:4-6; sh2:4-6',
+                'info': '7-12 Final',
+                'places': '1-6',
+            },
+            '1-6': {
+                'code': 'f2',
+                'auto': 'sh1:1-3; sh2:1-3',
+                'info': '1-6 Final',
+                'places': '1-6',
+            },
+        },
+    },
+    22: {
+        'r1': {
+            'h1': {
+                'code': 'r1h1',
+                'info': '1st Round Heat 1',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h2': {
+                'code': 'r1h2',
+                'info': '1st Round Heat 2',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h3': {
+                'code': 'r1h3',
+                'info': '1st Round Heat 3',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+            'h4': {
+                'code': 'r1h4',
+                'info': '1st Round Heat 4',
+                'rule': 'Top 2 to 1/2 final; Others to repechage',
+            },
+        },
+        'rep1': {
+            'h1': {
+                'code': 'rp1h1',
+                'info': 'Repechage Heat 1',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h2': {
+                'code': 'rp1h2',
+                'info': 'Repechage Heat 2',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h3': {
+                'code': 'rp1h3',
+                'info': 'Repechage Heat 3',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h4': {
+                'code': 'rp1h4',
+                'info': 'Repechage Heat 4',
+                'rule': 'Winner to 1/2 final',
+            },
+        },
+        '1.2': {
+            'h1': {
+                'code': 'sh1',
+                'info': '1/2 Final Heat 1',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+            'h2': {
+                'code': 'sh2',
+                'info': '1/2 Final Heat 2',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+        },
+        'final': {
+            '7-12': {
+                'code': 'f1',
+                'auto': 'sh1:4-6; sh2:4-6',
+                'info': '7-12 Final',
+                'places': '1-6',
+            },
+            '1-6': {
+                'code': 'f2',
+                'auto': 'sh1:1-3; sh2:1-3',
+                'info': '1-6 Final',
+                'places': '1-6',
+            },
+        },
+    },
+    29: {
+        'r1': {
+            'h1': {
+                'code': 'r1h1',
+                'info': '1st Round Heat 1',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+            'h2': {
+                'code': 'r1h2',
+                'info': '1st Round Heat 2',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+            'h3': {
+                'code': 'r1h3',
+                'info': '1st Round Heat 3',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+            'h4': {
+                'code': 'r1h4',
+                'info': '1st Round Heat 4',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+            'h5': {
+                'code': 'r1h5',
+                'info': '1st Round Heat 5',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+            'h6': {
+                'code': 'r1h6',
+                'info': '1st Round Heat 6',
+                'rule': 'Winner to 1/2 final; Others to repechage',
+            },
+        },
+        'rep1': {
+            'h1': {
+                'code': 'rp1h1',
+                'info': 'Repechage Heat 1',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h2': {
+                'code': 'rp1h2',
+                'info': 'Repechage Heat 2',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h3': {
+                'code': 'rp1h3',
+                'info': 'Repechage Heat 3',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h4': {
+                'code': 'rp1h4',
+                'info': 'Repechage Heat 4',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h5': {
+                'code': 'rp1h5',
+                'info': 'Repechage Heat 5',
+                'rule': 'Winner to 1/2 final',
+            },
+            'h6': {
+                'code': 'rp1h6',
+                'info': 'Repechage Heat 6',
+                'rule': 'Winner to 1/2 final',
+            },
+        },
+        '1.2': {
+            'h1': {
+                'code': 'sh1',
+                'info': '1/2 Final Heat 1',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+            'h2': {
+                'code': 'sh2',
+                'info': '1/2 Final Heat 2',
+                'rule': 'Top 3 to 1-6 final; 4th-6th to 7-12',
+            },
+        },
+        'final': {
+            '7-12': {
+                'code': 'f1',
+                'auto': 'sh1:4-6; sh2:4-6',
+                'info': '7-12 Final',
+                'places': '1-6',
+            },
+            '1-6': {
+                'code': 'f2',
+                'auto': 'sh1:1-3; sh2:1-3',
+                'info': '1-6 Final',
+                'places': '1-6',
+            },
+        },
+    },
+    ## TODO:
+    # r1 -> rep1 -> 1/4 -> rep2 -> 1/2 -> final
+    43: None,
+    #43: {},
+    #50: {},
+    #57: {},
+    #64: {},
+}
+
+
+def build_keirin_comp(meet, label, cat, category, series, code, entrants,
+                      overwrite):
+    """Create keirin events, add to meet."""
+
+    # determine laps by track size (this is weird - probably incorrect)
+    laps = None
+    distance = ''
+    laplen = meet.get_laplen()
+    if laplen is not None:
+        laps = max(1, round(1500 / laplen))
+        dm = laps * laplen
+        distance = '%d\u2006m' % (dm, )
+        _log.debug(
+            'Keirin lap=%0.1f: %0.1f laps behind derny, %d laps/%s total',
+            laplen, laps / 2, laps, distance)
+
+    # check and clean competition code
+    if code is not None:
+        code = code.translate(strops.PRINT_UTRANS).strip()
+    else:
+        code = ''
+    if not code:
+        code = label.lower().translate(strops.WEBFILE_UTRANS)
+
+    # ensure series is set
+    if series is None:
+        series = ''
+
+    # find an unused event id for the catcomp
+    compid = comp_label_short(label)
+    catcomp = cat.lower() + compid
+    if not overwrite:
+        count = 1
+        while catcomp in meet.edb:
+            count += 1
+            catcomp = '%s%s%d' % (cat.lower(), compid, count)
+
+    prefix = '%s %s' % (
+        category['Title'],
+        label,
+    )
+
+    # determine competition structure from # entrants
+    comptable = None
+    for mintrant, comp in _KEIRIN_TABLE.items():
+        if mintrant <= entrants:
+            # this is a possible comp
+            comptable = comp
+        if mintrant > entrants:
+            break
+    if comptable is None:
+        _log.info('Kerin too many entrants.')
+        return
+
+    eventlist = []
+    placeslist = []
+    for phase, contests in comptable.items():
+        for contest, detail in contests.items():
+            # add an event for each contest
+            depends = ''
+            autostr = ''
+            if 'auto' in detail:
+                depends, autostr = _preauto(detail['auto'], catcomp)
+            rulestr = ''
+            if 'rule' in detail:
+                rulestr = detail['rule']
+            hid = '%s%s' % (catcomp, detail['code'])
+            eventlist.insert(0, hid)
+            hev = meet.edb.add_or_replace(evno=hid, notify=False)
+            hev.set_values({
+                'series': series,
+                'reference': catcomp,
+                'type handler': 'keirin',
+                'prefix': prefix,
+                'info': detail['info'],
+                'result': False,
+                'index': True,
+                'program': True,
+                'laps': laps,
+                'depend': depends,
+                'auto': autostr,
+                'distance': distance,
+                'rules': rulestr,
+                'category': cat,
+                'competion': code,
+                'phase': phase,
+                'contest': contest,
+            })
+            # places: TODO
+    # classification
+    if eventlist:
+        showevs = ' '.join(eventlist)
+        places = '; '.join(placeslist)
+        cev = meet.edb.add_or_replace(evno=catcomp, notify=True)
+        cev.set_values({
+            'series': series,
+            'type handler': 'classification',
+            'prefix': prefix,
+            'info': '',
+            'result': True,
+            'index': False,
+            'program': False,
+            'depends': showevs,
+            'auto': places,
+            'category': cat,
+            'competion': code,
+        })
+        ##c = meet.get_event(catcomp, closecurrent=True)
+        ##c.readonly = False
+        ##c.loadconfig()
+        ##c.others = '; '.join(otherslist)
+        ##if othersrc:
+        ##c.othersrc = othersrc
+        ##else:
+        ##c.othersrc = ''
+        ##c.medals = ''
+        ##c.saveconfig()
+        ##c = None
 
 
 def build_itt_comp(meet, label, cat, category, series, code, dofinals,
