@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.8a2'
+__version__ = '1.13.8'
 
 import sys
 import gi
@@ -425,22 +425,15 @@ _ADD_SESSION_SCHEMA = {
 
 _ADD_BREAK_SCHEMA = {
     'prefix': {
-        'prompt': 'Prefix:',
+        'prompt': 'Label:',
         'hint': 'Break title',
         'attr': 'prefix',
         'defer': True,
         'default': '',
     },
-    'info': {
-        'prompt': 'Info:',
-        'hint': 'Break subtitle',
-        'attr': 'info',
-        'defer': True,
-        'default': '',
-    },
     'rule': {
         'prompt': 'Extra:',
-        'hint': 'Extra information to appear under title',
+        'hint': 'Optional extra information to appear under title',
         'attr': 'rule',
         'defer': True,
         'default': '',
@@ -3643,14 +3636,47 @@ class trackmeet:
                                    meet=self,
                                    comptype=label)
 
-    def add_break_cb(self, menuitem=None, data=None):
-        """Create a new session entry."""
-        ev = Event(evid='b')
-        ev.set_value('type', 'break')
-        ev.set_value('result', False)
-        ev.set_value('index', True)
-        ev.set_value('program', True)
+    def add_presentation_cb(self, menuitem=None, data=None):
+        """Create a new presentation entry."""
+        ev = Event(evid='p.1')
+        ev.set_values({
+            'type': 'break',
+            'prefix': 'Presentation',
+            'result': False,
+            'index': True,
+            'program': True,
+        })
         schema = _ADD_BREAK_SCHEMA
+        schema['rule']['prompt'] = 'Medals:'
+        schema['rule']['hint'] = 'Optional list of medals being presented'
+        res = uiutil.options_dlg(window=self.window,
+                                 title='Add Presentation to Meet',
+                                 action=True,
+                                 sections={
+                                     'break': {
+                                         'title': 'break',
+                                         'schema': schema,
+                                         'object': ev,
+                                     },
+                                 })
+        if res['action'] == 0:  # OK
+            self.edb.add_event(ev)
+            self.eventcb(None)
+        return None
+
+    def add_break_cb(self, menuitem=None, data=None):
+        """Create a new break entry."""
+        ev = Event(evid='b.1')
+        ev.set_values({
+            'type': 'break',
+            'prefix': 'Break',
+            'result': False,
+            'index': True,
+            'program': True,
+        })
+        schema = _ADD_BREAK_SCHEMA
+        schema['rule']['prompt'] = 'Extra:'
+        schema['rule']['hint'] = 'Optional extra information to appear under title'
         res = uiutil.options_dlg(window=self.window,
                                  title='Add Break to Meet',
                                  action=True,

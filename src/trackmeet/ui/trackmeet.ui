@@ -98,10 +98,16 @@
                           </object>
                         </child>
                         <child>
+                          <object class="GtkMenuItem" id="menu_race_addpres">
+                            <property name="label">Add Presentation</property>
+                            <property name="visible">True</property>
+                            <signal name="activate" handler="add_presentation_cb"/>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkMenuItem" id="menu_race_addbreak">
                             <property name="label">Add Break</property>
                             <property name="visible">True</property>
-                            <accelerator key="b" signal="activate" modifiers="GDK_CONTROL_MASK"/>
                             <signal name="activate" handler="add_break_cb"/>
                           </object>
                         </child>
