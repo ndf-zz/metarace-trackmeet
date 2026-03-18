@@ -12,7 +12,7 @@
 
 ### Security
 
-## [1.13.8]
+## [1.13.8] 2026-03-18
 
 ### Added
 
@@ -21,6 +21,7 @@
    - Add penalty objects to data bridge
    - Add session dialog
    - Add break dialog
+   - Add presentaton dialog
    - Add competition builder scripts for standard meets
    - Include report print options from roadmeet
    - Dump per-rider detail reports on export from ittt and f200

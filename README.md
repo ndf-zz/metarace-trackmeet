@@ -24,6 +24,22 @@ Edit default configuration:
 	$ trackmeet --edit-default
 
 
+## Standards
+
+Standard track meet competitions are enabled by importing a list
+of category standards for the meet. Reference standards for 
+Australian domestic meets are provided at the following URL:
+
+[https://6-v.org/au/](https://6-v.org/au/)
+
+To enable standard competitions, check the source urls in
+Meet->Properties->Standards, then import to the current meet
+via Data->Update Standards.
+
+Note: Keirin progressions and Omnium competitions are not yet complete
+in the current release (1.13.8).
+
+
 ## Support
 
    - Signal Group: [metarace](https://signal.group/#CjQKII2j2E7Zxn7dHgsazfKlrIXfhjgZOUB3OUFhzKyb-p_bEhBehsI65MhGABZaJeJ-tMZl)
