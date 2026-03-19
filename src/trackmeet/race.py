@@ -89,6 +89,8 @@ class race:
                     if laps == stlap and self.timetype != '200m':
                         self.force_running(tod.now() - tod.mktod(20))
                     ret = True
+                elif self.timetype == '200m':
+                    ret = True
                 elif self.timerstat in ('running', 'armfinish'):
                     ret = True
         return ret

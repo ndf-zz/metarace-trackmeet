@@ -291,6 +291,12 @@ class sprnd:
         ret['competitionType'] = 'sprint'  # for all sprints
         ret['status'] = self._status
         ret['weather'] = self._weather
+        if self.start is not None:
+            ret['startTime'] = self.start
+            if self.finish is not None:
+                ret['endTime'] = self.start
+                elap = (self.finish - self.start).truncate(2)
+                ret['elapsed'] = elap
         if self._startlines is not None:
             ret['competitors'] = self._startlines
         if self._reslines is not None:
@@ -1497,6 +1503,7 @@ class sprnd:
                 GLib.timeout_add_seconds(4, self.armfinish)
             else:
                 GLib.idle_add(self.armfinish)
+            GLib.idle_add(self.delayed_announce)
 
     def fintrig(self, e):
         """React to finish trigger."""

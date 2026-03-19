@@ -1118,10 +1118,12 @@ class DataBridge():
                 dataObj[k] = None
 
         # override "auto" laps to go for bunch racs
-        if dataObj['competitionType'] == 'bunch':
+        if dataObj['competitionType'] in ('bunch', 'sprint'):
             if 'noLaps' not in self._current:
                 if self._m.lapscore:
                     dataObj['toGo'] = self._m.lapscore
+            else:
+                _log.debug('noLaps set - laps inhibited')
 
         meetPath = self.getPath('current')
         self._pathSave(meetPath, dataObj)
