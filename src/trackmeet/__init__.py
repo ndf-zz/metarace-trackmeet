@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Timing and data handling application wrapper for track events."""
-__version__ = '1.13.8'
+__version__ = '1.13.9a1'
 
 import sys
 import gi
@@ -3676,7 +3676,8 @@ class trackmeet:
         })
         schema = _ADD_BREAK_SCHEMA
         schema['rule']['prompt'] = 'Extra:'
-        schema['rule']['hint'] = 'Optional extra information to appear under title'
+        schema['rule'][
+            'hint'] = 'Optional extra information to appear under title'
         res = uiutil.options_dlg(window=self.window,
                                  title='Add Break to Meet',
                                  action=True,

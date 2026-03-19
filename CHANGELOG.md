@@ -4,11 +4,19 @@
 
 ### Changed
 
+   - Retain intermediate sprint results when overwriting madison
+     and points competition
+
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+
+   - Include laps to go and last 200m time in current object
+     data for sprint, derby and keirin events
+   - Use event id for straight TT and bunch finals instead of catcomp
+     in competition builders
 
 ### Security
 
@@ -21,7 +29,7 @@
    - Add penalty objects to data bridge
    - Add session dialog
    - Add break dialog
-   - Add presentaton dialog
+   - Add presentation dialog
    - Add competition builder scripts for standard meets
    - Include report print options from roadmeet
    - Dump per-rider detail reports on export from ittt and f200
