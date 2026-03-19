@@ -2372,7 +2372,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
                 else:
                     c.sprintpoints['0'] = '5 3 2 1'
                 c.sprintlaps = ' '.join(heatsprints)
-                c.sprint_model_init()
+                c.sprint_model_init(retain=overwrite)
                 c.saveconfig()
                 c = None
             # qualified riders handled by topn
@@ -2409,7 +2409,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             else:
                 c.sprintpoints['0'] = '5 3 2 1'
             c.sprintlaps = ' '.join(finalsprints)
-            c.sprint_model_init()
+            c.sprint_model_init(retain=overwrite)
             c.saveconfig()
             c = None
         # classification - only used to aggregate events
@@ -2456,7 +2456,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             'phase': 'final',
         })
         if comptype in ('madison', 'points'):
-            c = meet.get_event(catcomp, closecurrent=True)
+            c = meet.get_event(pid, closecurrent=True)
             c.readonly = False
             c.loadconfig()
             c.tenptlaps = tenpoints
@@ -2465,7 +2465,7 @@ def build_bunch_comp(meet, label, cat, category, series, code, dofinals,
             else:
                 c.sprintpoints['0'] = '5 3 2 1'
             c.sprintlaps = ' '.join(finalsprints)
-            c.sprint_model_init()
+            c.sprint_model_init(retain=overwrite)
             c.saveconfig()
             c = None
 
@@ -3491,7 +3491,7 @@ def build_itt_comp(meet, label, cat, category, series, code, dofinals,
             'competion': code,
             'phase': 'final',
         })
-        c = meet.get_event(catcomp, closecurrent=True)
+        c = meet.get_event(pid, closecurrent=True)
         c.readonly = False
         c.loadconfig()
         c.timetype = 'single'
