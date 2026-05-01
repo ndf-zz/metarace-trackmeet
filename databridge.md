@@ -1,6 +1,6 @@
 # Trackmeet "Data Bridge" Schema
 
-__Updated: 2026-02-23__
+__Updated: 2026-03-20__
 
 
 ## Overview
@@ -287,6 +287,7 @@ info | string | Phase information string
 extra | string | Additional event information eg "Best of 3 Heats"
 distance | string | Distance string with units
 laps | integer | Lap count where relevant
+status | STATUS | Status of result for this event if known
 session | string | Session ID
 category | string | Competitor category ID
 competition | string | Competition ID
@@ -307,6 +308,7 @@ Example:
 	   "extra": null,
 	   "distance": "200\u2006m",
 	   "laps": null,
+           "status": "standing",
 	   "session": "1",
 	   "category": "ME",
 	   "competition": "sprint",
@@ -323,7 +325,6 @@ exactly with competition data. The event index is informative
 and based on content of the published schedule of events.
 Some event numbers on the schedule may refer to multiple
 distinct events in the listing.
-
 
 #### [MEET]/current
 
@@ -400,7 +401,7 @@ location | string | Meet location
 label | string | Text label for session
 startTime | 8601DT | Session start time
 endTime | 8601DT | Estimated session end time
-events | object | Mapping of event numbers to lists of Schedule labels
+events | object | Mapping of event numbers to lists of EVENT objects
 finals | object | Mapping of CAT/COMP ids to competition title
 
 Example:
@@ -413,7 +414,7 @@ Example:
 	 "label": "Session 1",
 	 "startTime": "2025-03-24T13:00:00+10:00",
 	 "endTime": "2025-03-24T18:30:00+10:00",
-	 "events": {"1": ["Men Elite Sprint Qualifying", ...
+	 "events": {"1": [ ... 
 	 "finals": {"ME/sprint": "Men Elite Sprint", ...
 	}
 

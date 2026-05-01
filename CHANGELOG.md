@@ -1,15 +1,9 @@
-## [Unreleased]
-
-### Added
+## [1.13.9] 2026-05-02
 
 ### Changed
 
    - Retain intermediate sprint results when overwriting madison
      and points competition
-
-### Deprecated
-
-### Removed
 
 ### Fixed
 
@@ -17,8 +11,6 @@
      data for sprint, derby and keirin events
    - Use event id for straight TT and bunch finals instead of catcomp
      in competition builders
-
-### Security
 
 ## [1.13.8] 2026-03-18
 
